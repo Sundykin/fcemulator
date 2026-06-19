@@ -165,7 +165,10 @@ impl ControlDeck {
         self.bus.cartridge.patches.clear();
         for c in &self.cheats {
             if c.enabled && c.is_rom_patch() {
-                self.bus.cartridge.patches.insert(c.addr, (c.value, c.compare));
+                self.bus
+                    .cartridge
+                    .patches
+                    .insert(c.addr, (c.value, c.compare));
             }
         }
     }
@@ -260,7 +263,9 @@ impl ControlDeck {
         self.bus.peek(addr)
     }
     pub fn read_memory_range(&self, addr: u16, len: u16) -> Vec<u8> {
-        (0..len).map(|i| self.bus.peek(addr.wrapping_add(i))).collect()
+        (0..len)
+            .map(|i| self.bus.peek(addr.wrapping_add(i)))
+            .collect()
     }
     pub fn write_memory(&mut self, addr: u16, value: u8) {
         self.bus.write(addr, value);
@@ -273,7 +278,9 @@ impl ControlDeck {
 
     /// 128×128 RGBA pattern table (`table` 0/1, `pal_row` 0–3).
     pub fn pattern_table(&self, table: usize, pal_row: u8) -> Vec<u8> {
-        self.bus.ppu.render_pattern_table(&self.bus.cartridge, table, pal_row)
+        self.bus
+            .ppu
+            .render_pattern_table(&self.bus.cartridge, table, pal_row)
     }
     /// 512×480 RGBA image of all four nametables.
     pub fn nametables(&self) -> Vec<u8> {

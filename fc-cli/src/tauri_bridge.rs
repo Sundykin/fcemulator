@@ -63,7 +63,10 @@ fn call_tool(name: &str, args: Value) -> Value {
         },
         "tauri_eval" => {
             let code = args.get("code").and_then(|v| v.as_str()).unwrap_or("");
-            match socket_call("execute_js", json!({ "window_label": "main", "code": code, "timeout_ms": 5000 })) {
+            match socket_call(
+                "execute_js",
+                json!({ "window_label": "main", "code": code, "timeout_ms": 5000 }),
+            ) {
                 Ok(r) => {
                     if let Some(e) = r.get("error").and_then(|v| v.as_str()) {
                         if !e.is_empty() {
@@ -71,8 +74,14 @@ fn call_tool(name: &str, args: Value) -> Value {
                         }
                     }
                     let d = r.get("data");
-                    let result = d.and_then(|d| d.get("result")).and_then(|v| v.as_str()).unwrap_or("");
-                    let ty = d.and_then(|d| d.get("type")).and_then(|v| v.as_str()).unwrap_or("?");
+                    let result = d
+                        .and_then(|d| d.get("result"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    let ty = d
+                        .and_then(|d| d.get("type"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("?");
                     text(format!("[{ty}] {result}"))
                 }
                 Err(e) => text(e),
@@ -80,12 +89,17 @@ fn call_tool(name: &str, args: Value) -> Value {
         }
         "tauri_screenshot" => {
             let q = args.get("quality").and_then(|v| v.as_i64()).unwrap_or(80);
-            match socket_call("take_screenshot", json!({ "window_label": "main", "application_name": "fc-tauri", "quality": q })) {
+            match socket_call(
+                "take_screenshot",
+                json!({ "window_label": "main", "application_name": "fc-tauri", "quality": q }),
+            ) {
                 Ok(r) => {
                     let d = r.get("data");
                     let url = d.and_then(|d| d.get("data")).and_then(|v| v.as_str());
                     match url.and_then(|u| u.strip_prefix("data:image/jpeg;base64,")) {
-                        Some(b64) => json!({ "content": [{ "type": "image", "data": b64, "mimeType": "image/jpeg" }] }),
+                        Some(b64) => {
+                            json!({ "content": [{ "type": "image", "data": b64, "mimeType": "image/jpeg" }] })
+                        }
                         None => {
                             let err = d
                                 .and_then(|d| d.get("error"))
@@ -150,7 +164,9 @@ pub fn run() -> anyhow::Result<()> {
         }
         let resp = match result {
             Some(r) => json!({ "jsonrpc": "2.0", "id": id, "result": r }),
-            None => json!({ "jsonrpc": "2.0", "id": id, "error": { "code": -32601, "message": format!("method not found: {method}") } }),
+            None => {
+                json!({ "jsonrpc": "2.0", "id": id, "error": { "code": -32601, "message": format!("method not found: {method}") } })
+            }
         };
         writeln!(out, "{resp}")?;
         out.flush()?;

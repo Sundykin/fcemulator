@@ -287,12 +287,20 @@ impl App {
     }
 
     fn render(&mut self) {
-        let Some(window) = self.window.clone() else { return };
+        let Some(window) = self.window.clone() else {
+            return;
+        };
         let Some(gfx) = self.gfx.as_mut() else { return };
 
         // Upload the latest frame into an egui texture.
         let tex_ctx = gfx.egui_ctx.clone();
-        let nes_id = upload(&tex_ctx, &mut self.nes_tex, "nes", [NES_W, NES_H], self.deck.frame_buffer());
+        let nes_id = upload(
+            &tex_ctx,
+            &mut self.nes_tex,
+            "nes",
+            [NES_W, NES_H],
+            self.deck.frame_buffer(),
+        );
 
         // Debug textures + snapshots (only when the PPU viewer is open).
         let mut pt_ids: [Option<egui::TextureId>; 2] = [None, None];
@@ -301,9 +309,21 @@ impl App {
         let mut pal_snapshot = [fc_core::Rgb::new(0, 0, 0); 32];
         if self.show_ppu {
             let pt0 = self.deck.pattern_table(0, self.pal_row);
-            pt_ids[0] = Some(upload(&tex_ctx, &mut self.dbg_pt[0], "pt0", [128, 128], &pt0));
+            pt_ids[0] = Some(upload(
+                &tex_ctx,
+                &mut self.dbg_pt[0],
+                "pt0",
+                [128, 128],
+                &pt0,
+            ));
             let pt1 = self.deck.pattern_table(1, self.pal_row);
-            pt_ids[1] = Some(upload(&tex_ctx, &mut self.dbg_pt[1], "pt1", [128, 128], &pt1));
+            pt_ids[1] = Some(upload(
+                &tex_ctx,
+                &mut self.dbg_pt[1],
+                "pt1",
+                [128, 128],
+                &pt1,
+            ));
             let nt = self.deck.nametables();
             nt_id = Some(upload(&tex_ctx, &mut self.dbg_nt, "nt", [512, 480], &nt));
             oam_snapshot = *self.deck.oam();
@@ -333,7 +353,10 @@ impl App {
                     if ui.button("📂 Open").clicked() {
                         act_open = true;
                     }
-                    if ui.button(if paused { "▶ Resume" } else { "⏸ Pause" }).clicked() {
+                    if ui
+                        .button(if paused { "▶ Resume" } else { "⏸ Pause" })
+                        .clicked()
+                    {
                         toggle_pause = true;
                     }
                     if ui.button("⟲ Reset").clicked() {
@@ -370,73 +393,99 @@ impl App {
                 });
 
             if show_debug {
-                egui::Window::new("CPU").default_pos([20.0, 60.0]).show(ctx, |ui| {
-                    ui.monospace(format!("PC {:04X}", cpu.pc));
-                    ui.monospace(format!("A {:02X}  X {:02X}  Y {:02X}", cpu.a, cpu.x, cpu.y));
-                    ui.monospace(format!("SP {:02X}  P {:02X} ({})", cpu.sp, cpu.p, ControlDeck::flags_string(cpu.p)));
-                    ui.monospace(format!("scanline {ppu_line}  frame {frame}"));
-                    ui.monospace(format!("cycles {}", cpu.cycles));
-                });
+                egui::Window::new("CPU")
+                    .default_pos([20.0, 60.0])
+                    .show(ctx, |ui| {
+                        ui.monospace(format!("PC {:04X}", cpu.pc));
+                        ui.monospace(format!("A {:02X}  X {:02X}  Y {:02X}", cpu.a, cpu.x, cpu.y));
+                        ui.monospace(format!(
+                            "SP {:02X}  P {:02X} ({})",
+                            cpu.sp,
+                            cpu.p,
+                            ControlDeck::flags_string(cpu.p)
+                        ));
+                        ui.monospace(format!("scanline {ppu_line}  frame {frame}"));
+                        ui.monospace(format!("cycles {}", cpu.cycles));
+                    });
             }
 
             if show_ppu {
-                egui::Window::new("PPU Viewer").default_pos([300.0, 60.0]).show(ctx, |ui| {
-                    ui.label("Pattern tables ($0000 / $1000)");
-                    ui.horizontal(|ui| {
-                        for id in pt_ids.into_iter().flatten() {
-                            ui.add(
-                                egui::Image::new(egui::load::SizedTexture::new(id, egui::vec2(256.0, 256.0)))
+                egui::Window::new("PPU Viewer")
+                    .default_pos([300.0, 60.0])
+                    .show(ctx, |ui| {
+                        ui.label("Pattern tables ($0000 / $1000)");
+                        ui.horizontal(|ui| {
+                            for id in pt_ids.into_iter().flatten() {
+                                ui.add(
+                                    egui::Image::new(egui::load::SizedTexture::new(
+                                        id,
+                                        egui::vec2(256.0, 256.0),
+                                    ))
                                     .texture_options(TextureOptions::NEAREST),
+                                );
+                            }
+                        });
+                        ui.horizontal(|ui| {
+                            ui.label("BG palette:");
+                            for r in 0..4u8 {
+                                ui.selectable_value(&mut pal_row, r, format!("{r}"));
+                            }
+                        });
+                        ui.separator();
+                        ui.label("Palette RAM (BG | Sprite)");
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing.x = 1.0;
+                            for (i, c) in pal_snapshot.iter().enumerate() {
+                                if i == 16 {
+                                    ui.add_space(8.0);
+                                }
+                                let (rect, _) = ui.allocate_exact_size(
+                                    egui::vec2(13.0, 13.0),
+                                    egui::Sense::hover(),
+                                );
+                                ui.painter().rect_filled(
+                                    rect,
+                                    2.0,
+                                    egui::Color32::from_rgb(c.r, c.g, c.b),
+                                );
+                            }
+                        });
+                        ui.separator();
+                        ui.label("Nametables (2×2)");
+                        if let Some(id) = nt_id {
+                            ui.add(
+                                egui::Image::new(egui::load::SizedTexture::new(
+                                    id,
+                                    egui::vec2(512.0, 480.0),
+                                ))
+                                .texture_options(TextureOptions::NEAREST),
                             );
                         }
                     });
-                    ui.horizontal(|ui| {
-                        ui.label("BG palette:");
-                        for r in 0..4u8 {
-                            ui.selectable_value(&mut pal_row, r, format!("{r}"));
-                        }
-                    });
-                    ui.separator();
-                    ui.label("Palette RAM (BG | Sprite)");
-                    ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = 1.0;
-                        for (i, c) in pal_snapshot.iter().enumerate() {
-                            if i == 16 {
-                                ui.add_space(8.0);
-                            }
-                            let (rect, _) = ui.allocate_exact_size(egui::vec2(13.0, 13.0), egui::Sense::hover());
-                            ui.painter().rect_filled(rect, 2.0, egui::Color32::from_rgb(c.r, c.g, c.b));
-                        }
-                    });
-                    ui.separator();
-                    ui.label("Nametables (2×2)");
-                    if let Some(id) = nt_id {
-                        ui.add(
-                            egui::Image::new(egui::load::SizedTexture::new(id, egui::vec2(512.0, 480.0)))
-                                .texture_options(TextureOptions::NEAREST),
-                        );
-                    }
-                });
 
-                egui::Window::new("OAM").default_pos([300.0, 60.0]).show(ctx, |ui| {
-                    egui::ScrollArea::vertical().max_height(320.0).show(ui, |ui| {
-                        egui::Grid::new("oam_grid").striped(true).show(ui, |ui| {
-                            for h in ["#", "X", "Y", "Tile", "Attr"] {
-                                ui.monospace(h);
-                            }
-                            ui.end_row();
-                            for i in 0..64 {
-                                let o = i * 4;
-                                ui.monospace(format!("{i:02}"));
-                                ui.monospace(format!("{:3}", oam_snapshot[o + 3]));
-                                ui.monospace(format!("{:3}", oam_snapshot[o]));
-                                ui.monospace(format!("{:02X}", oam_snapshot[o + 1]));
-                                ui.monospace(format!("{:02X}", oam_snapshot[o + 2]));
-                                ui.end_row();
-                            }
-                        });
+                egui::Window::new("OAM")
+                    .default_pos([300.0, 60.0])
+                    .show(ctx, |ui| {
+                        egui::ScrollArea::vertical()
+                            .max_height(320.0)
+                            .show(ui, |ui| {
+                                egui::Grid::new("oam_grid").striped(true).show(ui, |ui| {
+                                    for h in ["#", "X", "Y", "Tile", "Attr"] {
+                                        ui.monospace(h);
+                                    }
+                                    ui.end_row();
+                                    for i in 0..64 {
+                                        let o = i * 4;
+                                        ui.monospace(format!("{i:02}"));
+                                        ui.monospace(format!("{:3}", oam_snapshot[o + 3]));
+                                        ui.monospace(format!("{:3}", oam_snapshot[o]));
+                                        ui.monospace(format!("{:02X}", oam_snapshot[o + 1]));
+                                        ui.monospace(format!("{:02X}", oam_snapshot[o + 2]));
+                                        ui.end_row();
+                                    }
+                                });
+                            });
                     });
-                });
             }
         });
 
@@ -448,7 +497,8 @@ impl App {
             pixels_per_point: full.pixels_per_point,
         };
         for (id, delta) in &full.textures_delta.set {
-            gfx.renderer.update_texture(&gfx.device, &gfx.queue, *id, delta);
+            gfx.renderer
+                .update_texture(&gfx.device, &gfx.queue, *id, delta);
         }
 
         let frame_tex = match gfx.surface.get_current_texture() {
@@ -515,7 +565,10 @@ impl ApplicationHandler for App {
         }
         let attrs = Window::default_attributes()
             .with_title("FC Emulator — Famicom/NES")
-            .with_inner_size(winit::dpi::LogicalSize::new(NES_W as f64 * 3.0, NES_H as f64 * 3.0 + 30.0));
+            .with_inner_size(winit::dpi::LogicalSize::new(
+                NES_W as f64 * 3.0,
+                NES_H as f64 * 3.0 + 30.0,
+            ));
         let window = Arc::new(event_loop.create_window(attrs).expect("window"));
         self.gfx = Some(Gfx::new(window.clone()));
         self.window = Some(window);

@@ -235,7 +235,11 @@ impl Ppu {
         for bit in 0..8 {
             let bit_mask = 1 << bit;
             if mask & bit_mask != 0 {
-                self.open_bus_decay_at[bit] = if value & bit_mask != 0 { fresh_until } else { 0 };
+                self.open_bus_decay_at[bit] = if value & bit_mask != 0 {
+                    fresh_until
+                } else {
+                    0
+                };
             }
         }
     }
@@ -369,8 +373,10 @@ impl Ppu {
     fn load_bg_shifters(&mut self) {
         self.bg_sh_pat_lo = (self.bg_sh_pat_lo & 0xFF00) | self.bg_next_lo as u16;
         self.bg_sh_pat_hi = (self.bg_sh_pat_hi & 0xFF00) | self.bg_next_hi as u16;
-        self.bg_sh_at_lo = (self.bg_sh_at_lo & 0xFF00) | if self.bg_next_attr & 1 != 0 { 0xFF } else { 0 };
-        self.bg_sh_at_hi = (self.bg_sh_at_hi & 0xFF00) | if self.bg_next_attr & 2 != 0 { 0xFF } else { 0 };
+        self.bg_sh_at_lo =
+            (self.bg_sh_at_lo & 0xFF00) | if self.bg_next_attr & 1 != 0 { 0xFF } else { 0 };
+        self.bg_sh_at_hi =
+            (self.bg_sh_at_hi & 0xFF00) | if self.bg_next_attr & 2 != 0 { 0xFF } else { 0 };
     }
 
     fn increment_scroll_x(&mut self) {
@@ -415,55 +421,55 @@ impl Ppu {
         // (visible) scanline S satisfies 0 <= S - Y < height. (Off-by-one here
         // shifts every sprite — and sprite-0 hit — up by a scanline.)
         if self.scanline < 240 {
-        let line = self.scanline;
-        for i in 0..64 {
-            let y = self.oam[i * 4] as u16;
-            let row = line.wrapping_sub(y);
-            if row < height {
-                if found < 8 {
-                    let tile = self.oam[i * 4 + 1];
-                    let attr = self.oam[i * 4 + 2];
-                    let x = self.oam[i * 4 + 3];
-                    let flip_v = attr & 0x80 != 0;
-                    let flip_h = attr & 0x40 != 0;
-                    let addr = if height == 16 {
-                        let table = ((tile & 1) as u16) * 0x1000;
-                        let mut base = (tile & 0xFE) as u16;
-                        let mut rr = row;
-                        if flip_v {
-                            rr = 15 - rr;
-                        }
-                        if rr >= 8 {
-                            base += 1;
-                            rr -= 8;
-                        }
-                        table + base * 16 + rr
+            let line = self.scanline;
+            for i in 0..64 {
+                let y = self.oam[i * 4] as u16;
+                let row = line.wrapping_sub(y);
+                if row < height {
+                    if found < 8 {
+                        let tile = self.oam[i * 4 + 1];
+                        let attr = self.oam[i * 4 + 2];
+                        let x = self.oam[i * 4 + 3];
+                        let flip_v = attr & 0x80 != 0;
+                        let flip_h = attr & 0x40 != 0;
+                        let addr = if height == 16 {
+                            let table = ((tile & 1) as u16) * 0x1000;
+                            let mut base = (tile & 0xFE) as u16;
+                            let mut rr = row;
+                            if flip_v {
+                                rr = 15 - rr;
+                            }
+                            if rr >= 8 {
+                                base += 1;
+                                rr -= 8;
+                            }
+                            table + base * 16 + rr
+                        } else {
+                            let table = if self.ctrl & 0x08 != 0 { 0x1000 } else { 0 };
+                            let mut rr = row;
+                            if flip_v {
+                                rr = 7 - rr;
+                            }
+                            table + (tile as u16) * 16 + rr
+                        };
+                        let lo = self.ppu_read(cart, addr);
+                        let hi = self.ppu_read(cart, addr + 8);
+                        self.sprites[found] = SpriteUnit {
+                            x,
+                            pat_lo: lo,
+                            pat_hi: hi,
+                            palette: attr & 0x03,
+                            priority: attr & 0x20 == 0,
+                            is_zero: i == 0,
+                            flip_h,
+                        };
+                        found += 1;
                     } else {
-                        let table = if self.ctrl & 0x08 != 0 { 0x1000 } else { 0 };
-                        let mut rr = row;
-                        if flip_v {
-                            rr = 7 - rr;
-                        }
-                        table + (tile as u16) * 16 + rr
-                    };
-                    let lo = self.ppu_read(cart, addr);
-                    let hi = self.ppu_read(cart, addr + 8);
-                    self.sprites[found] = SpriteUnit {
-                        x,
-                        pat_lo: lo,
-                        pat_hi: hi,
-                        palette: attr & 0x03,
-                        priority: attr & 0x20 == 0,
-                        is_zero: i == 0,
-                        flip_h,
-                    };
-                    found += 1;
-                } else {
-                    self.status |= 0x20; // sprite overflow (simplified)
-                    break;
+                        self.status |= 0x20; // sprite overflow (simplified)
+                        break;
+                    }
                 }
             }
-        }
         }
         // Hardware always performs 8 sprite pattern fetches per scanline; unused
         // slots fetch dummy tile $FF from the sprite table. These dummy fetches

@@ -37,7 +37,11 @@ fn gg_digit(c: char) -> Option<u8> {
 
 /// Decode a 6 or 8 letter NES Game Genie code into (addr, value, compare).
 pub fn decode_game_genie(code: &str) -> Option<(u16, u8, Option<u8>)> {
-    let n: Vec<u8> = code.chars().filter(|c| !c.is_whitespace()).map(gg_digit).collect::<Option<_>>()?;
+    let n: Vec<u8> = code
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .map(gg_digit)
+        .collect::<Option<_>>()?;
     if n.len() != 6 && n.len() != 8 {
         return None;
     }
@@ -108,8 +112,7 @@ mod tests {
 
 /// Decode any supported cheat format into a [`Cheat`].
 pub fn parse(code: &str, desc: &str) -> Option<Cheat> {
-    let (addr, value, compare) =
-        decode_game_genie(code).or_else(|| decode_raw(code))?;
+    let (addr, value, compare) = decode_game_genie(code).or_else(|| decode_raw(code))?;
     Some(Cheat {
         code: code.trim().to_string(),
         addr,

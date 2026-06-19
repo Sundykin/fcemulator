@@ -454,8 +454,7 @@ impl Mmc3 {
 
         // MMC6-family behavior: if the counter naturally reached 0 while the
         // latch was already 0, the following reload-to-0 edge does not re-assert IRQ.
-        let zero_reload_suppressed =
-            natural_zero_reload && self.irq_suppress_zero_reload;
+        let zero_reload_suppressed = natural_zero_reload && self.irq_suppress_zero_reload;
         self.irq_suppress_zero_reload = decrement_to_zero_with_zero_latch;
 
         if self.irq_counter == 0 && self.irq_enabled && !zero_reload_suppressed {
@@ -585,7 +584,11 @@ pub struct ColorDreams {
 }
 impl ColorDreams {
     fn new(mirroring: Mirroring) -> Self {
-        ColorDreams { prg_bank: 0, chr_bank: 0, mirroring }
+        ColorDreams {
+            prg_bank: 0,
+            chr_bank: 0,
+            mirroring,
+        }
     }
 }
 impl MapperOps for ColorDreams {
@@ -616,7 +619,11 @@ pub struct Gxrom {
 }
 impl Gxrom {
     fn new(mirroring: Mirroring) -> Self {
-        Gxrom { prg_bank: 0, chr_bank: 0, mirroring }
+        Gxrom {
+            prg_bank: 0,
+            chr_bank: 0,
+            mirroring,
+        }
     }
 }
 impl MapperOps for Gxrom {
@@ -647,7 +654,11 @@ pub struct Codemasters {
 }
 impl Codemasters {
     fn new(prg_16k: usize, mirroring: Mirroring) -> Self {
-        Codemasters { prg_16k: prg_16k.max(1), bank: 0, mirroring }
+        Codemasters {
+            prg_16k: prg_16k.max(1),
+            bank: 0,
+            mirroring,
+        }
     }
 }
 impl MapperOps for Codemasters {

@@ -173,9 +173,15 @@ impl Cartridge {
     pub fn ppu_read(&self, addr: u16) -> u8 {
         let i = self.mapper.chr_index(addr & 0x1FFF);
         if self.uses_chr_ram {
-            self.chr_ram.get(i % self.chr_ram.len().max(1)).copied().unwrap_or(0)
+            self.chr_ram
+                .get(i % self.chr_ram.len().max(1))
+                .copied()
+                .unwrap_or(0)
         } else {
-            self.chr_rom.get(i % self.chr_rom.len().max(1)).copied().unwrap_or(0)
+            self.chr_rom
+                .get(i % self.chr_rom.len().max(1))
+                .copied()
+                .unwrap_or(0)
         }
     }
 

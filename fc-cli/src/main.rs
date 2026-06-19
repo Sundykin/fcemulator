@@ -129,8 +129,15 @@ fn run_blargg(deck: &mut ControlDeck, max_frames: u64) -> (u8, String) {
 
 fn short(path: &str) -> String {
     let p = std::path::Path::new(path);
-    let parent = p.parent().and_then(|x| x.file_name()).map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
-    let name = p.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+    let parent = p
+        .parent()
+        .and_then(|x| x.file_name())
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let name = p
+        .file_name()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default();
     format!("{parent}/{name}")
 }
 
@@ -211,7 +218,10 @@ fn main() -> Result<()> {
             let secs = start.elapsed().as_secs_f64();
             let fb = deck.frame_buffer();
             let non_black = fb.chunks(4).filter(|c| c[0] | c[1] | c[2] != 0).count();
-            println!("frames={frames} time={secs:.3}s fps={:.1}", frames as f64 / secs);
+            println!(
+                "frames={frames} time={secs:.3}s fps={:.1}",
+                frames as f64 / secs
+            );
             println!("non-black pixels: {non_black}/{}", 256 * 240);
             println!("{}", deck.cpu_state_string());
             if let Some(path) = shot {
@@ -220,7 +230,8 @@ fn main() -> Result<()> {
             }
             if let Some(path) = wav {
                 write_wav(&path, &audio, 44_100)?;
-                let rms = (audio.iter().map(|s| s * s).sum::<f32>() / audio.len().max(1) as f32).sqrt();
+                let rms =
+                    (audio.iter().map(|s| s * s).sum::<f32>() / audio.len().max(1) as f32).sqrt();
                 println!("wrote {path} ({} samples, RMS {rms:.4})", audio.len());
             }
         }
@@ -236,7 +247,10 @@ fn main() -> Result<()> {
             }
             let code = deck.read_memory(0x0002) as u16 | (deck.read_memory(0x0003) as u16) << 8;
             println!("{}", deck.cpu_state_string());
-            println!("result $0002={code:04X} ({})", if code == 0 { "PASS" } else { "see code" });
+            println!(
+                "result $0002={code:04X} ({})",
+                if code == 0 { "PASS" } else { "see code" }
+            );
         }
         Commands::Disasm { rom, addr, count } => {
             let data = std::fs::read(&rom)?;
@@ -257,7 +271,11 @@ fn main() -> Result<()> {
             println!("PRG-ROM:  {} KB", c.prg_rom.len() / 1024);
             println!(
                 "CHR:      {} KB ({})",
-                if c.uses_chr_ram { c.chr_ram.len() } else { c.chr_rom.len() } / 1024,
+                if c.uses_chr_ram {
+                    c.chr_ram.len()
+                } else {
+                    c.chr_rom.len()
+                } / 1024,
                 if c.uses_chr_ram { "CHR-RAM" } else { "CHR-ROM" }
             );
             println!("mirroring:{:?}", c.mirroring());
@@ -293,7 +311,11 @@ fn main() -> Result<()> {
             }
             println!("\n  {pass}/{total} passed");
         }
-        Commands::Dbg { rom, frames, autostart } => {
+        Commands::Dbg {
+            rom,
+            frames,
+            autostart,
+        } => {
             let data = std::fs::read(&rom)?;
             let mut deck = ControlDeck::new(Region::Ntsc);
             deck.load_rom(&data)?;

@@ -35,7 +35,11 @@ impl McpServer {
             let req: Value = match serde_json::from_str(&line) {
                 Ok(v) => v,
                 Err(e) => {
-                    writeln!(out, "{}", error_response(Value::Null, -32700, &format!("parse error: {e}")))?;
+                    writeln!(
+                        out,
+                        "{}",
+                        error_response(Value::Null, -32700, &format!("parse error: {e}"))
+                    )?;
                     out.flush()?;
                     continue;
                 }
@@ -90,13 +94,21 @@ impl McpServer {
                     .and_then(|v| v.as_str())
                     .and_then(|u| u.strip_prefix("data:image/png;base64,"));
                 match img {
-                    Some(b64) => json!({"content": [{"type": "image", "data": b64, "mimeType": "image/png"}]}),
+                    Some(b64) => {
+                        json!({"content": [{"type": "image", "data": b64, "mimeType": "image/png"}]})
+                    }
                     None => json!({
                         "content": [{"type": "text", "text": serde_json::to_string_pretty(&tool_result).unwrap_or_default()}]
                     }),
                 }
             }
-            other => return Some(error_response(id, -32601, &format!("method not found: {other}"))),
+            other => {
+                return Some(error_response(
+                    id,
+                    -32601,
+                    &format!("method not found: {other}"),
+                ))
+            }
         };
         Some(ok_response(id, result))
     }

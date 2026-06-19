@@ -19,14 +19,19 @@ impl SaveSlots {
 }
 
 fn arg_u32(args: &Value, key: &str, default: u32) -> u32 {
-    args.get(key).and_then(|v| v.as_u64()).map(|v| v as u32).unwrap_or(default)
+    args.get(key)
+        .and_then(|v| v.as_u64())
+        .map(|v| v as u32)
+        .unwrap_or(default)
 }
 
 pub fn load_rom(emu: &Shared, args: &Value) -> Value {
     let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
     match std::fs::read(path) {
         Ok(bytes) => match emu.lock().unwrap().load_rom(&bytes) {
-            Ok(()) => json!({"success": true, "message": format!("loaded {} ({} bytes)", path, bytes.len())}),
+            Ok(()) => {
+                json!({"success": true, "message": format!("loaded {} ({} bytes)", path, bytes.len())})
+            }
             Err(e) => json!({"success": false, "error": format!("{e}")}),
         },
         Err(e) => json!({"success": false, "error": format!("read failed: {e}")}),
@@ -35,7 +40,10 @@ pub fn load_rom(emu: &Shared, args: &Value) -> Value {
 
 pub fn press_button(emu: &Shared, args: &Value) -> Value {
     let name = args.get("button").and_then(|v| v.as_str()).unwrap_or("");
-    let pressed = args.get("pressed").and_then(|v| v.as_bool()).unwrap_or(false);
+    let pressed = args
+        .get("pressed")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     let port = arg_u32(args, "port", 0) as usize;
     match Button::from_name(name) {
         Some(b) => {
@@ -53,7 +61,13 @@ pub fn read_memory(emu: &Shared, args: &Value) -> Value {
     let bytes = deck.read_memory_range(addr, len);
     let ascii: String = bytes
         .iter()
-        .map(|&b| if (0x20..0x7F).contains(&b) { b as char } else { '.' })
+        .map(|&b| {
+            if (0x20..0x7F).contains(&b) {
+                b as char
+            } else {
+                '.'
+            }
+        })
         .collect();
     json!({"success": true, "addr": addr, "bytes": bytes, "ascii": ascii})
 }
@@ -109,7 +123,11 @@ pub fn disassemble(emu: &Shared, args: &Value) -> Value {
 }
 
 pub fn save_state(emu: &Shared, slots: &mut SaveSlots, args: &Value) -> Value {
-    let slot = args.get("slot").and_then(|v| v.as_str()).unwrap_or("default").to_string();
+    let slot = args
+        .get("slot")
+        .and_then(|v| v.as_str())
+        .unwrap_or("default")
+        .to_string();
     let (data, frame) = {
         let deck = emu.lock().unwrap();
         (deck.save_state(), deck.frame_count())
@@ -120,7 +138,11 @@ pub fn save_state(emu: &Shared, slots: &mut SaveSlots, args: &Value) -> Value {
 }
 
 pub fn load_state(emu: &Shared, slots: &SaveSlots, args: &Value) -> Value {
-    let slot = args.get("slot").and_then(|v| v.as_str()).unwrap_or("default").to_string();
+    let slot = args
+        .get("slot")
+        .and_then(|v| v.as_str())
+        .unwrap_or("default")
+        .to_string();
     match slots.slots.get(&slot) {
         Some(data) => {
             let ok = emu.lock().unwrap().load_state(data);
@@ -155,8 +177,16 @@ fn base64(data: &[u8]) -> String {
         let n = (b0 << 16) | (b1 << 8) | b2;
         s.push(A[((n >> 18) & 0x3F) as usize] as char);
         s.push(A[((n >> 12) & 0x3F) as usize] as char);
-        s.push(if c.len() > 1 { A[((n >> 6) & 0x3F) as usize] as char } else { '=' });
-        s.push(if c.len() > 2 { A[(n & 0x3F) as usize] as char } else { '=' });
+        s.push(if c.len() > 1 {
+            A[((n >> 6) & 0x3F) as usize] as char
+        } else {
+            '='
+        });
+        s.push(if c.len() > 2 {
+            A[(n & 0x3F) as usize] as char
+        } else {
+            '='
+        });
     }
     s
 }
