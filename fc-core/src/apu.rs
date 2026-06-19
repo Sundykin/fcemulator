@@ -455,6 +455,10 @@ pub struct Apu {
     irq_inhibit: bool,
     frame_irq: bool,
     even: bool,
+    #[serde(default)]
+    frame_reset_delay: u8,
+    #[serde(default)]
+    frame_reset_value: u8,
 
     // resampling
     cpu_hz: f64,
@@ -479,6 +483,8 @@ impl Apu {
             irq_inhibit: false,
             frame_irq: false,
             even: false,
+            frame_reset_delay: 0,
+            frame_reset_value: 0,
             cpu_hz: region.cpu_hz(),
             sample_rate: 44_100.0,
             sample_acc: 0.0,
@@ -518,6 +524,7 @@ impl Apu {
         self.even = !self.even;
 
         self.clock_frame_sequencer();
+        self.clock_pending_frame_reset();
 
         // Resample.
         self.sample_acc += self.sample_rate / self.cpu_hz;
@@ -538,9 +545,19 @@ impl Apu {
                     self.half();
                 }
                 22371 => self.quarter(),
+                29828 => {
+                    if !self.irq_inhibit {
+                        self.frame_irq = true;
+                    }
+                }
                 29829 => {
+                    if !self.irq_inhibit {
+                        self.frame_irq = true;
+                    }
                     self.quarter();
                     self.half();
+                }
+                29830 => {
                     if !self.irq_inhibit {
                         self.frame_irq = true;
                     }
@@ -555,13 +572,42 @@ impl Apu {
                     self.half();
                 }
                 22371 => self.quarter(),
+                // The 5-step sequence has a long idle tail before the next
+                // quarter/half clocks; this boundary is visible to length tests.
                 37281 => {
                     self.quarter();
                     self.half();
-                    self.frame_cycle = 0;
+                }
+                44739 => self.quarter(),
+                52195 => {
+                    self.quarter();
+                    self.half();
+                    self.frame_cycle = 14916;
                 }
                 _ => {}
             },
+        }
+    }
+
+    fn clock_pending_frame_reset(&mut self) {
+        if self.frame_reset_delay == 0 {
+            return;
+        }
+        self.frame_reset_delay -= 1;
+        if self.frame_reset_delay != 0 {
+            return;
+        }
+
+        let v = self.frame_reset_value;
+        self.frame_mode = if v & 0x80 != 0 {
+            FrameMode::Five
+        } else {
+            FrameMode::Four
+        };
+        self.frame_cycle = 0;
+        if self.frame_mode == FrameMode::Five {
+            self.quarter();
+            self.half();
         }
     }
 
@@ -691,20 +737,12 @@ impl Apu {
     }
 
     fn write_frame_counter(&mut self, v: u8) {
-        self.frame_mode = if v & 0x80 != 0 {
-            FrameMode::Five
-        } else {
-            FrameMode::Four
-        };
         self.irq_inhibit = v & 0x40 != 0;
         if self.irq_inhibit {
             self.frame_irq = false;
         }
-        self.frame_cycle = 0;
-        if self.frame_mode == FrameMode::Five {
-            self.quarter();
-            self.half();
-        }
+        self.frame_reset_value = v;
+        self.frame_reset_delay = if self.even { 3 } else { 4 };
     }
 }
 

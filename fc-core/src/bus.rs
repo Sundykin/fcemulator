@@ -21,6 +21,8 @@ pub struct Bus {
     pub region: Region,
     open_bus: u8,
     nmi_latch: bool,
+    #[serde(default)]
+    nmi_delay_polls: u8,
     /// Read/write watchpoint addresses (debugger). Empty = no overhead.
     #[serde(skip)]
     pub watch_read: HashSet<u16>,
@@ -42,6 +44,7 @@ impl Bus {
             region,
             open_bus: 0,
             nmi_latch: false,
+            nmi_delay_polls: 0,
             watch_read: HashSet::new(),
             watch_write: HashSet::new(),
             watch_hit: None,
@@ -66,8 +69,17 @@ impl Bus {
 
     pub fn poll_nmi(&mut self) -> bool {
         let n = self.nmi_latch;
-        self.nmi_latch = false;
-        n
+        if n {
+            self.nmi_latch = false;
+            return true;
+        }
+        if self.nmi_delay_polls > 0 {
+            self.nmi_delay_polls -= 1;
+            if self.nmi_delay_polls == 0 {
+                self.nmi_latch = true;
+            }
+        }
+        false
     }
 
     pub fn irq_line(&self) -> bool {
@@ -102,7 +114,7 @@ impl Bus {
             0x2000..=0x3FFF => {
                 self.ppu.write_register(addr & 0x2007, value, &mut self.cartridge);
                 if self.ppu.take_nmi() {
-                    self.nmi_latch = true;
+                    self.nmi_delay_polls = 1;
                 }
             }
             0x4014 => self.oam_dma(value),

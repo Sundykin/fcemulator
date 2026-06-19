@@ -98,7 +98,7 @@ fn run_blargg(deck: &mut ControlDeck, max_frames: u64) -> (u8, String) {
             let s = deck.read_memory(0x6000);
             if s < 0x80 {
                 let mut msg = String::new();
-                for i in 0..64u16 {
+                for i in 0..512u16 {
                     let b = deck.read_memory(0x6004 + i);
                     if b == 0 {
                         break;

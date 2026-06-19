@@ -160,6 +160,16 @@ impl Cpu {
         self.pc = (hi << 8) | lo;
     }
 
+    fn brk(&mut self, bus: &mut Bus) {
+        self.fetch(bus); // padding byte
+        self.push16(bus, self.pc);
+        self.push(bus, self.p | U | B);
+        self.set_flag(I, true);
+        let lo = self.rd(bus, IRQ_VECTOR) as u16;
+        let hi = self.rd(bus, IRQ_VECTOR + 1) as u16;
+        self.pc = (hi << 8) | lo;
+    }
+
     fn nmi(&mut self, bus: &mut Bus) {
         self.nmi_count += 1;
         self.interrupt(bus, NMI_VECTOR, false);
@@ -544,20 +554,19 @@ impl Cpu {
                 let addr = self.pull16(bus);
                 self.io(bus);
                 self.pc = addr.wrapping_add(1);
+                self.io(bus);
             }
             0x40 => {
                 self.io(bus);
                 let status = self.pull(bus);
                 self.p = (status & !B) | U;
                 self.pc = self.pull16(bus);
+                self.io(bus);
                 // RTI restores I *before* the interrupt poll → effect is immediate
                 // (unlike CLI/SEI/PLP), so refresh the poll flag now.
                 self.i_poll = self.p & I != 0;
             }
-            0x00 => {
-                self.fetch(bus); // BRK has a padding byte
-                self.interrupt(bus, IRQ_VECTOR, true);
-            }
+            0x00 => self.brk(bus),
 
             // ---- branches ----
             0x10 => { let c = self.p & N == 0; self.branch(bus, c); }

@@ -179,9 +179,6 @@ impl Ppu {
         if prerender && self.dot == 1 {
             self.status &= !0xE0; // clear vblank, sprite0, overflow
             self.update_nmi();
-            if std::env::var("FC_TRACE").is_ok() && self.frame < 4 {
-                eprintln!("VBLCLR mc={} sl={} dot={}", self.master_cycle, self.scanline, self.dot);
-            }
         }
 
         if self.rendering() && (visible || prerender) {
@@ -245,9 +242,6 @@ impl Ppu {
             self.status |= 0x80;
             self.frame_complete = true;
             self.update_nmi();
-            if std::env::var("FC_TRACE").is_ok() && self.frame < 4 {
-                eprintln!("VBLSET mc={} sl={} dot={}", self.master_cycle, self.scanline, self.dot);
-            }
         }
 
         // Advance dot / scanline / frame. On odd frames with rendering enabled,
