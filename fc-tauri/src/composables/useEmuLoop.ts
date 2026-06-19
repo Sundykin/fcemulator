@@ -39,18 +39,30 @@ export function useEmuLoop(stage: Ref<HTMLElement | null>) {
     renderer = null;
   }
 
-  async function loop() {
+  function loop() {
+    // Schedule the next frame FIRST so the render cadence stays locked to vsync.
+    // Awaiting the pollFrame IPC before re-arming rAF made the loop miss vsync
+    // deadlines and lock to ~30 fps; the fetch+draw now runs async off the IPC
+    // (pollFrame is ~0.3 ms, so frames never overlap).
+    raf = requestAnimationFrame(loop);
     try {
       store.sendInput(); // per-frame input heartbeat (seq-guarded on the backend)
       if (renderer) {
-        const buf = await emu.pollFrame();
-        renderer.update(buf);
-        fpsCount++;
+        emu
+          .pollFrame()
+          .then((buf) => {
+            if (renderer) {
+              renderer.update(buf);
+              fpsCount++;
+            }
+          })
+          .catch(() => {
+            /* ignore transient IPC errors */
+          });
       }
     } catch {
       /* ignore transient IPC errors */
     }
-    raf = requestAnimationFrame(loop);
   }
 
   watch(

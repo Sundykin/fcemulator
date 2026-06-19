@@ -11,6 +11,7 @@ node_modules/
 # ─── ROMs & emulator data (never tracked) ───────────────────────────
 /roms/
 /nes-test-roms/
+/nesgames/
 *.nes
 *.NES
 *.nsf
