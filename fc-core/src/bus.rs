@@ -2,7 +2,7 @@
 //! address space, and drives sub-instruction timing via [`Bus::tick`].
 
 use crate::apu::Apu;
-use crate::apu::DmcDmaKind;
+use crate::apu::{DmcDmaKind, DmcDmaRequest};
 use crate::cartridge::Cartridge;
 use crate::input::Controllers;
 use crate::mapper::MapperOps;
@@ -40,8 +40,7 @@ struct Dma {
     // ---- DMC sample DMA ----
     dmc_req: bool,    // APU asked for a sample byte, not yet halted
     dmc_active: bool, // halt acquired
-    dmc_addr: u16,    // sample address to fetch
-    dmc_kind: DmcDmaKind,
+    dmc_request: DmcDmaRequest,
     dmc_halt_done: bool,
     dmc_dummy_done: bool, // the repeated CPU read (side-effect cycle) happened
 }
@@ -101,16 +100,15 @@ impl Bus {
         // a `get` cycle (see `dma_clock`), so the DMC dummy/repeated-read side
         // effects on $4016/$2007 are modelled instead of an instant fetch.
         if !self.dma.dmc_active && !self.dma.dmc_req {
-            if let Some((addr, kind)) = self.apu.dmc_dma() {
+            if let Some(req) = self.apu.dmc_dma() {
                 let get = !self.dma.get_cycle;
-                let can_start = match kind {
+                let can_start = match req.kind {
                     DmcDmaKind::Load => get,
                     DmcDmaKind::Reload => !get,
                 };
                 if can_start {
                     self.dma.dmc_req = true;
-                    self.dma.dmc_addr = addr;
-                    self.dma.dmc_kind = kind;
+                    self.dma.dmc_request = req;
                 }
             }
         }
@@ -132,6 +130,8 @@ impl Bus {
     /// a dummy read so $4016/$2007 see the extra access. Called once per stolen
     /// cycle, after `tick()`.
     pub fn dma_clock(&mut self, cpu_addr: u16) {
+        self.cancel_stale_dmc();
+
         // First stolen cycle: acquire the halt and promote pending → active.
         if !self.dma.halted {
             self.dma.halted = true;
@@ -178,12 +178,16 @@ impl Bus {
                 return;
             }
             if get {
-                let addr = self.dma.dmc_addr;
+                if !self.apu.dmc_dma_pending(self.dma.dmc_request) {
+                    self.clear_dmc_dma();
+                    self.maybe_release_dma();
+                    return;
+                }
+                let req = self.dma.dmc_request;
+                let addr = req.addr;
                 let byte = self.read(addr);
-                self.apu.dmc_supply(byte);
-                self.dma.dmc_active = false;
-                self.dma.dmc_halt_done = false;
-                self.dma.dmc_dummy_done = false;
+                self.apu.dmc_supply(req, byte);
+                self.clear_dmc_dma();
                 self.maybe_release_dma();
                 return;
             }
@@ -200,6 +204,27 @@ impl Bus {
             return;
         }
 
+        self.maybe_release_dma();
+    }
+
+    fn clear_dmc_dma(&mut self) {
+        self.dma.dmc_req = false;
+        self.dma.dmc_active = false;
+        self.dma.dmc_halt_done = false;
+        self.dma.dmc_dummy_done = false;
+    }
+
+    fn cancel_stale_dmc(&mut self) {
+        if (self.dma.dmc_req || self.dma.dmc_active)
+            && !self.apu.dmc_dma_pending(self.dma.dmc_request)
+        {
+            self.clear_dmc_dma();
+            self.maybe_release_dma();
+        }
+    }
+
+    pub fn cancel_dmc_dma(&mut self) {
+        self.clear_dmc_dma();
         self.maybe_release_dma();
     }
 
@@ -297,7 +322,10 @@ impl Bus {
                 self.dma.oam_page = value;
             }
             0x4016 => self.controllers.write_strobe(value),
-            0x4000..=0x4013 | 0x4015 | 0x4017 => self.apu.write(addr, value),
+            0x4000..=0x4013 | 0x4015 | 0x4017 => {
+                self.apu.write(addr, value);
+                self.cancel_stale_dmc();
+            }
             0x4018..=0x401F => {}
             0x4020..=0xFFFF => self.cartridge.cpu_write(addr, value),
         }

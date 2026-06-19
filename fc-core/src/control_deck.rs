@@ -49,6 +49,7 @@ impl ControlDeck {
     /// Soft reset (reset button).
     pub fn reset(&mut self) {
         self.bus.apu.reset();
+        self.bus.cancel_dmc_dma();
         self.cpu.reset(&mut self.bus);
     }
 

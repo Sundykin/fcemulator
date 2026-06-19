@@ -310,6 +310,13 @@ impl Default for DmcDmaKind {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DmcDmaRequest {
+    pub addr: u16,
+    pub kind: DmcDmaKind,
+    id: u64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Dmc {
     enabled: bool,
@@ -330,7 +337,8 @@ struct Dmc {
     shift: u8,
     bits: u8,
     silence: bool,
-    dma_pending: Option<DmcDmaKind>,
+    dma_pending: Option<DmcDmaRequest>,
+    dma_id: u64,
 }
 
 impl Default for Dmc {
@@ -352,6 +360,7 @@ impl Default for Dmc {
             bits: 8,
             silence: true,
             dma_pending: None,
+            dma_id: 0,
         }
     }
 }
@@ -380,7 +389,12 @@ impl Dmc {
     }
     fn schedule_dma(&mut self, kind: DmcDmaKind) {
         if self.dma_pending.is_none() {
-            self.dma_pending = Some(kind);
+            self.dma_id = self.dma_id.wrapping_add(1);
+            self.dma_pending = Some(DmcDmaRequest {
+                addr: self.cur_addr,
+                kind,
+                id: self.dma_id,
+            });
         }
     }
     fn set_enabled(&mut self, on: bool) {
@@ -437,11 +451,14 @@ impl Dmc {
     }
 
     /// Address to read if the sample buffer needs refilling (drives bus DMA).
-    fn dma_address(&self) -> Option<(u16, DmcDmaKind)> {
-        self.dma_pending.map(|kind| (self.cur_addr, kind))
+    fn dma_request(&self) -> Option<DmcDmaRequest> {
+        self.dma_pending
     }
 
-    fn supply(&mut self, byte: u8) {
+    fn supply(&mut self, req: DmcDmaRequest, byte: u8) -> bool {
+        if self.dma_pending != Some(req) || self.bytes_remaining == 0 {
+            return false;
+        }
         self.dma_pending = None;
         self.buffer = Some(byte);
         self.cur_addr = if self.cur_addr == 0xFFFF {
@@ -457,6 +474,7 @@ impl Dmc {
                 self.irq_flag = true;
             }
         }
+        true
     }
 
     fn output(&self) -> u8 {
@@ -538,12 +556,17 @@ impl Apu {
     }
 
     /// PRG address the DMC wants to read this cycle (bus performs the DMA fetch).
-    pub fn dmc_dma(&self) -> Option<(u16, DmcDmaKind)> {
-        self.dmc.dma_address()
+    pub fn dmc_dma(&self) -> Option<DmcDmaRequest> {
+        self.dmc.dma_request()
     }
+
+    pub fn dmc_dma_pending(&self, req: DmcDmaRequest) -> bool {
+        self.dmc.dma_request() == Some(req)
+    }
+
     /// Provide the byte the DMC requested via [`Apu::dmc_dma`].
-    pub fn dmc_supply(&mut self, byte: u8) {
-        self.dmc.supply(byte);
+    pub fn dmc_supply(&mut self, req: DmcDmaRequest, byte: u8) -> bool {
+        self.dmc.supply(req, byte)
     }
 
     /// One CPU cycle.
@@ -845,8 +868,8 @@ impl ApuPreview {
     pub fn tick_cycles(&mut self, cycles: u32) {
         for _ in 0..cycles {
             self.apu.tick();
-            if self.apu.dmc_dma().is_some() {
-                self.apu.dmc_supply(0);
+            if let Some(req) = self.apu.dmc_dma() {
+                self.apu.dmc_supply(req, 0);
             }
         }
     }
