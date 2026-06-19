@@ -608,6 +608,83 @@ impl Cpu {
             0x8F => { let a = self.abs(bus); self.wr(bus, a, self.a & self.x); }
             0x83 => { let a = self.izx(bus); self.wr(bus, a, self.a & self.x); }
 
+            // ---- unofficial immediate ALU ----
+            0x0B | 0x2B => {
+                let v = self.fetch(bus);
+                self.and(v);
+                self.set_flag(C, self.a & 0x80 != 0);
+            }
+            0x4B => {
+                let v = self.fetch(bus);
+                self.and(v);
+                let a = self.a;
+                self.a = self.lsr_val(a);
+            }
+            0x6B => {
+                let v = self.fetch(bus);
+                self.and(v);
+                let carry = (self.p & C) << 7;
+                self.a = (self.a >> 1) | carry;
+                self.set_zn(self.a);
+                self.set_flag(C, self.a & 0x40 != 0);
+                self.set_flag(V, ((self.a >> 5) ^ (self.a >> 6)) & 1 != 0);
+            }
+            0x8B => {
+                let v = self.fetch(bus);
+                self.a = self.x & v;
+                self.set_zn(self.a);
+            }
+            0xAB => {
+                let v = self.fetch(bus);
+                self.a = self.x & v;
+                self.x = self.a;
+                self.set_zn(self.a);
+            }
+            0xCB => {
+                let v = self.fetch(bus);
+                let ax = self.a & self.x;
+                let r = ax.wrapping_sub(v);
+                self.set_flag(C, ax >= v);
+                self.x = r;
+                self.set_zn(self.x);
+            }
+
+            // ---- unofficial unstable stores / loads ----
+            0x93 => {
+                let a = self.izy(bus, false);
+                let v = self.a & self.x & (((a >> 8) as u8).wrapping_add(1));
+                self.wr(bus, a, v);
+            }
+            0x9B => {
+                let a = self.aby(bus, false);
+                self.sp = self.a & self.x;
+                let v = self.sp & (((a >> 8) as u8).wrapping_add(1));
+                self.wr(bus, a, v);
+            }
+            0x9C => {
+                let a = self.abx(bus, false);
+                let v = self.y & (((a >> 8) as u8).wrapping_add(1));
+                self.wr(bus, a, v);
+            }
+            0x9E => {
+                let a = self.aby(bus, false);
+                let v = self.x & (((a >> 8) as u8).wrapping_add(1));
+                self.wr(bus, a, v);
+            }
+            0x9F => {
+                let a = self.aby(bus, false);
+                let v = self.a & self.x & (((a >> 8) as u8).wrapping_add(1));
+                self.wr(bus, a, v);
+            }
+            0xBB => {
+                let a = self.aby(bus, true);
+                let v = self.rd(bus, a) & self.sp;
+                self.a = v;
+                self.x = v;
+                self.sp = v;
+                self.set_zn(v);
+            }
+
             // ---- unofficial RMW: DCP / ISC / SLO / RLA / SRE / RRA ----
             0xC7 | 0xD7 | 0xCF | 0xDF | 0xDB | 0xC3 | 0xD3 => {
                 let a = self.unofficial_addr(bus, opcode);
