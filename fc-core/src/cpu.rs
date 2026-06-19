@@ -132,8 +132,25 @@ impl Cpu {
         self.irq_sample = bus.irq_line();
     }
 
+    /// Run any DMA the arbiter wants to perform before a halt-able CPU cycle.
+    /// Each stolen cycle still advances PPU/APU and samples the NMI/IRQ lines,
+    /// but does NOT open a new instruction interrupt-poll point (no
+    /// `begin_cycle`), so an RDY-held read never counts as a completed micro-op.
+    /// `addr` is the address the held read drives — DMC repeats it as a dummy
+    /// read (the $4016/$2007 extra-read behaviour).
+    #[inline]
+    fn pump_dma(&mut self, bus: &mut Bus, addr: u16) {
+        while bus.dma_halt_pending() {
+            bus.tick();
+            self.cycles += 1;
+            bus.dma_clock(addr);
+            self.end_cycle(bus);
+        }
+    }
+
     #[inline]
     fn rd(&mut self, bus: &mut Bus, addr: u16) -> u8 {
+        self.pump_dma(bus, addr); // reads are RDY-halt-able
         self.begin_cycle();
         bus.tick();
         self.cycles += 1;
@@ -144,6 +161,7 @@ impl Cpu {
 
     #[inline]
     fn wr(&mut self, bus: &mut Bus, addr: u16, value: u8) {
+        // Writes are NOT halt-able: the write completes, DMA waits a cycle.
         self.begin_cycle();
         bus.tick();
         self.cycles += 1;
@@ -154,6 +172,9 @@ impl Cpu {
     /// An internal cycle with no external bus effect (still ticks the system).
     #[inline]
     fn io(&mut self, bus: &mut Bus) {
+        // The 6502 still drives the address bus on internal cycles, so RDY can
+        // halt them. There is no meaningful data address, so DMC repeats PC.
+        self.pump_dma(bus, self.pc);
         self.begin_cycle();
         bus.tick();
         self.cycles += 1;

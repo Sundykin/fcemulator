@@ -10,6 +10,33 @@ use crate::types::Region;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
+/// 2A03 DMA arbiter — schedules OAM ($4014) and DMC sample DMA on the same
+/// per-CPU-cycle timeline. See `docs/DMA仲裁设计说明.md`. OAM and DMC share one
+/// get/put cadence; DMC `get` preempts OAM `get`, OAM `put` is unaffected.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+struct Dma {
+    /// APU get/put cadence. A DMA `get` (read) is only allowed on a get cycle,
+    /// a `put` (OAM write) only on a put cycle. Toggles every CPU cycle.
+    get_cycle: bool,
+    /// True once a pending DMA has stolen its first (halt) cycle, so the CPU
+    /// micro-op is held until the transfer finishes.
+    halted: bool,
+
+    // ---- OAM DMA ($4014) ----
+    oam_req: bool,       // requested by a $4014 write, not yet halted
+    oam_active: bool,    // halt acquired, copy in progress
+    oam_page: u8,
+    oam_index: u16,      // 0..=256 source/dest byte index
+    oam_latch: u8,       // byte read by `get`, awaiting `put`
+    oam_has_latch: bool,
+
+    // ---- DMC sample DMA ----
+    dmc_req: bool,       // APU asked for a sample byte, not yet halted
+    dmc_active: bool,    // halt acquired
+    dmc_addr: u16,       // sample address to fetch
+    dmc_dummy_done: bool, // the repeated CPU read (side-effect cycle) happened
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Bus {
     #[serde(with = "ram_serde")]
@@ -19,6 +46,7 @@ pub struct Bus {
     pub cartridge: Cartridge,
     pub controllers: Controllers,
     pub region: Region,
+    dma: Dma,
     open_bus: u8,
     nmi_latch: bool,
     /// Read/write watchpoint addresses (debugger). Empty = no overhead.
@@ -40,6 +68,7 @@ impl Bus {
             cartridge,
             controllers: Controllers::new(),
             region,
+            dma: Dma::default(),
             open_bus: 0,
             nmi_latch: false,
             watch_read: HashSet::new(),
@@ -50,6 +79,8 @@ impl Bus {
 
     /// Advance the rest of the system by one CPU cycle (PPU ×3, APU ×1).
     pub fn tick(&mut self) {
+        // The get/put cadence advances every physical CPU cycle.
+        self.dma.get_cycle = !self.dma.get_cycle;
         for _ in 0..3 {
             self.ppu.tick(&mut self.cartridge);
             if self.ppu.take_nmi() {
@@ -57,10 +88,114 @@ impl Bus {
             }
         }
         self.apu.tick();
-        // DMC sample DMA: fetch the next byte from PRG when the channel needs it.
-        if let Some(addr) = self.apu.dmc_dma() {
-            let byte = self.cartridge.cpu_read(addr);
-            self.apu.dmc_supply(byte);
+        // DMC sample DMA is now a *request*: the arbiter performs the PRG read on
+        // a `get` cycle (see `dma_clock`), so the DMC dummy/repeated-read side
+        // effects on $4016/$2007 are modelled instead of an instant fetch.
+        if !self.dma.dmc_active && !self.dma.dmc_req {
+            if let Some(addr) = self.apu.dmc_dma() {
+                self.dma.dmc_req = true;
+                self.dma.dmc_addr = addr;
+            }
+        }
+    }
+
+    /// Whether the DMA arbiter is holding (or about to hold) the CPU. Halt-able
+    /// CPU cycles (reads / internal cycles) must yield while this is true.
+    pub fn dma_halt_pending(&self) -> bool {
+        let d = &self.dma;
+        d.oam_req || d.oam_active || d.dmc_req || d.dmc_active
+    }
+
+    /// Perform one arbitrated DMA action for the current (stolen) CPU cycle.
+    /// `cpu_addr` is the address the held CPU read is driving — DMC repeats it as
+    /// a dummy read so $4016/$2007 see the extra access. Called once per stolen
+    /// cycle, after `tick()`.
+    pub fn dma_clock(&mut self, cpu_addr: u16) {
+        // First stolen cycle: acquire the halt and promote pending → active.
+        if !self.dma.halted {
+            self.dma.halted = true;
+            if self.dma.dmc_req {
+                self.dma.dmc_active = true;
+                self.dma.dmc_req = false;
+                self.dma.dmc_dummy_done = false;
+            }
+            if self.dma.oam_req {
+                self.dma.oam_active = true;
+                self.dma.oam_req = false;
+                self.dma.oam_index = 0;
+                self.dma.oam_has_latch = false;
+            }
+            // The halt cycle for a DMC fetch is the dummy/repeated read of the
+            // CPU's own address (this is the extra $4016/$2007 read). OAM's halt
+            // cycle is idle.
+            if self.dma.dmc_active {
+                let _ = self.read(cpu_addr);
+                self.dma.dmc_dummy_done = true;
+            }
+            return;
+        }
+
+        // A DMC request can arrive mid-OAM. The CPU is already halted, so there
+        // is no held CPU read to repeat — go straight to the get.
+        if self.dma.dmc_req && !self.dma.dmc_active {
+            self.dma.dmc_active = true;
+            self.dma.dmc_req = false;
+            self.dma.dmc_dummy_done = true;
+        }
+
+        // A DMA `get` (read) happens on a get cycle, a `put` (OAM write) on a put
+        // cycle. The 2A03 reads on the cycle where `get_cycle` is false, so OAM
+        // DMA started on a get cycle is 513 cycles and on a put cycle 514.
+        let get = !self.dma.get_cycle;
+
+        // DMC `get` has priority on get cycles.
+        if self.dma.dmc_active && self.dma.dmc_dummy_done {
+            if get {
+                let addr = self.dma.dmc_addr;
+                let byte = self.read(addr);
+                self.apu.dmc_supply(byte);
+                self.dma.dmc_active = false;
+                self.maybe_release_dma();
+                return;
+            }
+            // DMC is waiting for a get cycle. OAM may still `put` this put cycle.
+            if self.dma.oam_active && self.dma.oam_has_latch {
+                self.oam_put();
+            }
+            return;
+        }
+
+        // OAM get/put on its phase.
+        if self.dma.oam_active {
+            if get && !self.dma.oam_has_latch {
+                let addr = (self.dma.oam_page as u16) << 8 | self.dma.oam_index;
+                self.dma.oam_latch = self.read(addr);
+                self.dma.oam_has_latch = true;
+            } else if !get && self.dma.oam_has_latch {
+                self.oam_put();
+            }
+            return;
+        }
+
+        self.maybe_release_dma();
+    }
+
+    /// OAM `put`: write the latched byte into PPU OAM, advance the index, and
+    /// finish the transfer after 256 bytes.
+    fn oam_put(&mut self) {
+        self.ppu.dma_write(self.dma.oam_latch);
+        self.dma.oam_has_latch = false;
+        self.dma.oam_index += 1;
+        if self.dma.oam_index >= 256 {
+            self.dma.oam_active = false;
+            self.maybe_release_dma();
+        }
+    }
+
+    fn maybe_release_dma(&mut self) {
+        let d = &self.dma;
+        if !d.oam_active && !d.dmc_active && !d.oam_req && !d.dmc_req {
+            self.dma.halted = false;
         }
     }
 
@@ -112,7 +247,12 @@ impl Bus {
                 self.ppu.write_register(addr & 0x2007, value, &mut self.cartridge);
                 self.nmi_latch |= self.ppu.take_nmi();
             }
-            0x4014 => self.oam_dma(value),
+            0x4014 => {
+                // Register an OAM DMA request; the per-cycle arbiter halts the
+                // CPU and runs the 256 get/put pairs starting next read cycle.
+                self.dma.oam_req = true;
+                self.dma.oam_page = value;
+            }
             0x4016 => self.controllers.write_strobe(value),
             0x4000..=0x4013 | 0x4015 | 0x4017 => self.apu.write(addr, value),
             0x4018..=0x401F => {}
@@ -130,17 +270,6 @@ impl Bus {
         }
     }
 
-    fn oam_dma(&mut self, page: u8) {
-        let base = (page as u16) << 8;
-        self.tick(); // alignment cycle
-        self.tick();
-        for i in 0..256u16 {
-            self.tick();
-            let b = self.read(base + i);
-            self.tick();
-            self.ppu.dma_write(b);
-        }
-    }
 }
 
 mod ram_serde {
