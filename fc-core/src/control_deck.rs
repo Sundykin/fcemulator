@@ -23,7 +23,7 @@ impl ControlDeck {
     pub fn new(region: Region) -> Self {
         let mut bus = Bus::new(Cartridge::empty(), region);
         let mut cpu = Cpu::new();
-        cpu.reset(&mut bus);
+        cpu.power_on(&mut bus);
         ControlDeck {
             cpu,
             bus,
@@ -39,7 +39,7 @@ impl ControlDeck {
         let cart = Cartridge::from_bytes(data)?;
         self.bus = Bus::new(cart, self.region);
         self.cpu = Cpu::new();
-        self.cpu.reset(&mut self.bus);
+        self.cpu.power_on(&mut self.bus);
         self.running = true;
         self.cheats.clear();
         self.debugger = Debugger::default();

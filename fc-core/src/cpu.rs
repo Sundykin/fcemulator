@@ -63,13 +63,23 @@ impl Cpu {
         }
     }
 
-    pub fn reset(&mut self, bus: &mut Bus) {
+    pub fn power_on(&mut self, bus: &mut Bus) {
         let lo = bus.read(RESET_VECTOR);
         let hi = bus.read(RESET_VECTOR + 1);
         self.pc = u16::from_le_bytes([lo, hi]);
         self.sp = 0xFD;
         self.p = 0x24;
         self.cycles = 0;
+        self.i_poll = true;
+    }
+
+    pub fn reset(&mut self, bus: &mut Bus) {
+        let lo = bus.read(RESET_VECTOR);
+        let hi = bus.read(RESET_VECTOR + 1);
+        self.pc = u16::from_le_bytes([lo, hi]);
+        self.sp = self.sp.wrapping_sub(3);
+        self.p |= I;
+        self.i_poll = true;
     }
 
     // --------------------------------------------------------- bus accessors
