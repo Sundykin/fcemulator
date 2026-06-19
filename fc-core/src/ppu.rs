@@ -57,6 +57,7 @@ pub struct Ppu {
     // Sprites prepared for the current scanline.
     #[serde(with = "serde_arrays")]
     sprites: [SpriteUnit; 8],
+    sprite_fetch_addr: [u16; 8],
     sprite_count: usize,
 
     // Memory.
@@ -139,6 +140,7 @@ impl Ppu {
             bg_sh_at_lo: 0,
             bg_sh_at_hi: 0,
             sprites: [SpriteUnit::default(); 8],
+            sprite_fetch_addr: [0; 8],
             sprite_count: 0,
             vram: [0; 0x1000],
             palette_ram: [0; 0x20],
@@ -281,13 +283,13 @@ impl Ppu {
                         }
                         self.bg_next_attr = at & 0x03;
                     }
-                    4 => {
+                    3 => {
                         let addr = self.bg_pattern_base()
                             + (self.bg_next_id as u16) * 16
                             + ((self.v >> 12) & 0x07);
                         self.bg_next_lo = self.ppu_read(cart, addr);
                     }
-                    6 => {
+                    5 => {
                         let addr = self.bg_pattern_base()
                             + (self.bg_next_id as u16) * 16
                             + ((self.v >> 12) & 0x07)
@@ -305,7 +307,10 @@ impl Ppu {
             if self.dot == 257 {
                 self.load_bg_shifters();
                 self.transfer_x();
-                self.evaluate_sprites(cart);
+                self.evaluate_sprites();
+            }
+            if (257..=320).contains(&self.dot) {
+                self.fetch_sprite_pattern(cart);
             }
             if prerender && self.dot >= 280 && self.dot <= 304 {
                 self.transfer_y();
@@ -413,7 +418,7 @@ impl Ppu {
         self.v = (self.v & !0x7BE0) | (self.t & 0x7BE0);
     }
 
-    fn evaluate_sprites(&mut self, cart: &mut Cartridge) {
+    fn evaluate_sprites(&mut self) {
         let height: u16 = if self.ctrl & 0x20 != 0 { 16 } else { 8 };
         let mut found = 0usize;
         // Sprites evaluated on scanline S are displayed on S+1. OAM Y puts the
@@ -452,17 +457,16 @@ impl Ppu {
                             }
                             table + (tile as u16) * 16 + rr
                         };
-                        let lo = self.ppu_read(cart, addr);
-                        let hi = self.ppu_read(cart, addr + 8);
                         self.sprites[found] = SpriteUnit {
                             x,
-                            pat_lo: lo,
-                            pat_hi: hi,
+                            pat_lo: 0,
+                            pat_hi: 0,
                             palette: attr & 0x03,
                             priority: attr & 0x20 == 0,
                             is_zero: i == 0,
                             flip_h,
                         };
+                        self.sprite_fetch_addr[found] = addr;
                         found += 1;
                     } else {
                         self.status |= 0x20; // sprite overflow (simplified)
@@ -480,11 +484,28 @@ impl Ppu {
             0
         };
         let dummy = dummy_table | 0x0FF0;
-        for _ in found..8 {
-            let _ = self.ppu_read(cart, dummy);
-            let _ = self.ppu_read(cart, dummy + 8);
+        for i in found..8 {
+            self.sprite_fetch_addr[i] = dummy;
         }
         self.sprite_count = found;
+    }
+
+    fn fetch_sprite_pattern(&mut self, cart: &mut Cartridge) {
+        let phase = (self.dot - 257) % 8;
+        if phase != 3 && phase != 5 {
+            return;
+        }
+
+        let slot = ((self.dot - 257) / 8) as usize;
+        let addr = self.sprite_fetch_addr[slot] + if phase == 5 { 8 } else { 0 };
+        let value = self.ppu_read(cart, addr);
+        if slot < self.sprite_count {
+            if phase == 3 {
+                self.sprites[slot].pat_lo = value;
+            } else {
+                self.sprites[slot].pat_hi = value;
+            }
+        }
     }
 
     fn render_pixel(&mut self) {
