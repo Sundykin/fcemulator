@@ -60,6 +60,8 @@ enum Commands {
     /// Run self-checking test ROMs (blargg $6000 protocol) and score them.
     Testsuite {
         roms: Vec<String>,
+        #[arg(short, long, default_value = "ntsc")]
+        region: String,
         #[arg(short, long, default_value_t = 3000)]
         frames: u64,
     },
@@ -281,9 +283,14 @@ fn main() -> Result<()> {
             println!("mirroring:{:?}", c.mirroring());
             println!("battery:  {}", c.has_battery);
         }
-        Commands::Testsuite { roms, frames } => {
+        Commands::Testsuite {
+            roms,
+            region,
+            frames,
+        } => {
             let mut pass = 0;
             let mut total = 0;
+            let region = Region::from_str(&region);
             for rom in &roms {
                 total += 1;
                 let data = match std::fs::read(rom) {
@@ -293,7 +300,7 @@ fn main() -> Result<()> {
                         continue;
                     }
                 };
-                let mut deck = ControlDeck::new(Region::Ntsc);
+                let mut deck = ControlDeck::new(region);
                 if deck.load_rom(&data).is_err() {
                     println!("  {:<48} ERR  bad ROM", short(rom));
                     continue;
