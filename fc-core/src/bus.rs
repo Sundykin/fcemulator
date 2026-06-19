@@ -2,6 +2,7 @@
 //! address space, and drives sub-instruction timing via [`Bus::tick`].
 
 use crate::apu::Apu;
+use crate::apu::DmcDmaKind;
 use crate::cartridge::Cartridge;
 use crate::input::Controllers;
 use crate::mapper::MapperOps;
@@ -9,6 +10,12 @@ use crate::ppu::Ppu;
 use crate::types::Region;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ReadMode {
+    Normal,
+    DmcAlignment,
+}
 
 /// 2A03 DMA arbiter — schedules OAM ($4014) and DMC sample DMA on the same
 /// per-CPU-cycle timeline. See `docs/DMA仲裁设计说明.md`. OAM and DMC share one
@@ -23,17 +30,19 @@ struct Dma {
     halted: bool,
 
     // ---- OAM DMA ($4014) ----
-    oam_req: bool,       // requested by a $4014 write, not yet halted
-    oam_active: bool,    // halt acquired, copy in progress
+    oam_req: bool,    // requested by a $4014 write, not yet halted
+    oam_active: bool, // halt acquired, copy in progress
     oam_page: u8,
-    oam_index: u16,      // 0..=256 source/dest byte index
-    oam_latch: u8,       // byte read by `get`, awaiting `put`
+    oam_index: u16, // 0..=256 source/dest byte index
+    oam_latch: u8,  // byte read by `get`, awaiting `put`
     oam_has_latch: bool,
 
     // ---- DMC sample DMA ----
-    dmc_req: bool,       // APU asked for a sample byte, not yet halted
-    dmc_active: bool,    // halt acquired
-    dmc_addr: u16,       // sample address to fetch
+    dmc_req: bool,    // APU asked for a sample byte, not yet halted
+    dmc_active: bool, // halt acquired
+    dmc_addr: u16,    // sample address to fetch
+    dmc_kind: DmcDmaKind,
+    dmc_halt_done: bool,
     dmc_dummy_done: bool, // the repeated CPU read (side-effect cycle) happened
 }
 
@@ -92,9 +101,17 @@ impl Bus {
         // a `get` cycle (see `dma_clock`), so the DMC dummy/repeated-read side
         // effects on $4016/$2007 are modelled instead of an instant fetch.
         if !self.dma.dmc_active && !self.dma.dmc_req {
-            if let Some(addr) = self.apu.dmc_dma() {
-                self.dma.dmc_req = true;
-                self.dma.dmc_addr = addr;
+            if let Some((addr, kind)) = self.apu.dmc_dma() {
+                let get = !self.dma.get_cycle;
+                let can_start = match kind {
+                    DmcDmaKind::Load => get,
+                    DmcDmaKind::Reload => !get,
+                };
+                if can_start {
+                    self.dma.dmc_req = true;
+                    self.dma.dmc_addr = addr;
+                    self.dma.dmc_kind = kind;
+                }
             }
         }
     }
@@ -104,6 +121,10 @@ impl Bus {
     pub fn dma_halt_pending(&self) -> bool {
         let d = &self.dma;
         d.oam_req || d.oam_active || d.dmc_req || d.dmc_active
+    }
+
+    pub fn dma_halt_wanted(&self) -> bool {
+        self.dma.oam_req || self.dma.dmc_req
     }
 
     /// Perform one arbitrated DMA action for the current (stolen) CPU cycle.
@@ -117,6 +138,7 @@ impl Bus {
             if self.dma.dmc_req {
                 self.dma.dmc_active = true;
                 self.dma.dmc_req = false;
+                self.dma.dmc_halt_done = true;
                 self.dma.dmc_dummy_done = false;
             }
             if self.dma.oam_req {
@@ -124,13 +146,6 @@ impl Bus {
                 self.dma.oam_req = false;
                 self.dma.oam_index = 0;
                 self.dma.oam_has_latch = false;
-            }
-            // The halt cycle for a DMC fetch is the dummy/repeated read of the
-            // CPU's own address (this is the extra $4016/$2007 read). OAM's halt
-            // cycle is idle.
-            if self.dma.dmc_active {
-                let _ = self.read(cpu_addr);
-                self.dma.dmc_dummy_done = true;
             }
             return;
         }
@@ -140,7 +155,8 @@ impl Bus {
         if self.dma.dmc_req && !self.dma.dmc_active {
             self.dma.dmc_active = true;
             self.dma.dmc_req = false;
-            self.dma.dmc_dummy_done = true;
+            self.dma.dmc_halt_done = false;
+            self.dma.dmc_dummy_done = false;
         }
 
         // A DMA `get` (read) happens on a get cycle, a `put` (OAM write) on a put
@@ -149,35 +165,55 @@ impl Bus {
         let get = !self.dma.get_cycle;
 
         // DMC `get` has priority on get cycles.
-        if self.dma.dmc_active && self.dma.dmc_dummy_done {
+        if self.dma.dmc_active {
+            if !self.dma.dmc_halt_done {
+                self.dma.dmc_halt_done = true;
+                self.clock_oam_if_possible(get);
+                return;
+            }
+            if !self.dma.dmc_dummy_done {
+                let _ = self.read(cpu_addr);
+                self.dma.dmc_dummy_done = true;
+                self.clock_oam_if_possible(get);
+                return;
+            }
             if get {
                 let addr = self.dma.dmc_addr;
                 let byte = self.read(addr);
                 self.apu.dmc_supply(byte);
                 self.dma.dmc_active = false;
+                self.dma.dmc_halt_done = false;
+                self.dma.dmc_dummy_done = false;
                 self.maybe_release_dma();
                 return;
             }
-            // DMC is waiting for a get cycle. OAM may still `put` this put cycle.
-            if self.dma.oam_active && self.dma.oam_has_latch {
-                self.oam_put();
-            }
+            // DMC is waiting for a get cycle. The held CPU read is still driven
+            // on the bus, so MMIO reads such as $2007 can observe another access.
+            let _ = self.read_with_mode(cpu_addr, ReadMode::DmcAlignment);
+            self.clock_oam_if_possible(get);
             return;
         }
 
         // OAM get/put on its phase.
         if self.dma.oam_active {
-            if get && !self.dma.oam_has_latch {
-                let addr = (self.dma.oam_page as u16) << 8 | self.dma.oam_index;
-                self.dma.oam_latch = self.read(addr);
-                self.dma.oam_has_latch = true;
-            } else if !get && self.dma.oam_has_latch {
-                self.oam_put();
-            }
+            self.clock_oam_if_possible(get);
             return;
         }
 
         self.maybe_release_dma();
+    }
+
+    fn clock_oam_if_possible(&mut self, get: bool) {
+        if !self.dma.oam_active {
+            return;
+        }
+        if get && !self.dma.oam_has_latch {
+            let addr = (self.dma.oam_page as u16) << 8 | self.dma.oam_index;
+            self.dma.oam_latch = self.read(addr);
+            self.dma.oam_has_latch = true;
+        } else if !get && self.dma.oam_has_latch {
+            self.oam_put();
+        }
     }
 
     /// OAM `put`: write the latched byte into PPU OAM, advance the index, and
@@ -213,6 +249,10 @@ impl Bus {
 
     /// Memory read (no timing — the caller already ticked).
     pub fn read(&mut self, addr: u16) -> u8 {
+        self.read_with_mode(addr, ReadMode::Normal)
+    }
+
+    fn read_with_mode(&mut self, addr: u16, mode: ReadMode) -> u8 {
         if !self.watch_read.is_empty() && self.watch_read.contains(&addr) {
             self.watch_hit = Some(addr);
         }
@@ -227,6 +267,8 @@ impl Bus {
                 v
             }
             0x4015 => self.apu.read_status(),
+            0x4016 if mode == ReadMode::DmcAlignment => self.controllers.peek(0),
+            0x4017 if mode == ReadMode::DmcAlignment => self.controllers.peek(1),
             0x4016 => self.controllers.read(0),
             0x4017 => self.controllers.read(1),
             0x4000..=0x4014 | 0x4018..=0x401F => self.open_bus,
@@ -244,7 +286,8 @@ impl Bus {
         match addr {
             0x0000..=0x1FFF => self.ram[(addr & 0x07FF) as usize] = value,
             0x2000..=0x3FFF => {
-                self.ppu.write_register(addr & 0x2007, value, &mut self.cartridge);
+                self.ppu
+                    .write_register(addr & 0x2007, value, &mut self.cartridge);
                 self.nmi_latch |= self.ppu.take_nmi();
             }
             0x4014 => {
@@ -269,7 +312,6 @@ impl Bus {
             _ => 0,
         }
     }
-
 }
 
 mod ram_serde {

@@ -152,7 +152,11 @@ impl Pulse {
         }
     }
     fn output(&self) -> u8 {
-        if !self.enabled || self.length == 0 || self.muted() || DUTY[self.duty as usize][self.seq as usize] == 0 {
+        if !self.enabled
+            || self.length == 0
+            || self.muted()
+            || DUTY[self.duty as usize][self.seq as usize] == 0
+        {
             0
         } else {
             self.env.output()
@@ -294,6 +298,18 @@ const DMC_RATE_NTSC: [u16; 16] = [
 
 /// DMC — full DPCM playback: rate timer, memory reader (DMA via the bus),
 /// 8-bit output shift unit, looping, and end-of-sample IRQ.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DmcDmaKind {
+    Load,
+    Reload,
+}
+
+impl Default for DmcDmaKind {
+    fn default() -> Self {
+        DmcDmaKind::Load
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Dmc {
     enabled: bool,
@@ -314,6 +330,7 @@ struct Dmc {
     shift: u8,
     bits: u8,
     silence: bool,
+    dma_pending: Option<DmcDmaKind>,
 }
 
 impl Default for Dmc {
@@ -334,6 +351,7 @@ impl Default for Dmc {
             shift: 0,
             bits: 8,
             silence: true,
+            dma_pending: None,
         }
     }
 }
@@ -360,12 +378,21 @@ impl Dmc {
         self.cur_addr = self.sample_addr;
         self.bytes_remaining = self.sample_len;
     }
+    fn schedule_dma(&mut self, kind: DmcDmaKind) {
+        if self.dma_pending.is_none() {
+            self.dma_pending = Some(kind);
+        }
+    }
     fn set_enabled(&mut self, on: bool) {
         self.enabled = on;
         if !on {
             self.bytes_remaining = 0;
+            self.dma_pending = None;
         } else if self.bytes_remaining == 0 {
             self.restart();
+            if self.buffer.is_none() {
+                self.schedule_dma(DmcDmaKind::Load);
+            }
         }
     }
 
@@ -400,6 +427,9 @@ impl Dmc {
                 Some(b) => {
                     self.silence = false;
                     self.shift = b;
+                    if self.bytes_remaining > 0 {
+                        self.schedule_dma(DmcDmaKind::Reload);
+                    }
                 }
                 None => self.silence = true,
             }
@@ -407,15 +437,12 @@ impl Dmc {
     }
 
     /// Address to read if the sample buffer needs refilling (drives bus DMA).
-    fn dma_address(&self) -> Option<u16> {
-        if self.buffer.is_none() && self.bytes_remaining > 0 {
-            Some(self.cur_addr)
-        } else {
-            None
-        }
+    fn dma_address(&self) -> Option<(u16, DmcDmaKind)> {
+        self.dma_pending.map(|kind| (self.cur_addr, kind))
     }
 
     fn supply(&mut self, byte: u8) {
+        self.dma_pending = None;
         self.buffer = Some(byte);
         self.cur_addr = if self.cur_addr == 0xFFFF {
             0x8000
@@ -511,7 +538,7 @@ impl Apu {
     }
 
     /// PRG address the DMC wants to read this cycle (bus performs the DMA fetch).
-    pub fn dmc_dma(&self) -> Option<u16> {
+    pub fn dmc_dma(&self) -> Option<(u16, DmcDmaKind)> {
         self.dmc.dma_address()
     }
     /// Provide the byte the DMC requested via [`Apu::dmc_dma`].
@@ -654,7 +681,11 @@ impl Apu {
             95.88 / (8128.0 / (p1 + p2) + 100.0)
         };
         let tnd = t / 8227.0 + n / 12241.0 + d / 22638.0;
-        let tnd_out = if tnd == 0.0 { 0.0 } else { 159.79 / (1.0 / tnd + 100.0) };
+        let tnd_out = if tnd == 0.0 {
+            0.0
+        } else {
+            159.79 / (1.0 / tnd + 100.0)
+        };
         let raw = pulse_out + tnd_out; // ~0.0..1.0
 
         // One-pole DC-blocking high-pass.
@@ -696,11 +727,26 @@ impl Apu {
     /// debugger's APU view. DMC's 0..127 DAC is scaled down to 0..15.
     pub fn debug_channels(&self) -> [(bool, u8); 5] {
         [
-            (self.pulse1.enabled && self.pulse1.length > 0, self.pulse1.output()),
-            (self.pulse2.enabled && self.pulse2.length > 0, self.pulse2.output()),
-            (self.triangle.enabled && self.triangle.length > 0, self.triangle.output().min(15)),
-            (self.noise.enabled && self.noise.length > 0, self.noise.output()),
-            (self.dmc.bytes_remaining > 0, (self.dmc.output() >> 3).min(15)),
+            (
+                self.pulse1.enabled && self.pulse1.length > 0,
+                self.pulse1.output(),
+            ),
+            (
+                self.pulse2.enabled && self.pulse2.length > 0,
+                self.pulse2.output(),
+            ),
+            (
+                self.triangle.enabled && self.triangle.length > 0,
+                self.triangle.output().min(15),
+            ),
+            (
+                self.noise.enabled && self.noise.length > 0,
+                self.noise.output(),
+            ),
+            (
+                self.dmc.bytes_remaining > 0,
+                (self.dmc.output() >> 3).min(15),
+            ),
         ]
     }
 

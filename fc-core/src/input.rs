@@ -56,4 +56,16 @@ impl Controllers {
         self.shift[port] = (self.shift[port] >> 1) | 0x80; // shift in 1s after 8 reads
         bit | 0x40
     }
+
+    pub fn peek(&self, port: usize) -> u8 {
+        if port > 1 {
+            return 0x40;
+        }
+        let shift = if self.strobe {
+            self.state[port]
+        } else {
+            self.shift[port]
+        };
+        (shift & 1) | 0x40
+    }
 }
