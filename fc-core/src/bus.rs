@@ -93,7 +93,15 @@ impl Bus {
         }
         let v = match addr {
             0x0000..=0x1FFF => self.ram[(addr & 0x07FF) as usize],
-            0x2000..=0x3FFF => self.ppu.read_register(addr & 0x2007, &mut self.cartridge),
+            0x2000..=0x3FFF => {
+                let reg = addr & 0x2007;
+                let v = self.ppu.read_register(reg, &mut self.cartridge);
+                if reg & 7 == 2 && self.ppu.take_nmi_suppressed() {
+                    self.nmi_latch = false;
+                    self.nmi_delay_polls = 0;
+                }
+                v
+            }
             0x4015 => self.apu.read_status(),
             0x4016 => self.controllers.read(0),
             0x4017 => self.controllers.read(1),

@@ -75,6 +75,10 @@ pub struct Ppu {
     pub frame_complete: bool,
     nmi_pending: bool,
     prev_nmi: bool,
+    #[serde(default)]
+    suppress_vblank: bool,
+    #[serde(default)]
+    nmi_suppressed: bool,
 
     // Output.
     #[serde(skip, default = "default_frame")]
@@ -139,6 +143,8 @@ impl Ppu {
             frame_complete: false,
             nmi_pending: false,
             prev_nmi: false,
+            suppress_vblank: false,
+            nmi_suppressed: false,
             frame_buffer: default_frame(),
             palette: default_palette(),
         }
@@ -157,6 +163,12 @@ impl Ppu {
         let n = self.nmi_pending;
         self.nmi_pending = false;
         n
+    }
+
+    pub fn take_nmi_suppressed(&mut self) -> bool {
+        let s = self.nmi_suppressed;
+        self.nmi_suppressed = false;
+        s
     }
 
     fn update_nmi(&mut self) {
@@ -239,9 +251,13 @@ impl Ppu {
         }
 
         if self.scanline == self.vblank_line && self.dot == 1 {
-            self.status |= 0x80;
             self.frame_complete = true;
-            self.update_nmi();
+            if self.suppress_vblank {
+                self.suppress_vblank = false;
+            } else {
+                self.status |= 0x80;
+                self.update_nmi();
+            }
         }
 
         // Advance dot / scanline / frame. On odd frames with rendering enabled,
@@ -566,6 +582,14 @@ impl Ppu {
     pub fn read_register(&mut self, reg: u16, cart: &mut Cartridge) -> u8 {
         let result = match reg & 7 {
             2 => {
+                if self.scanline == self.vblank_line && self.dot == 1 {
+                    self.suppress_vblank = true;
+                    self.nmi_pending = false;
+                    self.nmi_suppressed = true;
+                } else if self.scanline == self.vblank_line && (2..=3).contains(&self.dot) {
+                    self.nmi_pending = false;
+                    self.nmi_suppressed = true;
+                }
                 let r = (self.status & 0xE0) | (self.open_bus & 0x1F);
                 self.status &= !0x80;
                 self.w = false;
