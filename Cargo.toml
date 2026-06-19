@@ -1,0 +1,55 @@
+[workspace]
+members = ["fc-core", "fc-cli", "fc-mcp", "fc-gui"]
+# fc-tauri builds independently via `npm run tauri dev/build` (own toolchain).
+exclude = ["fc-tauri"]
+resolver = "2"
+
+[workspace.package]
+version = "0.2.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/example/fc"
+
+[workspace.dependencies]
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+bincode = "1"
+
+# GUI / Rendering (egui stack — see docs/需求文档.md §16 & 附录 C)
+winit = "0.30"
+wgpu = "24"
+egui = "0.31"
+egui-wgpu = "0.31"
+egui-winit = "0.31"
+pollster = "0.4"
+bytemuck = "1"
+rfd = "0.15"
+
+# Audio
+cpal = "0.15"
+
+# Image
+png = "0.18"
+
+# Error handling
+thiserror = "2"
+anyhow = "1"
+
+# Logging
+log = "0.4"
+env_logger = "0.11"
+
+# Bit manipulation
+bitflags = "2"
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+
+[profile.dev]
+opt-level = 1

@@ -1,0 +1,20 @@
+{
+  "mcpServers": {
+    "fc-emu": {
+      "type": "stdio",
+      "command": "/Users/sunmeng/workspace/fc/target/debug/fc",
+      "args": [
+        "mcp"
+      ],
+      "env": {}
+    },
+    "fc-tauri": {
+      "type": "stdio",
+      "command": "/Users/sunmeng/workspace/fc/target/debug/fc",
+      "args": [
+        "tauri-bridge"
+      ],
+      "env": {}
+    }
+  }
+}

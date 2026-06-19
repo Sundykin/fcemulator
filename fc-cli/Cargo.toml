@@ -1,0 +1,20 @@
+[package]
+name = "fc-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "FC/NES emulator CLI"
+
+[[bin]]
+name = "fc"
+path = "src/main.rs"
+
+[dependencies]
+fc-core = { path = "../fc-core" }
+fc-mcp = { path = "../fc-mcp" }
+serde_json = { workspace = true }
+png = { workspace = true }
+clap = { workspace = true }
+anyhow = { workspace = true }
+log = { workspace = true }
+env_logger = { workspace = true }

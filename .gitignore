@@ -1,0 +1,35 @@
+# ─── Rust build artifacts ───────────────────────────────────────────
+/target/
+/fc-tauri/src-tauri/target/
+
+# ─── Frontend (fc-tauri) ────────────────────────────────────────────
+node_modules/
+/fc-tauri/dist/
+# Tauri auto-generated schemas
+/fc-tauri/src-tauri/gen/schemas/
+
+# ─── ROMs & emulator data (never tracked) ───────────────────────────
+/roms/
+/nes-test-roms/
+*.nes
+*.NES
+*.nsf
+*.NSF
+*.fds
+*.unf
+*.unif
+*.nez
+# Save files / save states produced at runtime
+*.sav
+*.state
+*.savestate
+
+# ─── Screenshots / capture output ───────────────────────────────────
+/out.png
+/*.shot.png
+
+# ─── OS / editor cruft ──────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+*~

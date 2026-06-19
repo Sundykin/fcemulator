@@ -1,0 +1,42 @@
+# code-editor Specification
+
+## Purpose
+TBD - created by archiving change nes-ide-milestone-plan. Update Purpose after archive.
+## Requirements
+### Requirement: 内嵌代码编辑器
+系统 SHALL 在 IDE 中内嵌一个基于 CodeMirror 6 的代码编辑器,用于编辑工程内的源码文件。编辑器 MUST 支持打开、编辑、保存文件,并标识未保存的修改。
+
+#### Scenario: 打开并编辑文件
+- **WHEN** 用户从文件树点击一个源码文件
+- **THEN** 编辑器在标签页中打开该文件内容,允许编辑
+
+#### Scenario: 保存文件
+- **WHEN** 用户在编辑器中修改文件并触发保存
+- **THEN** 系统将内容写回磁盘,清除该文件的未保存标识
+
+#### Scenario: 未保存提示
+- **WHEN** 文件有未保存修改且用户尝试关闭其标签页
+- **THEN** 系统 SHALL 提示存在未保存修改,避免静默丢失
+
+### Requirement: 6502 / ca65 语法支持
+编辑器 SHALL 对 6502 汇编(ca65 语法)源码提供语法高亮、代码折叠,以及对 6502 助记符、PPU/APU 寄存器地址常量与 ca65 伪指令的补全。
+
+#### Scenario: 语法高亮
+- **WHEN** 用户打开一个 `.s` / `.asm` 文件
+- **THEN** 助记符、寄存器、标签、注释、数字以不同样式高亮
+
+#### Scenario: 寄存器 / 助记符补全
+- **WHEN** 用户输入助记符或寄存器常量前缀(如 `LDA`、`PPU`)
+- **THEN** 编辑器弹出匹配的补全候选(含已知 PPU/APU 寄存器常量)
+
+#### Scenario: 代码折叠
+- **WHEN** 源码含可折叠区块(如过程/段)
+- **THEN** 编辑器允许折叠与展开这些区块
+
+### Requirement: 编辑器与工程联动
+编辑器 SHALL 与活动工程的文件树联动:仅可打开活动工程范围内的文件,且文件树中的重命名/删除 MUST 同步更新对应打开的标签页。
+
+#### Scenario: 文件树重命名同步到标签页
+- **WHEN** 用户在文件树重命名一个已在编辑器打开的文件
+- **THEN** 对应标签页随之更新文件名与保存目标路径
+

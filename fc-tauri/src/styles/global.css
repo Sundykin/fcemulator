@@ -1,0 +1,71 @@
+/* Global base + CSS variables. Mirrors theme/tokens.ts.
+   Deep-navy base with violet accent (matches ui设计/ design files). */
+
+:root {
+  --bg: #0a0e1a;
+  --bar: #0e1322;
+  --panel: #141a2b;
+  --surface: #1a2135;
+  --surface-hover: #212a42;
+  --border: #242c42;
+  --border-strong: #34406a;
+  --text: #e6e9f2;
+  --text-dim: #99a1b6;
+  --text-mute: #5e6781;
+  --accent: #7c5cff;
+  --accent-hover: #9170ff;
+  --accent-soft: rgba(124, 92, 255, 0.14);
+  --accent-glow: rgba(124, 92, 255, 0.5);
+  --accent-grad: linear-gradient(135deg, #7c5cff 0%, #a368ff 100%);
+  --green: #4ade80;
+  --cyan: #38bdf8;
+  --danger: #f43f5e;
+  --radius-sm: 7px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-pill: 999px;
+  --font-ui: -apple-system, "PingFang SC", "Segoe UI", system-ui, sans-serif;
+  --shadow-card: 0 4px 18px rgba(0, 0, 0, 0.4);
+  --shadow-pop: 0 10px 34px rgba(0, 0, 0, 0.5);
+  --shadow-glow: 0 0 0 1px rgba(124, 92, 255, 0.5), 0 8px 28px rgba(124, 92, 255, 0.4);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+.section-label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  color: var(--text-dim);
+  margin: 0 0 12px;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: #232a40;
+  border-radius: 999px;
+  border: 2px solid var(--bg);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #34406a;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}

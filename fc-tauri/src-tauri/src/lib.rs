@@ -1,0 +1,107 @@
+mod audio;
+mod build_pipeline;
+mod chr;
+mod converters;
+mod emu;
+mod famistudio;
+mod map;
+mod project;
+mod storage;
+mod tracker;
+mod watch;
+
+use build_pipeline::BuildState;
+use emu::EmuState;
+use project::ProjectState;
+use watch::WatchState;
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    #[allow(unused_mut)]
+    let mut builder = tauri::Builder::default().plugin(tauri_plugin_dialog::init());
+    // Dev-only: lets AI agents (Claude Code) screenshot/inspect the live window
+    // via a Unix socket at $TMPDIR/tauri-mcp.sock, bridged by `fc tauri-bridge`.
+    #[cfg(debug_assertions)]
+    {
+        // start_socket_server defaults to false in PluginConfig::default(); use
+        // PluginConfig::new(..) (sets it true) + a fixed socket path so the
+        // `fc tauri-bridge` MCP server can always find it.
+        let cfg = tauri_plugin_mcp_gui::PluginConfig::new("fc-emulator".into())
+            .socket_path(std::path::PathBuf::from("/tmp/fc-tauri-mcp.sock"));
+        builder = builder.plugin(tauri_plugin_mcp_gui::init_with_config(cfg));
+    }
+    builder
+        .manage(EmuState::new())
+        .manage(ProjectState::new())
+        .manage(BuildState::new())
+        .manage(WatchState::new())
+        .invoke_handler(tauri::generate_handler![
+            emu::open_rom,
+            emu::open_rom_id,
+            emu::poll_frame,
+            emu::set_input,
+            emu::set_speed,
+            emu::set_volume,
+            emu::screenshot,
+            emu::export_state,
+            emu::import_state,
+            emu::control,
+            emu::save_state,
+            emu::load_state,
+            emu::list_states,
+            emu::delete_state,
+            emu::list_library,
+            emu::scan_library,
+            emu::set_favorite,
+            emu::remove_from_library,
+            emu::write_memory,
+            emu::cpu_state,
+            emu::ppu_apu_state,
+            emu::disassemble,
+            emu::read_memory,
+            emu::dbg_toggle_breakpoint,
+            emu::dbg_add_breakpoint,
+            emu::dbg_remove_breakpoint,
+            emu::dbg_set_breakpoint_enabled,
+            emu::dbg_breakpoints,
+            emu::dbg_step,
+            emu::dbg_resume,
+            emu::add_cheat,
+            emu::list_cheats,
+            emu::set_cheat_enabled,
+            emu::remove_cheat,
+            emu::dbg_pattern,
+            emu::dbg_nametable,
+            emu::dbg_oam,
+            emu::dbg_palette,
+            project::project_new,
+            project::project_open,
+            project::project_get,
+            project::project_save,
+            project::project_file_tree,
+            project::project_create_file,
+            project::project_rename_file,
+            project::project_delete_file,
+            project::project_read_file,
+            project::project_write_file,
+            build_pipeline::build_run,
+            build_pipeline::build_cancel,
+            chr::chr_read,
+            chr::chr_write,
+            chr::chr_export_inc,
+            map::map_read,
+            map::map_write,
+            converters::convert_png_to_chr,
+            converters::convert_tiled_to_map,
+            tracker::tracker_save,
+            tracker::tracker_load,
+            tracker::tracker_render,
+            tracker::tracker_export,
+            tracker::tracker_import_ftm,
+            famistudio::famistudio_import,
+            watch::watch_start,
+            watch::watch_stop,
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}

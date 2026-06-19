@@ -1,0 +1,7 @@
+[mcp_servers.fc-emu]
+command = "/Users/sunmeng/workspace/fc/target/debug/fc"
+args = ["mcp"]
+
+[mcp_servers.fc-tauri]
+command = "/Users/sunmeng/workspace/fc/target/debug/fc"
+args = ["tauri-bridge"]
