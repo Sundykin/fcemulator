@@ -84,6 +84,7 @@ enum Commands {
 /// Returns (status, message): status 0x00 = pass, 0xFF = timeout, else fail code.
 fn run_blargg(deck: &mut ControlDeck, max_frames: u64) -> (u8, String) {
     let mut f = 0;
+    let mut resets = 0;
     while f < max_frames {
         for _ in 0..10 {
             deck.run_frame();
@@ -96,6 +97,18 @@ fn run_blargg(deck: &mut ControlDeck, max_frames: u64) -> (u8, String) {
         ];
         if sig == [0xDE, 0xB0, 0x61] {
             let s = deck.read_memory(0x6000);
+            if s == 0x81 {
+                if resets >= 8 {
+                    return (0xFF, "too many reset requests".into());
+                }
+                for _ in 0..6 {
+                    deck.run_frame();
+                }
+                f += 6;
+                deck.reset();
+                resets += 1;
+                continue;
+            }
             if s < 0x80 {
                 let mut msg = String::new();
                 for i in 0..512u16 {

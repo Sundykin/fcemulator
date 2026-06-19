@@ -23,6 +23,7 @@ const TRIANGLE_SEQ: [u8; 32] = [
 const NOISE_PERIOD: [u16; 16] = [
     4, 8, 16, 32, 64, 96, 128, 160, 202, 254, 380, 508, 762, 1016, 2034, 4068,
 ];
+const RESET_FRAME_ADVANCE: u32 = 5;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 struct Envelope {
@@ -479,7 +480,7 @@ impl Apu {
             noise: Noise::default(),
             dmc: Dmc::default(),
             frame_mode: FrameMode::Four,
-            frame_cycle: 0,
+            frame_cycle: RESET_FRAME_ADVANCE,
             irq_inhibit: false,
             frame_irq: false,
             even: false,
@@ -500,6 +501,13 @@ impl Apu {
 
     pub fn irq(&self) -> bool {
         self.frame_irq || self.dmc.irq_flag
+    }
+
+    pub fn reset(&mut self) {
+        let frame_value = self.frame_reset_value;
+        self.write_status(0);
+        self.frame_irq = false;
+        self.apply_frame_reset(frame_value, RESET_FRAME_ADVANCE);
     }
 
     /// PRG address the DMC wants to read this cycle (bus performs the DMA fetch).
@@ -598,13 +606,21 @@ impl Apu {
             return;
         }
 
-        let v = self.frame_reset_value;
+        self.apply_frame_reset(self.frame_reset_value, 0);
+    }
+
+    fn apply_frame_reset(&mut self, v: u8, advance: u32) {
+        self.frame_reset_delay = 0;
         self.frame_mode = if v & 0x80 != 0 {
             FrameMode::Five
         } else {
             FrameMode::Four
         };
-        self.frame_cycle = 0;
+        self.irq_inhibit = v & 0x40 != 0;
+        if self.irq_inhibit {
+            self.frame_irq = false;
+        }
+        self.frame_cycle = advance;
         if self.frame_mode == FrameMode::Five {
             self.quarter();
             self.half();
