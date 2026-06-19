@@ -584,6 +584,7 @@ impl Ppu {
                     self.read_buffer = self.ppu_read(cart, addr - 0x1000);
                 }
                 self.v = self.v.wrapping_add(self.addr_increment());
+                cart.mapper.notify_a12(self.v & 0x3FFF, self.master_cycle);
                 r
             }
             _ => self.open_bus,
@@ -644,6 +645,7 @@ impl Ppu {
                 let addr = self.v & 0x3FFF;
                 self.ppu_write(cart, addr, value);
                 self.v = self.v.wrapping_add(self.addr_increment());
+                cart.mapper.notify_a12(self.v & 0x3FFF, self.master_cycle);
             }
             _ => {}
         }
