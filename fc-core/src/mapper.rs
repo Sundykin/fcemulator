@@ -410,6 +410,8 @@ pub struct Mmc3 {
     irq_reload: bool,
     irq_enabled: bool,
     irq_pending: bool,
+    #[serde(default)]
+    irq_suppress_zero_reload: bool,
     // A12 edge detection
     a12_prev: bool,
     a12_low_since: u64,
@@ -430,6 +432,7 @@ impl Mmc3 {
             irq_reload: false,
             irq_enabled: false,
             irq_pending: false,
+            irq_suppress_zero_reload: false,
             a12_prev: false,
             a12_low_since: 0,
         }
@@ -437,13 +440,25 @@ impl Mmc3 {
 
     /// Clock the scanline IRQ counter (on a filtered A12 rising edge).
     fn clock_irq_counter(&mut self) {
-        if self.irq_counter == 0 || self.irq_reload {
+        let reset_reload = self.irq_reload;
+        let natural_zero_reload = self.irq_counter == 0 && !reset_reload;
+        let decrement_to_zero_with_zero_latch =
+            self.irq_counter == 1 && self.irq_latch == 0 && !reset_reload;
+
+        if self.irq_counter == 0 || reset_reload {
             self.irq_counter = self.irq_latch;
             self.irq_reload = false;
         } else {
             self.irq_counter -= 1;
         }
-        if self.irq_counter == 0 && self.irq_enabled {
+
+        // MMC6-family behavior: if the counter naturally reached 0 while the
+        // latch was already 0, the following reload-to-0 edge does not re-assert IRQ.
+        let zero_reload_suppressed =
+            natural_zero_reload && self.irq_suppress_zero_reload;
+        self.irq_suppress_zero_reload = decrement_to_zero_with_zero_latch;
+
+        if self.irq_counter == 0 && self.irq_enabled && !zero_reload_suppressed {
             self.irq_pending = true;
         }
     }
