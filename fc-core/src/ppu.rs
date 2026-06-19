@@ -70,11 +70,15 @@ pub struct Ppu {
     vblank_line: u16,
     /// Monotonic PPU dot counter (for the mapper A12 IRQ filter).
     master_cycle: u64,
+    #[serde(default)]
+    skip_rendering: bool,
 
     // Signals.
     pub frame_complete: bool,
     nmi_pending: bool,
     prev_nmi: bool,
+    #[serde(default)]
+    nmi_delay: u8,
     #[serde(default)]
     suppress_vblank: bool,
     #[serde(default)]
@@ -140,9 +144,11 @@ impl Ppu {
             odd_frame: false,
             vblank_line: region.vblank_scanline(),
             master_cycle: 0,
+            skip_rendering: false,
             frame_complete: false,
             nmi_pending: false,
             prev_nmi: false,
+            nmi_delay: 0,
             suppress_vblank: false,
             nmi_suppressed: false,
             frame_buffer: default_frame(),
@@ -174,9 +180,22 @@ impl Ppu {
     fn update_nmi(&mut self) {
         let line = (self.ctrl & 0x80 != 0) && (self.status & 0x80 != 0);
         if line && !self.prev_nmi {
-            self.nmi_pending = true;
+            self.nmi_delay = 2;
+        } else if !line {
+            self.nmi_delay = 0;
         }
         self.prev_nmi = line;
+    }
+
+    fn clock_nmi_delay(&mut self) {
+        if self.nmi_delay == 0 {
+            return;
+        }
+
+        self.nmi_delay -= 1;
+        if self.nmi_delay == 0 && (self.ctrl & 0x80 != 0) && (self.status & 0x80 != 0) {
+            self.nmi_pending = true;
+        }
     }
 
     // ---------------------------------------------------------------- ticking
@@ -184,6 +203,7 @@ impl Ppu {
     /// Advance the PPU by one dot.
     pub fn tick(&mut self, cart: &mut Cartridge) {
         self.master_cycle += 1;
+        self.clock_nmi_delay();
 
         let visible = self.scanline < 240;
         let prerender = self.scanline == 261;
@@ -262,8 +282,13 @@ impl Ppu {
 
         // Advance dot / scanline / frame. On odd frames with rendering enabled,
         // the last dot of the pre-render line (261,339) is skipped: jump
-        // straight to (0,0). Rendering is sampled here, at the decision point.
-        if self.scanline == 261 && self.dot == 339 && self.odd_frame && self.rendering() {
+        // straight to (0,0). The hardware samples rendering just before the
+        // decision point, so PPUMASK writes on dot 339 are too late to affect it.
+        if self.scanline == 261 && self.dot == 338 {
+            self.skip_rendering = self.rendering();
+        }
+
+        if self.scanline == 261 && self.dot == 339 && self.odd_frame && self.skip_rendering {
             self.dot = 0;
             self.scanline = 0;
             self.frame += 1;
@@ -585,9 +610,11 @@ impl Ppu {
                 if self.scanline == self.vblank_line && self.dot == 1 {
                     self.suppress_vblank = true;
                     self.nmi_pending = false;
+                    self.nmi_delay = 0;
                     self.nmi_suppressed = true;
                 } else if self.scanline == self.vblank_line && (2..=3).contains(&self.dot) {
                     self.nmi_pending = false;
+                    self.nmi_delay = 0;
                     self.nmi_suppressed = true;
                 }
                 let r = (self.status & 0xE0) | (self.open_bus & 0x1F);
