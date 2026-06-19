@@ -12,6 +12,8 @@ use crate::palette::{Palette, Rgb, DEFAULT_PALETTE};
 use crate::types::{Mirroring, Region, SCREEN_HEIGHT, SCREEN_WIDTH};
 use serde::{Deserialize, Serialize};
 
+const OPEN_BUS_DECAY_DOTS: u64 = 3_000_000;
+
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 struct SpriteUnit {
     x: u8,
@@ -39,6 +41,8 @@ pub struct Ppu {
 
     pub read_buffer: u8,
     open_bus: u8,
+    #[serde(default)]
+    open_bus_decay_at: [u64; 8],
 
     // Background latches + shift registers.
     bg_next_id: u8,
@@ -125,6 +129,7 @@ impl Ppu {
             w: false,
             read_buffer: 0,
             open_bus: 0,
+            open_bus_decay_at: [0; 8],
             bg_next_id: 0,
             bg_next_attr: 0,
             bg_next_lo: 0,
@@ -195,6 +200,43 @@ impl Ppu {
         self.nmi_delay -= 1;
         if self.nmi_delay == 0 && (self.ctrl & 0x80 != 0) && (self.status & 0x80 != 0) {
             self.nmi_pending = true;
+        }
+    }
+
+    fn decay_open_bus(&mut self) {
+        for bit in 0..8 {
+            let mask = 1 << bit;
+            if self.open_bus & mask != 0 && self.master_cycle >= self.open_bus_decay_at[bit] {
+                self.open_bus &= !mask;
+            }
+        }
+    }
+
+    fn open_bus_value(&mut self) -> u8 {
+        self.decay_open_bus();
+        self.open_bus
+    }
+
+    fn open_bus_value_peek(&self) -> u8 {
+        let mut value = self.open_bus;
+        for bit in 0..8 {
+            let mask = 1 << bit;
+            if value & mask != 0 && self.master_cycle >= self.open_bus_decay_at[bit] {
+                value &= !mask;
+            }
+        }
+        value
+    }
+
+    fn refresh_open_bus_bits(&mut self, value: u8, mask: u8) {
+        self.decay_open_bus();
+        self.open_bus = (self.open_bus & !mask) | (value & mask);
+        let fresh_until = self.master_cycle.saturating_add(OPEN_BUS_DECAY_DOTS);
+        for bit in 0..8 {
+            let bit_mask = 1 << bit;
+            if mask & bit_mask != 0 {
+                self.open_bus_decay_at[bit] = if value & bit_mask != 0 { fresh_until } else { 0 };
+            }
         }
     }
 
@@ -605,7 +647,7 @@ impl Ppu {
 
     /// CPU read of a PPU register ($2000-$2007 after mirroring).
     pub fn read_register(&mut self, reg: u16, cart: &mut Cartridge) -> u8 {
-        let result = match reg & 7 {
+        match reg & 7 {
             2 => {
                 if self.scanline == self.vblank_line && self.dot == 1 {
                     self.suppress_vblank = true;
@@ -617,45 +659,59 @@ impl Ppu {
                     self.nmi_delay = 0;
                     self.nmi_suppressed = true;
                 }
-                let r = (self.status & 0xE0) | (self.open_bus & 0x1F);
+                let r = (self.status & 0xE0) | (self.open_bus_value() & 0x1F);
                 self.status &= !0x80;
                 self.w = false;
                 self.update_nmi();
+                self.refresh_open_bus_bits(r, 0xE0);
                 r
             }
-            4 => self.oam[self.oam_addr as usize],
+            4 => {
+                let mut r = self.oam[self.oam_addr as usize];
+                if self.oam_addr & 0x03 == 2 {
+                    r &= !0x1C;
+                }
+                self.refresh_open_bus_bits(r, 0xFF);
+                r
+            }
             7 => {
                 let addr = self.v & 0x3FFF;
                 let r;
                 if addr < 0x3F00 {
                     r = self.read_buffer;
                     self.read_buffer = self.ppu_read(cart, addr);
+                    self.refresh_open_bus_bits(r, 0xFF);
                 } else {
-                    r = self.ppu_read(cart, addr);
+                    r = (self.ppu_read(cart, addr) & 0x3F) | (self.open_bus_value() & 0xC0);
                     self.read_buffer = self.ppu_read(cart, addr - 0x1000);
+                    self.refresh_open_bus_bits(r, 0x3F);
                 }
                 self.v = self.v.wrapping_add(self.addr_increment());
                 cart.mapper.notify_a12(self.v & 0x3FFF, self.master_cycle);
                 r
             }
-            _ => self.open_bus,
-        };
-        self.open_bus = result;
-        result
+            _ => self.open_bus_value(),
+        }
     }
 
     /// CPU peek (no side effects) for the debugger.
     pub fn peek_register(&self, reg: u16) -> u8 {
         match reg & 7 {
-            2 => (self.status & 0xE0) | (self.open_bus & 0x1F),
-            4 => self.oam[self.oam_addr as usize],
-            _ => self.open_bus,
+            2 => (self.status & 0xE0) | (self.open_bus_value_peek() & 0x1F),
+            4 => {
+                let mut r = self.oam[self.oam_addr as usize];
+                if self.oam_addr & 0x03 == 2 {
+                    r &= !0x1C;
+                }
+                r
+            }
+            _ => self.open_bus_value_peek(),
         }
     }
 
     /// CPU write of a PPU register.
     pub fn write_register(&mut self, reg: u16, value: u8, cart: &mut Cartridge) {
-        self.open_bus = value;
+        self.refresh_open_bus_bits(value, 0xFF);
         match reg & 7 {
             0 => {
                 self.ctrl = value;
