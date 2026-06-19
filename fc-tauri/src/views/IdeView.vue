@@ -36,6 +36,11 @@ const components: Record<string, any> = {
   tracker: markRaw(TrackerPanel),
   preview: markRaw(PreviewPanel),
   inspect: markRaw(DebugView),
+};
+// Tab renderers are resolved from a SEPARATE registry in dockview-vue — passing
+// `tabComponent` while `fixedTab` lived only in `:components` made the very first
+// addPanel() throw inside onReady, leaving the whole dock empty. Register it here.
+const tabComponents: Record<string, any> = {
   fixedTab: markRaw(FixedDockTab),
 };
 
@@ -50,12 +55,17 @@ type DockPanelSpec = {
   fallback?: () => { referencePanel?: string; direction?: "left" | "right" | "below" | "above" };
 };
 
-const fixedPanels = new Set<DockPanelId>(["editor"]);
+// Tool panels + the editor are persistent workspace areas: no close button on
+// their tab (they are toggled from the toolbar / always present). Only the
+// document editors (CHR / map / tracker) keep a close button — they reopen when
+// the matching file is clicked in the tree.
+const fixedPanels = new Set<DockPanelId>(["editor", "tree", "build", "preview", "inspect"]);
+const nearEditor = () => ({ referencePanel: dockApi?.getPanel("editor") ? "editor" : undefined });
 const panelSpecs: Record<DockPanelId, DockPanelSpec> = {
   editor: { id: "editor", component: "editor", title: "源码" },
-  chr: { id: "chr", component: "chr", title: "CHR" },
-  map: { id: "map", component: "map", title: "地图" },
-  tracker: { id: "tracker", component: "tracker", title: "音乐" },
+  chr: { id: "chr", component: "chr", title: "CHR", fallback: nearEditor },
+  map: { id: "map", component: "map", title: "地图", fallback: nearEditor },
+  tracker: { id: "tracker", component: "tracker", title: "音乐", fallback: nearEditor },
   tree: {
     id: "tree",
     component: "tree",
@@ -74,16 +84,32 @@ const panelSpecs: Record<DockPanelId, DockPanelSpec> = {
     id: "preview",
     component: "preview",
     title: "运行预览",
-    initialWidth: 320,
+    initialWidth: 440,
     fallback: () => ({ direction: "right", referencePanel: dockApi?.getPanel("editor") ? "editor" : undefined }),
   },
   inspect: {
     id: "inspect",
     component: "inspect",
     title: "机器检视",
-    fallback: () => ({ referencePanel: dockApi?.getPanel("preview") ? "preview" : "editor" }),
+    initialWidth: 440,
+    // Share the right column with the preview as a sibling tab (full width
+    // each), not a cramped second column. Falls back to its own right column if
+    // the preview isn't open.
+    fallback: () =>
+      dockApi?.getPanel("preview")
+        ? { referencePanel: "preview" }
+        : { direction: "right", referencePanel: dockApi?.getPanel("editor") ? "editor" : undefined },
   },
 };
+
+const EXPLORER_WIDTH = 260;
+// Adding a side panel makes dockview re-flow the whole row, which blows the
+// explorer column back up to ~1/3 of the window. Pin it back after every add.
+function reassertExplorerWidth() {
+  const apply = () => dockApi?.getPanel("tree")?.api.setSize({ width: EXPLORER_WIDTH });
+  setTimeout(apply, 0);
+  setTimeout(apply, 120);
+}
 
 function addPanel(spec: DockPanelSpec, active = true) {
   if (!dockApi) return null;
@@ -97,6 +123,9 @@ function addPanel(spec: DockPanelSpec, active = true) {
     id: spec.id,
     component: spec.component,
     title: spec.title,
+    // Pass the title through params too — the custom tab renderer reads it from
+    // here (the panel-api title is not reliably exposed to tab components).
+    params: { title: spec.title },
     tabComponent: fixedPanels.has(spec.id) ? "fixedTab" : undefined,
     position: fallback.referencePanel
       ? { referencePanel: fallback.referencePanel, direction: fallback.direction }
@@ -105,6 +134,7 @@ function addPanel(spec: DockPanelSpec, active = true) {
   if (spec.initialWidth) panel.api.setSize({ width: spec.initialWidth });
   if (spec.initialHeight) panel.api.setSize({ height: spec.initialHeight });
   if (active) panel.api.setActive();
+  if (spec.id !== "tree") reassertExplorerWidth();
   return panel;
 }
 
@@ -113,9 +143,13 @@ function showPanel(id: DockPanelId) {
   if (panel) panel.api.setActive();
 }
 
+// Toolbar toggle: open the panel if missing, otherwise hide it. The editor is
+// the permanent stage and is never toggled away. "Fixed" only removes the tab's
+// own × — the toolbar is the open/close mechanism for tool panels.
 function togglePanel(id: DockPanelId) {
+  if (id === "editor") return showPanel(id);
   const panel = dockApi?.getPanel(id);
-  if (panel && !fixedPanels.has(id)) {
+  if (panel) {
     panel.api.close();
     return;
   }
@@ -130,22 +164,27 @@ function panelVisible(id: DockPanelId): boolean {
 function onReady(event: DockviewReadyEvent) {
   const api = event.api;
   dockApi = api;
+  if (import.meta.env.DEV) (window as unknown as { __ideDockApi: typeof api }).__ideDockApi = api;
   api.onDidAddPanel(() => layoutSeq.value++);
   api.onDidRemovePanel(() => layoutSeq.value++);
+  // Clean starting layout: explorer on the left, editor as the stage. The
+  // build output / run preview / inspector appear on demand (build, run, or
+  // their toolbar toggle) — no empty panels cluttering a fresh project.
   addPanel(panelSpecs.editor, true);
-  addPanel({ ...panelSpecs.chr, fallback: () => ({ referencePanel: "editor" }) }, false);
-  addPanel({ ...panelSpecs.map, fallback: () => ({ referencePanel: "editor" }) }, false);
-  addPanel({ ...panelSpecs.tracker, fallback: () => ({ referencePanel: "editor" }) }, false);
   addPanel(panelSpecs.tree, false);
-  addPanel(panelSpecs.build, false);
-  // Runtime column on the right: the run preview + the machine inspector. The
-  // emulator is a panel here — never the player's full game page.
-  addPanel(panelSpecs.preview, false);
-  addPanel(panelSpecs.inspect, false);
   api.getPanel("editor")?.api.setActive();
-  api.getPanel("preview")?.api.setActive();
+  // Sizing during onReady runs before dockview's first layout pass, so re-apply
+  // the explorer width once the layout has settled.
+  reassertExplorerWidth();
 }
 
+// Bring the editor forward whenever a source file is opened (tree click,
+// diagnostic jump, or breakpoint halt) — so "view file" always shows something,
+// even if the editor tab was behind a CHR/map/music document.
+watch(
+  () => store.focusEditor,
+  () => showPanel("editor")
+);
 // focus the CHR / map panel when one is opened from the tree
 watch(
   () => store.focusChr,
@@ -161,6 +200,7 @@ watch(
 );
 
 async function doBuild() {
+  showPanel("build"); // surface the output panel so progress + diagnostics show
   await store.build_();
 }
 
@@ -217,13 +257,16 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onIdeKeydown));
       <button class="ib" @click="showNew = true">
         <Icon name="folder" :size="15" /> 工程
       </button>
-      <button class="ib" :disabled="!store.hasProject" @click="showHeader = true">
+
+      <!-- Everything past 「工程」 only makes sense once a project is open, so it
+           stays hidden (not greyed) until then — a clean, real-IDE top bar. -->
+      <template v-if="store.hasProject">
+      <button class="ib" @click="showHeader = true">
         <Icon name="settings" :size="15" /> ROM 头
       </button>
       <button
         class="ib"
         :class="{ active: store.watching }"
-        :disabled="!store.hasProject"
         @click="store.watching ? store.stopWatch() : store.startWatch()"
         title="监听资源变更自动重建"
       >
@@ -231,26 +274,26 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onIdeKeydown));
       </button>
       <div class="sep" />
       <div class="viewgroup" aria-label="IDE 视图">
-        <button class="ib compact" :class="{ active: panelVisible('tree') }" :disabled="!store.hasProject" @click="togglePanel('tree')" title="显示/隐藏文件">
+        <button class="ib compact" :class="{ active: panelVisible('tree') }" @click="togglePanel('tree')" title="显示/隐藏文件">
           <Icon name="folder" :size="14" /> 文件
         </button>
-        <button class="ib compact" :class="{ active: panelVisible('build') }" :disabled="!store.hasProject" @click="togglePanel('build')" title="显示/隐藏输出">
+        <button class="ib compact" :class="{ active: panelVisible('build') }" @click="togglePanel('build')" title="显示/隐藏输出">
           <Icon name="hammer" :size="14" /> 输出
         </button>
-        <button class="ib compact" :class="{ active: panelVisible('preview') }" :disabled="!store.hasProject" @click="togglePanel('preview')" title="显示/隐藏运行预览">
+        <button class="ib compact" :class="{ active: panelVisible('preview') }" @click="togglePanel('preview')" title="显示/隐藏运行预览">
           <Icon name="play" :size="14" /> 预览
         </button>
-        <button class="ib compact" :class="{ active: panelVisible('inspect') }" :disabled="!store.hasProject" @click="togglePanel('inspect')" title="显示/隐藏机器检视">
+        <button class="ib compact" :class="{ active: panelVisible('inspect') }" @click="togglePanel('inspect')" title="显示/隐藏机器检视">
           <Icon name="bug" :size="14" /> 检视
         </button>
       </div>
       <div class="sep" />
-      <button class="ib compact" :disabled="!store.hasProject" title="刷新资源管理器" @click="refreshProject">
+      <button class="ib compact" title="刷新资源管理器" @click="refreshProject">
         <Icon name="reset" :size="14" /> 刷新
       </button>
       <button
         class="ib compact"
-        :disabled="!store.hasProject || (!store.dirty && !store.chrDirty && !store.mapDirty && !store.songDirty)"
+        :disabled="!store.dirty && !store.chrDirty && !store.mapDirty && !store.songDirty"
         title="保存全部"
         @click="store.saveAll()"
       >
@@ -260,7 +303,6 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onIdeKeydown));
       <n-button
         size="small"
         :loading="store.building"
-        :disabled="!store.hasProject"
         @click="doBuild"
       >
         <template #icon><Icon name="hammer" :size="15" /></template>
@@ -269,12 +311,13 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onIdeKeydown));
       <n-button
         size="small"
         type="primary"
-        :disabled="!store.hasProject || store.building"
+        :disabled="store.building"
         @click="doRun"
       >
         <template #icon><Icon name="play" :size="15" /></template>
         运行
       </n-button>
+      </template>
       <div class="grow" />
       <span class="bstat">{{ store.status }}</span>
     </div>
@@ -283,6 +326,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onIdeKeydown));
       <DockviewVue
         class="dockview-theme-dark fc-dock"
         :components="components"
+        :tab-components="tabComponents"
         :get-tab-context-menu-items="dockContextMenu"
         @ready="onReady"
       />

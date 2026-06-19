@@ -88,6 +88,7 @@ export const useProjectStore = defineStore("project", {
     tree: null as ide.FileNode | null,
     tabs: [] as EditorTab[],
     activePath: "" as string,
+    focusEditor: 0, // bumped to ask the IDE to bring the source editor forward
     building: false,
     build: null as ide.BuildResult | null,
     status: "未打开工程",
@@ -167,11 +168,13 @@ export const useProjectStore = defineStore("project", {
       const existing = this.tabs.find((t) => t.path === path);
       if (existing) {
         this.activePath = path;
+        this.focusEditor++;
         return;
       }
       const content = await ide.projectReadFile(path);
       this.tabs.push({ path, name, content, saved: content });
       this.activePath = path;
+      this.focusEditor++;
     },
     setActive(path: string) {
       this.activePath = path;

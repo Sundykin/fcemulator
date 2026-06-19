@@ -57,6 +57,7 @@ function onRowClick(node: FileNode) {
 
 // ---- context menu ----
 const menuShow = ref(false);
+const menuKey = ref(0);
 const menuX = ref(0);
 const menuY = ref(0);
 const ctxNode = ref<FileNode | null>(null); // null = root
@@ -108,10 +109,13 @@ function moveFirst(options: DropdownOption[], key: string): DropdownOption[] {
 
 function openMenu(e: MouseEvent, node: FileNode | null) {
   ctxNode.value = node;
-  menuShow.value = false;
   menuX.value = e.clientX;
   menuY.value = e.clientY;
-  requestAnimationFrame(() => (menuShow.value = true));
+  // Bumping the key remounts the dropdown so naive-ui re-anchors to the new
+  // x/y. (The old requestAnimationFrame dance was throttled to a standstill
+  // whenever the window was unfocused, so the menu often never appeared.)
+  menuKey.value++;
+  menuShow.value = true;
 }
 
 // ---- prompt dialog ----
@@ -215,8 +219,8 @@ function canEditNode(node: FileNode): boolean {
     <div class="thead">
       <span class="tname">{{ store.manifest?.name || "文件" }}</span>
       <div class="tactions">
-        <button class="tadd" title="新建资源" @click="openMenu($event, null)">
-          <Icon name="plus" :size="14" />
+        <button class="tnew" title="新建源码 / CHR / 地图 / 乐曲 …" @click="openMenu($event, null)">
+          <Icon name="plus" :size="13" /> 新建
         </button>
         <button class="tadd" title="刷新" @click="store.refreshTree()">
           <Icon name="reset" :size="13" />
@@ -256,6 +260,7 @@ function canEditNode(node: FileNode): boolean {
     </div>
 
     <n-dropdown
+      :key="menuKey"
       :show="menuShow"
       :options="menuOptions"
       :x="menuX"
@@ -342,6 +347,22 @@ function canEditNode(node: FileNode): boolean {
 .tadd:hover {
   background: var(--surface);
   color: var(--text);
+}
+.tnew {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: 5px;
+  font-size: 12px;
+}
+.tnew:hover {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 .tactions {
   display: flex;

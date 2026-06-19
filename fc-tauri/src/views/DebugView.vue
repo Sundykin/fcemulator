@@ -148,7 +148,8 @@ const kindLabel = (k: string) => (k.toLowerCase() === "read" ? "读" : "写");
       <span class="hint">点反汇编行左侧 = 打/去断点</span>
     </div>
 
-    <!-- middle: disasm | registers | ppu/apu -->
+    <div class="dbgscroll">
+    <!-- middle: disasm | registers | ppu/apu (stacks to one column when narrow) -->
     <div class="mid">
       <!-- disassembly + breakpoints (merged) -->
       <div class="panel disasm-panel">
@@ -267,6 +268,7 @@ const kindLabel = (k: string) => (k.toLowerCase() === "read" ? "读" : "写");
         <div v-if="!memRows.length" class="muted">—</div>
       </div>
     </div>
+    </div>
   </div>
 </template>
 
@@ -279,6 +281,18 @@ const kindLabel = (k: string) => (k.toLowerCase() === "read" ? "读" : "写");
   gap: 10px;
   padding: 10px 12px;
   background: var(--bg);
+  /* Drives the responsive stack below: when the panel is docked as a narrow
+     side column the 3-column dashboard collapses into one scrollable column. */
+  container-type: inline-size;
+}
+/* Scroll region holding the dashboard + memory (the ctrlbar stays pinned). */
+.dbgscroll {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
 }
 .panel {
   background: var(--panel);
@@ -714,5 +728,44 @@ const kindLabel = (k: string) => (k.toLowerCase() === "read" ? "读" : "写");
 .mascii {
   color: var(--text-mute);
   letter-spacing: 1px;
+}
+.memdump {
+  overflow-x: auto;
+}
+
+/* ---- narrow dock column: collapse the 3-column dashboard into one stack ---- */
+@container (max-width: 760px) {
+  .ctrlbar {
+    height: auto;
+    flex-wrap: wrap;
+    row-gap: 6px;
+    padding: 6px 8px;
+  }
+  .ctrlbar .hint {
+    display: none;
+  }
+  .mid {
+    flex-direction: column;
+    flex: none;
+  }
+  .regcol,
+  .ppucol {
+    width: 100%;
+    flex: none;
+  }
+  .disasm-panel {
+    flex: none;
+  }
+  .disasm {
+    height: 240px;
+    flex: none;
+  }
+  /* don't let "run info" / APU stretch to fill — they take natural height now */
+  .panel.grow {
+    flex: none;
+  }
+  .mem-panel {
+    height: 260px;
+  }
 }
 </style>
