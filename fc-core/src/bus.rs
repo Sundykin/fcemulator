@@ -133,6 +133,7 @@ impl Bus {
     fn oam_dma(&mut self, page: u8) {
         let base = (page as u16) << 8;
         self.tick(); // alignment cycle
+        self.tick();
         for i in 0..256u16 {
             self.tick();
             let b = self.read(base + i);
