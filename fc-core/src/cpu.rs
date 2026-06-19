@@ -25,6 +25,19 @@ pub const RESET_VECTOR: u16 = 0xFFFC;
 pub const IRQ_VECTOR: u16 = 0xFFFE;
 const STACK_BASE: u16 = 0x0100;
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+enum InterruptKind {
+    Nmi,
+    Irq,
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+struct InterruptPoll {
+    nmi: bool,
+    irq: bool,
+    i: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Cpu {
     pub a: u8,
@@ -36,9 +49,15 @@ pub struct Cpu {
     pub cycles: u64,
     pub nmi_count: u64,
     pub trace: bool,
-    /// Delayed I flag used for IRQ polling. CLI/SEI/PLP change the I flag only
-    /// *after* the interrupt poll, so their effect is delayed one instruction.
-    i_poll: bool,
+    /// CPU-internal NMI edge detector output. The PPU/bus owns the raw edge;
+    /// the CPU samples it once per CPU cycle and holds it until a poll point.
+    nmi_pending: bool,
+    /// CPU-internal IRQ level detector output sampled at the end of the
+    /// previous CPU cycle.
+    irq_sample: bool,
+    last_poll: InterruptPoll,
+    pending_interrupt: Option<InterruptKind>,
+    suppress_instruction_poll: bool,
 }
 
 impl Default for Cpu {
@@ -59,7 +78,11 @@ impl Cpu {
             cycles: 0,
             nmi_count: 0,
             trace: false,
-            i_poll: true,
+            nmi_pending: false,
+            irq_sample: false,
+            last_poll: InterruptPoll::default(),
+            pending_interrupt: None,
+            suppress_instruction_poll: false,
         }
     }
 
@@ -70,7 +93,11 @@ impl Cpu {
         self.sp = 0xFD;
         self.p = 0x24;
         self.cycles = 0;
-        self.i_poll = true;
+        self.nmi_pending = false;
+        self.irq_sample = false;
+        self.last_poll = InterruptPoll::default();
+        self.pending_interrupt = None;
+        self.suppress_instruction_poll = false;
     }
 
     pub fn reset(&mut self, bus: &mut Bus) {
@@ -79,30 +106,58 @@ impl Cpu {
         self.pc = u16::from_le_bytes([lo, hi]);
         self.sp = self.sp.wrapping_sub(3);
         self.p |= I;
-        self.i_poll = true;
+        self.nmi_pending = false;
+        self.irq_sample = false;
+        self.last_poll = InterruptPoll::default();
+        self.pending_interrupt = None;
+        self.suppress_instruction_poll = false;
     }
 
     // --------------------------------------------------------- bus accessors
 
     #[inline]
+    fn begin_cycle(&mut self) {
+        self.last_poll = InterruptPoll {
+            nmi: self.nmi_pending,
+            irq: self.irq_sample,
+            i: self.p & I != 0,
+        };
+    }
+
+    #[inline]
+    fn end_cycle(&mut self, bus: &mut Bus) {
+        if bus.poll_nmi() {
+            self.nmi_pending = true;
+        }
+        self.irq_sample = bus.irq_line();
+    }
+
+    #[inline]
     fn rd(&mut self, bus: &mut Bus, addr: u16) -> u8 {
+        self.begin_cycle();
         bus.tick();
         self.cycles += 1;
-        bus.read(addr)
+        let value = bus.read(addr);
+        self.end_cycle(bus);
+        value
     }
 
     #[inline]
     fn wr(&mut self, bus: &mut Bus, addr: u16, value: u8) {
+        self.begin_cycle();
         bus.tick();
         self.cycles += 1;
         bus.write(addr, value);
+        self.end_cycle(bus);
     }
 
     /// An internal cycle with no external bus effect (still ticks the system).
     #[inline]
     fn io(&mut self, bus: &mut Bus) {
+        self.begin_cycle();
         bus.tick();
         self.cycles += 1;
+        self.end_cycle(bus);
     }
 
     fn fetch(&mut self, bus: &mut Bus) -> u8 {
@@ -153,10 +208,14 @@ impl Cpu {
 
     // ----------------------------------------------------------- interrupts
 
-    fn interrupt(&mut self, bus: &mut Bus, vector: u16, brk: bool) {
+    fn interrupt(&mut self, bus: &mut Bus, vector: u16, brk: bool, vector_after_status: bool) {
         self.io(bus);
         self.io(bus);
         self.push16(bus, self.pc);
+        let mut selected_vector = vector;
+        if !vector_after_status {
+            selected_vector = self.select_interrupt_vector(vector);
+        }
         let mut status = self.p | U;
         if brk {
             status |= B;
@@ -165,9 +224,13 @@ impl Cpu {
         }
         self.push(bus, status);
         self.set_flag(I, true);
-        let lo = self.rd(bus, vector) as u16;
-        let hi = self.rd(bus, vector + 1) as u16;
+        if vector_after_status {
+            selected_vector = self.select_interrupt_vector(vector);
+        }
+        let lo = self.rd(bus, selected_vector) as u16;
+        let hi = self.rd(bus, selected_vector + 1) as u16;
         self.pc = (hi << 8) | lo;
+        self.suppress_instruction_poll = true;
     }
 
     fn brk(&mut self, bus: &mut Bus) {
@@ -175,36 +238,42 @@ impl Cpu {
         self.push16(bus, self.pc);
         self.push(bus, self.p | U | B);
         self.set_flag(I, true);
-        let lo = self.rd(bus, IRQ_VECTOR) as u16;
-        let hi = self.rd(bus, IRQ_VECTOR + 1) as u16;
+        let vector = self.select_interrupt_vector(IRQ_VECTOR);
+        let lo = self.rd(bus, vector) as u16;
+        let hi = self.rd(bus, vector + 1) as u16;
         self.pc = (hi << 8) | lo;
+        self.suppress_instruction_poll = true;
     }
 
     fn nmi(&mut self, bus: &mut Bus) {
         self.nmi_count += 1;
-        self.interrupt(bus, NMI_VECTOR, false);
+        self.interrupt(bus, NMI_VECTOR, false, false);
     }
     fn irq(&mut self, bus: &mut Bus) {
-        self.interrupt(bus, IRQ_VECTOR, false);
+        self.interrupt(bus, IRQ_VECTOR, false, true);
+    }
+
+    fn service_pending_interrupt(&mut self, bus: &mut Bus) -> bool {
+        match self.pending_interrupt.take() {
+            Some(InterruptKind::Nmi) => {
+                self.nmi(bus);
+                true
+            }
+            Some(InterruptKind::Irq) => {
+                self.irq(bus);
+                true
+            }
+            None => false,
+        }
     }
 
     // --------------------------------------------------------------- step
 
     /// Execute one instruction (or service a pending interrupt).
     pub fn step(&mut self, bus: &mut Bus) {
-        if bus.poll_nmi() {
-            self.i_poll = true;
-            self.nmi(bus);
+        if self.service_pending_interrupt(bus) {
             return;
         }
-        // Poll IRQ with the *delayed* I flag, so CLI/SEI/PLP take effect one
-        // instruction later (matches 6502 interrupt timing).
-        if bus.irq_line() && !self.i_poll {
-            self.i_poll = true;
-            self.irq(bus);
-            return;
-        }
-        self.i_poll = self.p & I != 0;
 
         let pc = self.pc;
         let opcode = self.fetch(bus);
@@ -215,6 +284,7 @@ impl Cpu {
             );
         }
         self.execute(bus, opcode);
+        self.poll_interrupts();
     }
 
     // ----------------------------------------------------- addressing modes
@@ -334,6 +404,48 @@ impl Cpu {
         self.set_flag(V, v & 0x40 != 0);
     }
 
+    fn queue_interrupt(&mut self, kind: InterruptKind) {
+        if self.pending_interrupt != Some(InterruptKind::Nmi) {
+            self.pending_interrupt = Some(kind);
+        }
+    }
+
+    fn accept_interrupt_poll(&mut self, poll: InterruptPoll) {
+        if self.nmi_pending {
+            self.nmi_pending = false;
+            self.queue_interrupt(InterruptKind::Nmi);
+        } else if poll.irq && !poll.i {
+            self.queue_interrupt(InterruptKind::Irq);
+        }
+    }
+
+    fn accept_exact_interrupt_poll(&mut self, poll: InterruptPoll) {
+        if poll.nmi {
+            self.nmi_pending = false;
+            self.queue_interrupt(InterruptKind::Nmi);
+        } else if poll.irq && !poll.i {
+            self.queue_interrupt(InterruptKind::Irq);
+        }
+    }
+
+    fn poll_interrupts(&mut self) {
+        if self.suppress_instruction_poll {
+            self.suppress_instruction_poll = false;
+            return;
+        }
+        self.accept_interrupt_poll(self.last_poll);
+    }
+
+    fn select_interrupt_vector(&mut self, vector: u16) -> u16 {
+        if vector != NMI_VECTOR && self.nmi_pending {
+            self.nmi_pending = false;
+            self.nmi_count += 1;
+            NMI_VECTOR
+        } else {
+            vector
+        }
+    }
+
     fn asl_val(&mut self, v: u8) -> u8 {
         self.set_flag(C, v & 0x80 != 0);
         let r = v << 1;
@@ -372,11 +484,15 @@ impl Cpu {
     fn branch(&mut self, bus: &mut Bus, cond: bool) {
         let off = self.fetch(bus) as i8;
         if cond {
+            let branch_poll = self.last_poll;
             self.io(bus); // taken-branch internal cycle
             let old = self.pc;
             self.pc = (self.pc as i32 + off as i32) as u16;
             if page_crossed(old, self.pc) {
                 self.io(bus);
+            } else {
+                self.accept_exact_interrupt_poll(branch_poll);
+                self.suppress_instruction_poll = true;
             }
         }
     }
@@ -572,9 +688,6 @@ impl Cpu {
                 self.p = (status & !B) | U;
                 self.pc = self.pull16(bus);
                 self.io(bus);
-                // RTI restores I *before* the interrupt poll → effect is immediate
-                // (unlike CLI/SEI/PLP), so refresh the poll flag now.
-                self.i_poll = self.p & I != 0;
             }
             0x00 => self.brk(bus),
 
