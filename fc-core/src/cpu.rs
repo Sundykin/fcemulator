@@ -203,6 +203,9 @@ impl Cpu {
         self.pc = self.pc.wrapping_add(1);
         v
     }
+    fn dummy_fetch(&mut self, bus: &mut Bus) {
+        let _ = self.rd(bus, self.pc);
+    }
 
     fn fetch16(&mut self, bus: &mut Bus) -> u16 {
         let lo = self.fetch(bus) as u16;
@@ -686,57 +689,57 @@ impl Cpu {
 
             // ---- transfers ----
             0xAA => {
-                self.io(bus);
+                self.dummy_fetch(bus);
                 self.x = self.a;
                 let x = self.x;
                 self.set_zn(x);
             }
             0xA8 => {
-                self.io(bus);
+                self.dummy_fetch(bus);
                 self.y = self.a;
                 let y = self.y;
                 self.set_zn(y);
             }
             0x8A => {
-                self.io(bus);
+                self.dummy_fetch(bus);
                 self.a = self.x;
                 let a = self.a;
                 self.set_zn(a);
             }
             0x98 => {
-                self.io(bus);
+                self.dummy_fetch(bus);
                 self.a = self.y;
                 let a = self.a;
                 self.set_zn(a);
             }
             0xBA => {
-                self.io(bus);
+                self.dummy_fetch(bus);
                 self.x = self.sp;
                 let x = self.x;
                 self.set_zn(x);
             }
             0x9A => {
-                self.io(bus);
+                self.dummy_fetch(bus);
                 self.sp = self.x;
             }
 
             // ---- stack ----
             0x48 => {
-                self.io(bus);
+                self.dummy_fetch(bus);
                 self.push(bus, self.a);
             }
             0x08 => {
-                self.io(bus);
+                self.dummy_fetch(bus);
                 self.push(bus, self.p | U | B);
             }
             0x68 => {
-                self.io(bus);
+                self.dummy_fetch(bus);
                 self.io(bus);
                 let v = self.pull(bus);
                 self.lda(v);
             }
             0x28 => {
-                self.io(bus);
+                self.dummy_fetch(bus);
                 self.io(bus);
                 let v = self.pull(bus);
                 self.p = (v & !B) | U;
@@ -1089,25 +1092,25 @@ impl Cpu {
                 });
             }
             0xE8 => {
-                self.io(bus);
+                self.dummy_fetch(bus);
                 self.x = self.x.wrapping_add(1);
                 let x = self.x;
                 self.set_zn(x);
             }
             0xCA => {
-                self.io(bus);
+                self.dummy_fetch(bus);
                 self.x = self.x.wrapping_sub(1);
                 let x = self.x;
                 self.set_zn(x);
             }
             0xC8 => {
-                self.io(bus);
+                self.dummy_fetch(bus);
                 self.y = self.y.wrapping_add(1);
                 let y = self.y;
                 self.set_zn(y);
             }
             0x88 => {
-                self.io(bus);
+                self.dummy_fetch(bus);
                 self.y = self.y.wrapping_sub(1);
                 let y = self.y;
                 self.set_zn(y);
@@ -1115,7 +1118,7 @@ impl Cpu {
 
             // ---- shifts ----
             0x0A => {
-                self.io(bus);
+                self.dummy_fetch(bus);
                 let r = self.asl_val(self.a);
                 self.a = r;
             }
@@ -1136,7 +1139,7 @@ impl Cpu {
                 self.rmw(bus, a, |c, v| c.asl_val(v));
             }
             0x4A => {
-                self.io(bus);
+                self.dummy_fetch(bus);
                 let r = self.lsr_val(self.a);
                 self.a = r;
             }
@@ -1157,7 +1160,7 @@ impl Cpu {
                 self.rmw(bus, a, |c, v| c.lsr_val(v));
             }
             0x2A => {
-                self.io(bus);
+                self.dummy_fetch(bus);
                 let r = self.rol_val(self.a);
                 self.a = r;
             }
@@ -1178,7 +1181,7 @@ impl Cpu {
                 self.rmw(bus, a, |c, v| c.rol_val(v));
             }
             0x6A => {
-                self.io(bus);
+                self.dummy_fetch(bus);
                 let r = self.ror_val(self.a);
                 self.a = r;
             }
@@ -1219,14 +1222,14 @@ impl Cpu {
                 self.pc = (hi << 8) | lo;
             }
             0x60 => {
-                self.io(bus);
+                self.dummy_fetch(bus);
                 let addr = self.pull16(bus);
                 self.io(bus);
                 self.pc = addr.wrapping_add(1);
                 self.io(bus);
             }
             0x40 => {
-                self.io(bus);
+                self.dummy_fetch(bus);
                 let status = self.pull(bus);
                 self.p = (status & !B) | U;
                 self.pc = self.pull16(bus);
@@ -1270,37 +1273,37 @@ impl Cpu {
 
             // ---- flags ----
             0x18 => {
-                self.io(bus);
+                self.dummy_fetch(bus);
                 self.set_flag(C, false);
             }
             0x38 => {
-                self.io(bus);
+                self.dummy_fetch(bus);
                 self.set_flag(C, true);
             }
             0x58 => {
-                self.io(bus);
+                self.dummy_fetch(bus);
                 self.set_flag(I, false);
             }
             0x78 => {
-                self.io(bus);
+                self.dummy_fetch(bus);
                 self.set_flag(I, true);
             }
             0xB8 => {
-                self.io(bus);
+                self.dummy_fetch(bus);
                 self.set_flag(V, false);
             }
             0xD8 => {
-                self.io(bus);
+                self.dummy_fetch(bus);
                 self.set_flag(D, false);
             }
             0xF8 => {
-                self.io(bus);
+                self.dummy_fetch(bus);
                 self.set_flag(D, true);
             }
 
             // ---- NOPs (official + common unofficial) ----
-            0xEA => self.io(bus),
-            0x1A | 0x3A | 0x5A | 0x7A | 0xDA | 0xFA => self.io(bus),
+            0xEA => self.dummy_fetch(bus),
+            0x1A | 0x3A | 0x5A | 0x7A | 0xDA | 0xFA => self.dummy_fetch(bus),
             0x80 | 0x82 | 0x89 | 0xC2 | 0xE2 => {
                 self.fetch(bus);
             }
@@ -1504,7 +1507,7 @@ impl Cpu {
             }
 
             // ---- everything else: treat as NOP to stay robust ----
-            _ => self.io(bus),
+            _ => self.dummy_fetch(bus),
         }
     }
 
