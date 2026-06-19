@@ -355,6 +355,15 @@ impl Cpu {
         let wrong = (base & 0xFF00) | (addr & 0x00FF);
         let _ = self.rd(bus, wrong);
     }
+
+    fn unstable_indexed_store(&mut self, bus: &mut Bus, index: u8, mask: u8) -> (u16, u8) {
+        let base = self.fetch16(bus);
+        let addr = base.wrapping_add(index as u16);
+        self.indexed_dummy(bus, base, addr);
+        let high = ((base >> 8) as u8).wrapping_add(1) & mask;
+        (((high as u16) << 8) | (addr & 0x00FF), high)
+    }
+
     fn abx(&mut self, bus: &mut Bus, penalty: bool) -> u16 {
         let base = self.fetch16(bus);
         let addr = base.wrapping_add(self.x as u16);
@@ -1406,9 +1415,8 @@ impl Cpu {
             }
             0xAB => {
                 let v = self.fetch(bus);
-                self.a = self.x & v;
-                self.x = self.a;
-                self.set_zn(self.a);
+                self.lda(v);
+                self.x = v;
             }
             0xCB => {
                 let v = self.fetch(bus);
@@ -1432,13 +1440,11 @@ impl Cpu {
                 self.wr(bus, a, v);
             }
             0x9C => {
-                let a = self.abx(bus, false);
-                let v = self.y & (((a >> 8) as u8).wrapping_add(1));
+                let (a, v) = self.unstable_indexed_store(bus, self.x, self.y);
                 self.wr(bus, a, v);
             }
             0x9E => {
-                let a = self.aby(bus, false);
-                let v = self.x & (((a >> 8) as u8).wrapping_add(1));
+                let (a, v) = self.unstable_indexed_store(bus, self.y, self.x);
                 self.wr(bus, a, v);
             }
             0x9F => {
