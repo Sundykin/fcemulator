@@ -1,6 +1,6 @@
 //! Cartridge loading (iNES / NES 2.0) and PRG/CHR/PRG-RAM resolution.
 
-use crate::mapper::{Mapper, MapperOps};
+use crate::mapper::{ChrAccess, Mapper, MapperOps};
 use crate::types::Mirroring;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -132,10 +132,18 @@ impl Cartridge {
         Cartridge::from_bytes(&rom).expect("valid empty rom")
     }
 
-    // ---- CPU bus ($4020-$FFFF) ----
+    // ---- CPU bus ($4018-$FFFF) ----
 
-    pub fn cpu_read(&self, addr: u16) -> u8 {
+    pub fn cpu_read(&mut self, addr: u16) -> u8 {
         match addr {
+            0x4018..=0x5FFF => self.mapper.read_expansion(addr).unwrap_or(0),
+            _ => self.cpu_peek(addr),
+        }
+    }
+
+    pub fn cpu_peek(&self, addr: u16) -> u8 {
+        match addr {
+            0x4018..=0x5FFF => self.mapper.peek_expansion(addr).unwrap_or(0),
             0x6000..=0x7FFF => {
                 let i = (addr - 0x6000) as usize;
                 self.prg_ram.get(i).copied().unwrap_or(0)
@@ -157,6 +165,7 @@ impl Cartridge {
 
     pub fn cpu_write(&mut self, addr: u16, value: u8) {
         match addr {
+            0x4018..=0x5FFF => self.mapper.write_expansion(addr, value),
             0x6000..=0x7FFF => {
                 let i = (addr - 0x6000) as usize;
                 if let Some(b) = self.prg_ram.get_mut(i) {
@@ -171,7 +180,11 @@ impl Cartridge {
     // ---- PPU bus ($0000-$1FFF) ----
 
     pub fn ppu_read(&self, addr: u16) -> u8 {
-        let i = self.mapper.chr_index(addr & 0x1FFF);
+        self.ppu_read_for(addr, ChrAccess::Default)
+    }
+
+    pub fn ppu_read_for(&self, addr: u16, access: ChrAccess) -> u8 {
+        let i = self.mapper.chr_index_for(addr & 0x1FFF, access);
         if self.uses_chr_ram {
             self.chr_ram
                 .get(i % self.chr_ram.len().max(1))
@@ -191,6 +204,14 @@ impl Cartridge {
             let i = self.mapper.chr_index(addr & 0x1FFF) % len;
             self.chr_ram[i] = value;
         }
+    }
+
+    pub fn nametable_read(&mut self, addr: u16, ciram: &[u8; 0x1000]) -> Option<u8> {
+        self.mapper.nametable_read(addr, ciram)
+    }
+
+    pub fn nametable_write(&mut self, addr: u16, value: u8, ciram: &mut [u8; 0x1000]) -> bool {
+        self.mapper.nametable_write(addr, value, ciram)
     }
 
     pub fn mirroring(&self) -> Mirroring {

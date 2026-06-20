@@ -322,7 +322,12 @@ impl Bus {
             0x4017 if mode == ReadMode::DmcAlignment => self.controllers.peek(1),
             0x4016 => self.controllers.read(0),
             0x4017 => self.controllers.read(1),
-            0x4000..=0x4014 | 0x4018..=0x5FFF => self.open_bus,
+            0x4000..=0x4014 => self.open_bus,
+            0x4018..=0x5FFF => self
+                .cartridge
+                .mapper
+                .read_expansion(addr)
+                .unwrap_or(self.open_bus),
             0x6000..=0xFFFF => self.cartridge.cpu_read(addr),
         };
         self.open_bus = v;
@@ -352,7 +357,7 @@ impl Bus {
                 self.apu.write(addr, value);
                 self.cancel_stale_dmc();
             }
-            0x4018..=0x5FFF => {}
+            0x4018..=0x5FFF => self.cartridge.mapper.write_expansion(addr, value),
             0x6000..=0xFFFF => self.cartridge.cpu_write(addr, value),
         }
     }
@@ -362,7 +367,7 @@ impl Bus {
         match addr {
             0x0000..=0x1FFF => self.ram[(addr & 0x07FF) as usize],
             0x2000..=0x3FFF => self.ppu.peek_register(addr & 0x2007),
-            0x6000..=0xFFFF => self.cartridge.cpu_read(addr),
+            0x4018..=0xFFFF => self.cartridge.cpu_peek(addr),
             _ => 0,
         }
     }

@@ -7,6 +7,7 @@
 //! pattern bytes fetched from the cartridge so CHR banking is respected.
 
 use crate::cartridge::Cartridge;
+use crate::mapper::ChrAccess;
 use crate::mapper::MapperOps;
 use crate::palette::{Palette, Rgb, DEFAULT_PALETTE};
 use crate::types::{Mirroring, Region, SCREEN_HEIGHT, SCREEN_WIDTH};
@@ -299,14 +300,14 @@ impl Ppu {
                         let addr = self.bg_pattern_base()
                             + (self.bg_next_id as u16) * 16
                             + ((self.v >> 12) & 0x07);
-                        self.bg_next_lo = self.ppu_read(cart, addr);
+                        self.bg_next_lo = self.ppu_read_for(cart, addr, ChrAccess::Background);
                     }
                     5 => {
                         let addr = self.bg_pattern_base()
                             + (self.bg_next_id as u16) * 16
                             + ((self.v >> 12) & 0x07)
                             + 8;
-                        self.bg_next_hi = self.ppu_read(cart, addr);
+                        self.bg_next_hi = self.ppu_read_for(cart, addr, ChrAccess::Background);
                     }
                     7 => self.increment_scroll_x(),
                     _ => {}
@@ -549,7 +550,7 @@ impl Ppu {
 
         let slot = ((self.dot - 257) / 8) as usize;
         let addr = self.sprite_fetch_addr[slot] + if phase == 5 { 8 } else { 0 };
-        let value = self.ppu_read(cart, addr);
+        let value = self.ppu_read_for(cart, addr, ChrAccess::Sprite);
         if slot < self.sprite_count {
             if phase == 3 {
                 self.sprites[slot].pat_lo = value;
@@ -672,10 +673,16 @@ impl Ppu {
     // ----------------------------------------------------------- PPU memory
 
     fn ppu_read(&mut self, cart: &mut Cartridge, addr: u16) -> u8 {
+        self.ppu_read_for(cart, addr, ChrAccess::Default)
+    }
+
+    fn ppu_read_for(&mut self, cart: &mut Cartridge, addr: u16, access: ChrAccess) -> u8 {
         let addr = addr & 0x3FFF;
         let v = match addr {
-            0x0000..=0x1FFF => cart.ppu_read(addr),
-            0x2000..=0x3EFF => self.vram[self.mirror_nt(cart, addr)],
+            0x0000..=0x1FFF => cart.ppu_read_for(addr, access),
+            0x2000..=0x3EFF => cart
+                .nametable_read(addr, &self.vram)
+                .unwrap_or_else(|| self.vram[self.mirror_nt(cart, addr)]),
             _ => self.palette_ram[Self::palette_index(addr)],
         };
         // Notify after the fetch: MMC2/4 CHR latch must affect the *next* read,
@@ -690,8 +697,10 @@ impl Ppu {
         match addr {
             0x0000..=0x1FFF => cart.ppu_write(addr, value),
             0x2000..=0x3EFF => {
-                let i = self.mirror_nt(cart, addr);
-                self.vram[i] = value;
+                if !cart.nametable_write(addr, value, &mut self.vram) {
+                    let i = self.mirror_nt(cart, addr);
+                    self.vram[i] = value;
+                }
             }
             _ => {
                 let i = Self::palette_index(addr);
