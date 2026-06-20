@@ -1,0 +1,1 @@
+bench roms/SuperMarioBro.nes: 3000 frames in 7.409s = 404.9 fps (6.7x realtime @ 60.10)

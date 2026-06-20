@@ -63,6 +63,33 @@ enum Commands {
     },
     /// Print ROM header info.
     Info { rom: String },
+    /// Trace executed instructions in nestest/Nintendulator layout (for accuracy
+    /// diffing against Mesen2). Off the hot path unless this command is used.
+    Trace {
+        rom: String,
+        #[arg(short, long, default_value = "ntsc")]
+        region: String,
+        /// Stop after N instructions (0 = run until --frames).
+        #[arg(long, default_value_t = 0)]
+        instrs: u64,
+        /// Stop after N frames (0 = run until --instrs).
+        #[arg(short, long, default_value_t = 0)]
+        frames: u64,
+        /// Set PC to this hex entry before tracing (e.g. C000 for nestest).
+        #[arg(short, long)]
+        entry: Option<String>,
+    },
+    /// Headless performance benchmark: emulation fps over a fixed run.
+    Bench {
+        rom: String,
+        #[arg(short, long, default_value = "ntsc")]
+        region: String,
+        #[arg(short, long, default_value_t = 3000)]
+        frames: u64,
+        /// Warmup frames run before timing starts.
+        #[arg(long, default_value_t = 120)]
+        warmup: u64,
+    },
     /// Run self-checking test ROMs and score them.
     Testsuite {
         roms: Vec<String>,
@@ -74,6 +101,15 @@ enum Commands {
         protocol: TestProtocol,
         #[arg(long)]
         expect_text: Vec<String>,
+        /// Emit a machine-readable JSON report instead of the human table.
+        #[arg(long)]
+        json: bool,
+        /// Compare against a baseline JSON; exit non-zero if any baseline-pass ROM regresses.
+        #[arg(long)]
+        baseline: Option<String>,
+        /// Write the current results as a baseline JSON file.
+        #[arg(long)]
+        record_baseline: Option<String>,
     },
     /// Dump PPU debug views (pattern tables + nametables) to PNGs.
     Dbg {
@@ -291,6 +327,19 @@ fn compact_console_text(text: &str) -> String {
         .join(" ")
 }
 
+/// Suite name = the test ROM's containing directory (e.g. `cpu_interrupts_v2`),
+/// skipping a `rom_singles` leaf so sibling suites group sensibly.
+fn suite_name(path: &str) -> String {
+    let p = std::path::Path::new(path);
+    let mut dir = p.parent();
+    if dir.and_then(|d| d.file_name()).map(|s| s == "rom_singles").unwrap_or(false) {
+        dir = dir.and_then(|d| d.parent());
+    }
+    dir.and_then(|d| d.file_name())
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default()
+}
+
 fn short(path: &str) -> String {
     let p = std::path::Path::new(path);
     let parent = p
@@ -416,6 +465,68 @@ fn main() -> Result<()> {
                 if code == 0 { "PASS" } else { "see code" }
             );
         }
+        Commands::Trace { rom, region, instrs, frames, entry } => {
+            use std::io::Write as _;
+            let data = std::fs::read(&rom)?;
+            let mut deck = ControlDeck::new(Region::from_str(&region));
+            deck.load_rom(&data)?;
+            if let Some(e) = &entry {
+                deck.cpu.pc = u16::from_str_radix(e, 16)?;
+            }
+            deck.set_trace(true);
+            let stdout = std::io::stdout();
+            let mut w = std::io::BufWriter::new(stdout.lock());
+            let mut emitted: u64 = 0;
+            let mut done_frames: u64 = 0;
+            // Default (no bounds): trace one frame.
+            let frame_cap = if instrs == 0 && frames == 0 { 1 } else { frames };
+            'trace: loop {
+                deck.run_frame();
+                done_frames += 1;
+                for r in deck.take_trace() {
+                    let mut bytes = String::new();
+                    for i in 0..(r.len as usize).min(3) {
+                        bytes.push_str(&format!("{:02X} ", r.bytes[i]));
+                    }
+                    // nestest / Nintendulator layout (diffable against Mesen2).
+                    writeln!(
+                        w,
+                        "{:04X}  {:<8}  {:<31} A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X} PPU:{:3},{:3} CYC:{}",
+                        r.pc, bytes.trim_end(), r.op_text,
+                        r.a, r.x, r.y, r.p, r.sp, r.scanline, r.dot, r.cycle
+                    )?;
+                    emitted += 1;
+                    if instrs != 0 && emitted >= instrs {
+                        break 'trace;
+                    }
+                }
+                if frame_cap != 0 && done_frames >= frame_cap {
+                    break;
+                }
+            }
+            w.flush()?;
+        }
+        Commands::Bench { rom, region, frames, warmup } => {
+            let data = std::fs::read(&rom)?;
+            let mut deck = ControlDeck::new(Region::from_str(&region));
+            deck.load_rom(&data)?;
+            for _ in 0..warmup {
+                deck.run_frame();
+                deck.drain_audio();
+            }
+            let t0 = std::time::Instant::now();
+            for _ in 0..frames {
+                deck.run_frame();
+                deck.drain_audio();
+            }
+            let elapsed = t0.elapsed().as_secs_f64();
+            let fps = frames as f64 / elapsed;
+            let realtime = deck.region_frame_rate();
+            println!(
+                "bench {rom}: {frames} frames in {elapsed:.3}s = {fps:.1} fps ({:.1}x realtime @ {realtime:.2})",
+                fps / realtime
+            );
+        }
         Commands::Disasm { rom, addr, count } => {
             let data = std::fs::read(&rom)?;
             let mut deck = ControlDeck::new(Region::Ntsc);
@@ -451,22 +562,34 @@ fn main() -> Result<()> {
             frames,
             protocol,
             expect_text,
+            json,
+            baseline,
+            record_baseline,
         } => {
             let mut pass = 0;
             let mut total = 0;
             let region = Region::from_str(&region);
+            // (path, suite, status, message) — status ∈ pass|fail|timeout|error.
+            let mut results: Vec<(String, String, &'static str, String)> = Vec::new();
             for rom in &roms {
                 total += 1;
+                let suite = suite_name(rom);
                 let data = match std::fs::read(rom) {
                     Ok(d) => d,
                     Err(e) => {
-                        println!("  {:<48} ERR  {e}", short(rom));
+                        if !json {
+                            println!("  {:<48} ERR  {e}", short(rom));
+                        }
+                        results.push((rom.clone(), suite, "error", e.to_string()));
                         continue;
                     }
                 };
                 let mut deck = ControlDeck::new(region);
                 if deck.load_rom(&data).is_err() {
-                    println!("  {:<48} ERR  bad ROM", short(rom));
+                    if !json {
+                        println!("  {:<48} ERR  bad ROM", short(rom));
+                    }
+                    results.push((rom.clone(), suite, "error", "bad ROM".into()));
                     continue;
                 }
                 let outcome = match protocol {
@@ -474,17 +597,66 @@ fn main() -> Result<()> {
                     TestProtocol::Console => run_console(&mut deck, frames, &expect_text),
                     TestProtocol::Validation => run_validation(&mut deck, frames),
                 };
-                let (verdict, msg) = match outcome {
+                let (verdict, status, msg) = match outcome {
                     TestOutcome::Pass(msg) => {
                         pass += 1;
-                        ("PASS", msg)
+                        ("PASS", "pass", msg)
                     }
-                    TestOutcome::Fail(msg) => ("FAIL", msg),
-                    TestOutcome::Timeout(msg) => ("TIMEOUT", msg),
+                    TestOutcome::Fail(msg) => ("FAIL", "fail", msg),
+                    TestOutcome::Timeout(msg) => ("TIMEOUT", "timeout", msg),
                 };
-                println!("  {:<48} {verdict:<8} {}", short(rom), msg.trim());
+                if !json {
+                    println!("  {:<48} {verdict:<8} {}", short(rom), msg.trim());
+                }
+                results.push((rom.clone(), suite, status, msg.trim().to_string()));
             }
-            println!("\n  {pass}/{total} passed");
+            if json {
+                let arr: Vec<_> = results
+                    .iter()
+                    .map(|(path, suite, status, message)| {
+                        serde_json::json!({"path": path, "suite": suite, "status": status, "message": message, "frames": frames})
+                    })
+                    .collect();
+                let doc = serde_json::json!({"passed": pass, "total": total, "roms": arr});
+                println!("{}", serde_json::to_string_pretty(&doc)?);
+            } else {
+                println!("\n  {pass}/{total} passed");
+            }
+            if let Some(path) = &record_baseline {
+                let arr: Vec<_> = results
+                    .iter()
+                    .map(|(p, _, status, _)| serde_json::json!({"path": p, "status": status}))
+                    .collect();
+                std::fs::write(path, serde_json::to_string_pretty(&serde_json::json!(arr))?)?;
+                eprintln!("recorded baseline → {path} ({total} roms)");
+            }
+            if let Some(path) = &baseline {
+                let base: serde_json::Value = serde_json::from_slice(&std::fs::read(path)?)?;
+                let mut regressed = Vec::new();
+                let now: std::collections::HashMap<&str, &str> =
+                    results.iter().map(|(p, _, s, _)| (p.as_str(), *s)).collect();
+                for entry in base.as_array().into_iter().flatten() {
+                    let p = entry["path"].as_str().unwrap_or("");
+                    // Only ROMs run THIS session can regress; a baseline ROM that
+                    // wasn't run is simply untested, not a regression.
+                    if entry["status"].as_str() == Some("pass") {
+                        if let Some(&cur) = now.get(p) {
+                            if cur != "pass" {
+                                regressed.push((p.to_string(), cur.to_string()));
+                            }
+                        }
+                    }
+                }
+                if regressed.is_empty() {
+                    eprintln!("baseline OK: no regressions vs {path}");
+                } else {
+                    eprintln!("REGRESSION vs {path}:");
+                    for (p, s) in &regressed {
+                        eprintln!("  {} : pass → {}", short(p), s);
+                    }
+                    std::process::exit(1);
+                }
+            }
         }
         Commands::Dbg {
             rom,

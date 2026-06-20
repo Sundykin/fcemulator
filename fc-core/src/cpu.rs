@@ -38,6 +38,26 @@ struct InterruptPoll {
     i: bool,
 }
 
+/// One executed-instruction trace record, captured at instruction start when
+/// trace mode is on. Formatting (nestest/Nintendulator layout) lives in the
+/// frontend so `fc-core` stays IO-free.
+#[derive(Debug, Clone)]
+pub struct TraceRecord {
+    pub pc: u16,
+    pub bytes: [u8; 3],
+    pub len: u8,
+    /// Disassembled mnemonic + operand, e.g. `JMP $C5F5` (no address prefix).
+    pub op_text: String,
+    pub a: u8,
+    pub x: u8,
+    pub y: u8,
+    pub p: u8,
+    pub sp: u8,
+    pub cycle: u64,
+    pub scanline: u16,
+    pub dot: u16,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Cpu {
     pub a: u8,
@@ -49,6 +69,10 @@ pub struct Cpu {
     pub cycles: u64,
     pub nmi_count: u64,
     pub trace: bool,
+    /// Trace records accumulated while `trace` is on; drained by the frontend.
+    /// Never serialized (transient inspection state).
+    #[serde(skip)]
+    trace_buf: Vec<TraceRecord>,
     /// CPU-internal NMI edge detector output. The PPU/bus owns the raw edge;
     /// the CPU samples it once per CPU cycle and holds it until a poll point.
     nmi_pending: bool,
@@ -78,6 +102,7 @@ impl Cpu {
             cycles: 0,
             nmi_count: 0,
             trace: false,
+            trace_buf: Vec::new(),
             nmi_pending: false,
             irq_sample: false,
             last_poll: InterruptPoll::default(),
@@ -316,16 +341,47 @@ impl Cpu {
             return;
         }
 
-        let pc = self.pc;
-        let opcode = self.fetch(bus);
+        // Capture the pre-instruction state only when tracing — a single
+        // branch-predicted check keeps the hot path free of any trace cost.
         if self.trace {
-            eprintln!(
-                "{:04X}  {:02X}  A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X} CYC:{}",
-                pc, opcode, self.a, self.x, self.y, self.p, self.sp, self.cycles
-            );
+            self.record_trace(bus);
         }
+        let opcode = self.fetch(bus);
         self.execute(bus, opcode);
         self.poll_interrupts();
+    }
+
+    /// Push a trace record for the instruction at `pc` (state as of its start).
+    #[inline(never)]
+    fn record_trace(&mut self, bus: &Bus) {
+        let pc = self.pc;
+        let (full, len) = crate::disasm::disassemble_at(bus, pc);
+        // `disassemble_at` returns "$ADDR: MNEMONIC OPERAND" — drop the prefix.
+        let op_text = full.split_once(": ").map(|(_, s)| s).unwrap_or(&full).to_string();
+        let n = (len as usize).min(3);
+        let mut bytes = [0u8; 3];
+        for (i, b) in bytes.iter_mut().enumerate().take(n) {
+            *b = bus.peek(pc.wrapping_add(i as u16));
+        }
+        self.trace_buf.push(TraceRecord {
+            pc,
+            bytes,
+            len: len as u8,
+            op_text,
+            a: self.a,
+            x: self.x,
+            y: self.y,
+            p: self.p,
+            sp: self.sp,
+            cycle: self.cycles,
+            scanline: bus.ppu.scanline,
+            dot: bus.ppu.dot,
+        });
+    }
+
+    /// Drain accumulated trace records (frontend formats + prints them).
+    pub fn take_trace(&mut self) -> Vec<TraceRecord> {
+        std::mem::take(&mut self.trace_buf)
     }
 
     // ----------------------------------------------------- addressing modes

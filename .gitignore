@@ -12,6 +12,10 @@ node_modules/
 /roms/
 /nes-test-roms/
 /nesgames/
+/libretro-fceumm/
+/fceux/
+/Mesen2/
+/nestopia/
 *.nes
 *.NES
 *.nsf

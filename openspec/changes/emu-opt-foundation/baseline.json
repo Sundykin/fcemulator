@@ -1,0 +1,190 @@
+[
+  {
+    "path": "nes-test-roms/cpu_interrupts_v2/rom_singles/1-cli_latency.nes",
+    "status": "pass"
+  },
+  {
+    "path": "nes-test-roms/cpu_interrupts_v2/rom_singles/2-nmi_and_brk.nes",
+    "status": "pass"
+  },
+  {
+    "path": "nes-test-roms/cpu_interrupts_v2/rom_singles/3-nmi_and_irq.nes",
+    "status": "pass"
+  },
+  {
+    "path": "nes-test-roms/cpu_interrupts_v2/rom_singles/4-irq_and_dma.nes",
+    "status": "pass"
+  },
+  {
+    "path": "nes-test-roms/cpu_interrupts_v2/rom_singles/5-branch_delays_irq.nes",
+    "status": "pass"
+  },
+  {
+    "path": "nes-test-roms/instr_test-v5/rom_singles/01-basics.nes",
+    "status": "pass"
+  },
+  {
+    "path": "nes-test-roms/instr_test-v5/rom_singles/02-implied.nes",
+    "status": "pass"
+  },
+  {
+    "path": "nes-test-roms/instr_test-v5/rom_singles/03-immediate.nes",
+    "status": "pass"
+  },
+  {
+    "path": "nes-test-roms/instr_test-v5/rom_singles/04-zero_page.nes",
+    "status": "pass"
+  },
+  {
+    "path": "nes-test-roms/instr_test-v5/rom_singles/05-zp_xy.nes",
+    "status": "pass"
+  },
+  {
+    "path": "nes-test-roms/instr_test-v5/rom_singles/06-absolute.nes",
+    "status": "pass"
+  },
+  {
+    "path": "nes-test-roms/instr_test-v5/rom_singles/07-abs_xy.nes",
+    "status": "pass"
+  },
+  {
+    "path": "nes-test-roms/instr_test-v5/rom_singles/08-ind_x.nes",
+    "status": "pass"
+  },
+  {
+    "path": "nes-test-roms/instr_test-v5/rom_singles/09-ind_y.nes",
+    "status": "pass"
+  },
+  {
+    "path": "nes-test-roms/instr_test-v5/rom_singles/10-branches.nes",
+    "status": "pass"
+  },
+  {
+    "path": "nes-test-roms/instr_test-v5/rom_singles/11-stack.nes",
+    "status": "pass"
+  },
+  {
+    "path": "nes-test-roms/instr_test-v5/rom_singles/12-jmp_jsr.nes",
+    "status": "pass"
+  },
+  {
+    "path": "nes-test-roms/instr_test-v5/rom_singles/13-rts.nes",
+    "status": "pass"
+  },
+  {
+    "path": "nes-test-roms/instr_test-v5/rom_singles/14-rti.nes",
+    "status": "pass"
+  },
+  {
+    "path": "nes-test-roms/instr_test-v5/rom_singles/15-brk.nes",
+    "status": "pass"
+  },
+  {
+    "path": "nes-test-roms/instr_test-v5/rom_singles/16-special.nes",
+    "status": "pass"
+  },
+  {
+    "path": "nes-test-roms/apu_test/rom_singles/1-len_ctr.nes",
+    "status": "pass"
+  },
+  {
+    "path": "nes-test-roms/apu_test/rom_singles/2-len_table.nes",
+    "status": "pass"
+  },
+  {
+    "path": "nes-test-roms/apu_test/rom_singles/3-irq_flag.nes",
+    "status": "pass"
+  },
+  {
+    "path": "nes-test-roms/apu_test/rom_singles/4-jitter.nes",
+    "status": "pass"
+  },
+  {
+    "path": "nes-test-roms/apu_test/rom_singles/5-len_timing.nes",
+    "status": "pass"
+  },
+  {
+    "path": "nes-test-roms/apu_test/rom_singles/6-irq_flag_timing.nes",
+    "status": "pass"
+  },
+  {
+    "path": "nes-test-roms/apu_test/rom_singles/7-dmc_basics.nes",
+    "status": "pass"
+  },
+  {
+    "path": "nes-test-roms/apu_test/rom_singles/8-dmc_rates.nes",
+    "status": "pass"
+  },
+  {
+    "path": "nes-test-roms/ppu_vbl_nmi/rom_singles/01-vbl_basics.nes",
+    "status": "pass"
+  },
+  {
+    "path": "nes-test-roms/ppu_vbl_nmi/rom_singles/02-vbl_set_time.nes",
+    "status": "pass"
+  },
+  {
+    "path": "nes-test-roms/ppu_vbl_nmi/rom_singles/03-vbl_clear_time.nes",
+    "status": "pass"
+  },
+  {
+    "path": "nes-test-roms/ppu_vbl_nmi/rom_singles/04-nmi_control.nes",
+    "status": "pass"
+  },
+  {
+    "path": "nes-test-roms/ppu_vbl_nmi/rom_singles/05-nmi_timing.nes",
+    "status": "pass"
+  },
+  {
+    "path": "nes-test-roms/ppu_vbl_nmi/rom_singles/06-suppression.nes",
+    "status": "pass"
+  },
+  {
+    "path": "nes-test-roms/ppu_vbl_nmi/rom_singles/07-nmi_on_timing.nes",
+    "status": "pass"
+  },
+  {
+    "path": "nes-test-roms/ppu_vbl_nmi/rom_singles/08-nmi_off_timing.nes",
+    "status": "pass"
+  },
+  {
+    "path": "nes-test-roms/ppu_vbl_nmi/rom_singles/09-even_odd_frames.nes",
+    "status": "pass"
+  },
+  {
+    "path": "nes-test-roms/ppu_vbl_nmi/rom_singles/10-even_odd_timing.nes",
+    "status": "pass"
+  },
+  {
+    "path": "nes-test-roms/mmc3_test/1-clocking.nes",
+    "status": "pass"
+  },
+  {
+    "path": "nes-test-roms/mmc3_test/2-details.nes",
+    "status": "pass"
+  },
+  {
+    "path": "nes-test-roms/mmc3_test/3-A12_clocking.nes",
+    "status": "pass"
+  },
+  {
+    "path": "nes-test-roms/mmc3_test/4-scanline_timing.nes",
+    "status": "pass"
+  },
+  {
+    "path": "nes-test-roms/mmc3_test/5-MMC3.nes",
+    "status": "pass"
+  },
+  {
+    "path": "nes-test-roms/mmc3_test/6-MMC6.nes",
+    "status": "pass"
+  },
+  {
+    "path": "nes-test-roms/sprdma_and_dmc_dma/sprdma_and_dmc_dma_512.nes",
+    "status": "pass"
+  },
+  {
+    "path": "nes-test-roms/sprdma_and_dmc_dma/sprdma_and_dmc_dma.nes",
+    "status": "pass"
+  }
+]

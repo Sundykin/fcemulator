@@ -31,6 +31,7 @@ pub use apu::ApuPreview;
 pub use cartridge::{Cartridge, CartridgeError};
 pub use cheat::Cheat;
 pub use control_deck::ControlDeck;
+pub use cpu::TraceRecord;
 pub use debug::{BpKind, Breakpoint, Debugger};
 pub use palette::{Palette, Rgb};
 pub use types::{Button, Mirroring, Region, SCREEN_HEIGHT, SCREEN_WIDTH};

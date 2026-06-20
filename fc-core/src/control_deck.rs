@@ -92,6 +92,17 @@ impl ControlDeck {
         self.cpu.step(&mut self.bus);
     }
 
+    /// Enable/disable per-instruction execution tracing. When off, the hot path
+    /// pays nothing; when on, records accumulate for `take_trace`.
+    pub fn set_trace(&mut self, on: bool) {
+        self.cpu.trace = on;
+    }
+
+    /// Drain the trace records captured since the last call.
+    pub fn take_trace(&mut self) -> Vec<crate::cpu::TraceRecord> {
+        self.cpu.take_trace()
+    }
+
     fn apply_cheats(&mut self) {
         if self.cheats.is_empty() {
             return;
