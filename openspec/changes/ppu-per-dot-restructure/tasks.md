@@ -54,6 +54,15 @@
 
 ## Notes / deferred (separate changes)
 
-- L1.3 u32 framebuffer LUT direct-out (touches all frontends)
-- L1.4 debug-hook dual path; PAL/Dendy true scanline count; further
-  `run_render_pipeline` micro-opts (sub-1%, not pursued — churn/noise not worth it)
+- L1.3 **frontend** u32 framebuffer direct-out (changes `frame_buffer` to
+  `Vec<u32>`, touches all four frontends) — the PPU-side LUT is done above.
+- L1.4 debug-hook dual path; PAL/Dendy true scanline count.
+
+## Rejected (measured, kept out)
+
+- **`run_render_pipeline` dot-range split** (segment by `dot<=257 / <=320 / <=337`
+  + extract `load_tile_info`, mirroring Mesen `ProcessScanlineImpl`). Byte-exact
+  (trace 0-diff ×3) but a **consistent best-of-5 regression** — SMB −2.3%,
+  TMNT −1.4%, DD3 −0.5% — even with `#[inline]`. The flat sequence of
+  independent `if`s codegens/predicts better than the `if/else-if` range chain on
+  this CPU. Reverted; do not re-attempt without a profile-backed reason.
