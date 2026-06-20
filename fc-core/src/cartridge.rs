@@ -41,6 +41,11 @@ pub struct Cartridge {
     pub has_battery: bool,
     pub mapper_number: u16,
     pub mapper: Mapper,
+    /// Cached `mapper.watches_ppu_bus()` — lets the PPU skip the per-fetch
+    /// `notify_a12` call for mappers that don't react to the PPU bus. Derived
+    /// state, re-set on load via `refresh_mapper_caps`.
+    #[serde(skip)]
+    pub mapper_watches_ppu_bus: bool,
     /// Header-declared (fixed) mirroring; live mirroring comes from the mapper.
     pub header_mirroring: Mirroring,
     pub is_nes20: bool,
@@ -122,6 +127,7 @@ impl Cartridge {
 
         let mapper = Mapper::new(mapper_number, prg_16k, chr_8k, header_mirroring)
             .map_err(CartridgeError::UnsupportedMapper)?;
+        let mapper_watches_ppu_bus = mapper.watches_ppu_bus();
 
         Ok(Cartridge {
             prg_rom,
@@ -132,10 +138,17 @@ impl Cartridge {
             has_battery,
             mapper_number,
             mapper,
+            mapper_watches_ppu_bus,
             header_mirroring,
             is_nes20,
             patches: HashMap::new(),
         })
+    }
+
+    /// Re-derive cached mapper capabilities. Call after a save-state load, which
+    /// replaces `mapper` wholesale (the cache is `#[serde(skip)]`).
+    pub fn refresh_mapper_caps(&mut self) {
+        self.mapper_watches_ppu_bus = self.mapper.watches_ppu_bus();
     }
 
     /// A minimal valid NROM ROM (used as a placeholder before a game loads).
@@ -273,5 +286,33 @@ mod tests {
         assert!(MAPPER_CORRECTIONS
             .iter()
             .any(|c| c.crc32 == 0xD0F6_CBCF && c.mapper == 194));
+    }
+
+    /// Build a minimal mapper-4 (MMC3) iNES image: 2×16K PRG + 1×8K CHR.
+    fn mmc3_rom() -> Vec<u8> {
+        let mut rom = vec![0u8; 16 + 2 * 0x4000 + 0x2000];
+        rom[0..4].copy_from_slice(&INES_MAGIC);
+        rom[4] = 2; // PRG 16K banks
+        rom[5] = 1; // CHR 8K banks
+        rom[6] = 0x40; // mapper low nibble = 4
+        rom
+    }
+
+    #[test]
+    fn mapper_watches_ppu_bus_cache_set_and_refreshed() {
+        let cart = Cartridge::from_bytes(&mmc3_rom()).expect("mmc3 rom");
+        // MMC3 hooks the PPU bus → cache must be set at construction.
+        assert!(cart.mapper_watches_ppu_bus);
+
+        // Simulate a load-state: the #[serde(skip)] cache deserializes to false;
+        // refresh_mapper_caps must restore it from the (correct) mapper so the
+        // PPU's notify_a12 fast path keeps clocking the MMC3 IRQ.
+        let mut loaded = cart;
+        loaded.mapper_watches_ppu_bus = false;
+        loaded.refresh_mapper_caps();
+        assert!(loaded.mapper_watches_ppu_bus);
+
+        // NROM does not hook the bus.
+        assert!(!Cartridge::empty().mapper_watches_ppu_bus);
     }
 }

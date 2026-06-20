@@ -998,7 +998,11 @@ impl Ppu {
         };
         // Notify after the fetch: MMC2/4 CHR latch must affect the *next* read,
         // and MMC3 A12 edge detection is unaffected by intra-access ordering.
-        cart.mapper.notify_a12(addr, self.master_cycle);
+        // Skip the call entirely for mappers that ignore the PPU bus (the common
+        // case — NROM/MMC1/UNROM/…), where it is a no-op.
+        if cart.mapper_watches_ppu_bus {
+            cart.mapper.notify_a12(addr, self.master_cycle);
+        }
         v
     }
 
@@ -1015,7 +1019,9 @@ impl Ppu {
 
     fn ppu_write(&mut self, cart: &mut Cartridge, addr: u16, value: u8) {
         let addr = addr & 0x3FFF;
-        cart.mapper.notify_a12(addr, self.master_cycle);
+        if cart.mapper_watches_ppu_bus {
+            cart.mapper.notify_a12(addr, self.master_cycle);
+        }
         match addr {
             0x0000..=0x1FFF => cart.ppu_write(addr, value),
             0x2000..=0x3EFF => {
@@ -1099,7 +1105,9 @@ impl Ppu {
                     self.refresh_open_bus_bits(r, 0x3F);
                 }
                 self.v = self.v.wrapping_add(self.addr_increment());
-                cart.mapper.notify_a12(self.v & 0x3FFF, self.master_cycle);
+                if cart.mapper_watches_ppu_bus {
+                    cart.mapper.notify_a12(self.v & 0x3FFF, self.master_cycle);
+                }
                 r
             }
             _ => self.open_bus_value(),
@@ -1157,14 +1165,18 @@ impl Ppu {
                     self.v = self.t;
                     self.w = false;
                     // Setting the VRAM address puts it on the PPU bus → A12.
-                    cart.mapper.notify_a12(self.v & 0x3FFF, self.master_cycle);
+                    if cart.mapper_watches_ppu_bus {
+                        cart.mapper.notify_a12(self.v & 0x3FFF, self.master_cycle);
+                    }
                 }
             }
             7 => {
                 let addr = self.v & 0x3FFF;
                 self.ppu_write(cart, addr, value);
                 self.v = self.v.wrapping_add(self.addr_increment());
-                cart.mapper.notify_a12(self.v & 0x3FFF, self.master_cycle);
+                if cart.mapper_watches_ppu_bus {
+                    cart.mapper.notify_a12(self.v & 0x3FFF, self.master_cycle);
+                }
             }
             _ => {}
         }

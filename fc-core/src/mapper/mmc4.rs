@@ -64,6 +64,9 @@ impl MapperOps for Mmc4 {
     fn mirroring(&self) -> Mirroring {
         self.mirroring
     }
+    fn watches_ppu_bus(&self) -> bool {
+        true // CHR latch driven by PPU fetch addresses
+    }
     fn notify_a12(&mut self, addr: u16, _cycle: u64) {
         // MMC4 latches on a range (vs MMC2's exact address).
         match addr {

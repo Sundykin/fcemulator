@@ -304,6 +304,10 @@ impl ControlDeck {
                 let render_options = self.bus.ppu.render_options();
                 self.cpu = s.cpu;
                 self.bus = s.bus;
+                // `mapper_watches_ppu_bus` is #[serde(skip)] — re-derive it from
+                // the freshly-deserialized mapper so the PPU's notify_a12 fast
+                // path stays correct after a load (esp. for MMC3/MMC2/4/5 saves).
+                self.bus.cartridge.refresh_mapper_caps();
                 self.bus.ppu.palette = palette;
                 self.bus.ppu.set_render_options(render_options);
                 self.bus.ppu.frame_buffer = vec![0; 256 * 240 * 4];

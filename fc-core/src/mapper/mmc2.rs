@@ -65,6 +65,9 @@ impl MapperOps for Mmc2 {
     fn mirroring(&self) -> Mirroring {
         self.mirroring
     }
+    fn watches_ppu_bus(&self) -> bool {
+        true // CHR latch driven by PPU fetch addresses
+    }
     fn notify_a12(&mut self, addr: u16, _cycle: u64) {
         match addr {
             0x0FD8 => self.latch0 = 0,

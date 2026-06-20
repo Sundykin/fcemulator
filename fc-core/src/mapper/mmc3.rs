@@ -284,6 +284,9 @@ impl MapperOps for Mmc3 {
         self.mirroring
     }
 
+    fn watches_ppu_bus(&self) -> bool {
+        true // A12 rising edge clocks the scanline IRQ counter
+    }
     fn notify_a12(&mut self, addr: u16, cycle: u64) {
         let a12 = addr & 0x1000 != 0;
         if a12 && !self.a12_prev {

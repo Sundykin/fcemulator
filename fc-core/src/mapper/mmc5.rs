@@ -349,6 +349,9 @@ impl MapperOps for Mmc5 {
         Mirroring::FourScreen
     }
 
+    fn watches_ppu_bus(&self) -> bool {
+        true // A12 edge drives the scanline IRQ counter
+    }
     fn notify_a12(&mut self, addr: u16, _cycle: u64) {
         let a12 = addr & 0x1000 != 0;
         if a12 && !self.last_a12 {

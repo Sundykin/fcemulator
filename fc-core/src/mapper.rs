@@ -70,6 +70,14 @@ pub trait MapperOps {
     /// PPU dot counter). MMC3 uses the A12 (bit 12) rising edge to clock its
     /// scanline IRQ counter; other mappers ignore it.
     fn notify_a12(&mut self, _addr: u16, _cycle: u64) {}
+    /// Whether this mapper reacts to addresses on the PPU bus — i.e. whether
+    /// `notify_a12` does anything (MMC3 A12 IRQ, MMC2/4 CHR latch, MMC5). The PPU
+    /// caches this once and skips the per-fetch `notify_a12` call entirely for
+    /// mappers that don't (NROM/MMC1/UNROM/CNROM/AxROM/GxROM/…). MUST be `true`
+    /// for every mapper that overrides `notify_a12`.
+    fn watches_ppu_bus(&self) -> bool {
+        false
+    }
     /// Clock the mapper once per CPU cycle. Konami VRC IRQs count CPU cycles (or
     /// scanlines via a CPU-cycle prescaler) rather than A12 edges; most mappers
     /// ignore it.
@@ -213,6 +221,9 @@ impl MapperOps for Mapper {
     fn notify_a12(&mut self, addr: u16, cycle: u64) {
         dispatch!(self, m => m.notify_a12(addr, cycle))
     }
+    fn watches_ppu_bus(&self) -> bool {
+        dispatch!(self, m => m.watches_ppu_bus())
+    }
     fn cpu_clock(&mut self) {
         dispatch!(self, m => m.cpu_clock())
     }
@@ -221,5 +232,36 @@ impl MapperOps for Mapper {
     }
     fn clear_irq(&mut self) {
         dispatch!(self, m => m.clear_irq())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Locks the `watches_ppu_bus` table to exactly the mappers that override
+    /// `notify_a12`. If a new mapper hooks the PPU bus, add it here AND set its
+    /// flag, or the PPU fast path will silently drop its A12/CHR-latch events.
+    #[test]
+    fn watches_ppu_bus_matches_notify_a12_overrides() {
+        let mir = Mirroring::Horizontal;
+        let cases = [
+            (0u16, false), // NROM
+            (1, false),    // MMC1
+            (2, false),    // UNROM
+            (3, false),    // CNROM
+            (7, false),    // AxROM
+            (11, false),   // ColorDreams
+            (66, false),   // GxROM
+            (71, false),   // Codemasters
+            (4, true),     // MMC3
+            (5, true),     // MMC5
+            (9, true),     // MMC2
+            (10, true),    // MMC4
+        ];
+        for (num, expected) in cases {
+            let m = Mapper::new(num, 2, 1, mir).expect("construct mapper");
+            assert_eq!(m.watches_ppu_bus(), expected, "mapper {num}");
+        }
     }
 }
