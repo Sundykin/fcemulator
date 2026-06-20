@@ -34,6 +34,27 @@ function saveLastMode(m: PMode) {
   }
 }
 
+// Chosen NES system palette. We persist the display name (a built-in) plus, for
+// a user-loaded `.pal`, its raw bytes so the choice survives a restart.
+const PALETTE_KEY = "fc:palette";
+const PALETTE_CUSTOM_KEY = "fc:paletteCustom";
+const DEFAULT_PALETTE_NAME = "Smooth (FBX)";
+function loadPaletteName(): string {
+  try {
+    return localStorage.getItem(PALETTE_KEY) || DEFAULT_PALETTE_NAME;
+  } catch {
+    return DEFAULT_PALETTE_NAME;
+  }
+}
+function loadCustomPaletteBytes(): number[] | null {
+  try {
+    const s = localStorage.getItem(PALETTE_CUSTOM_KEY);
+    return s ? (JSON.parse(s) as number[]) : null;
+  } catch {
+    return null;
+  }
+}
+
 // Keyboard code → controller bit (matches Button::bit in fc-core).
 const KEY_MAP: Record<string, number> = {
   KeyZ: 0,
@@ -65,6 +86,8 @@ export const useEmuStore = defineStore("emu", {
       scanline: false,
       removeSpriteLimit: true, // default on — fewer sprite flicker; toggle in 控制面板
     },
+    palette: loadPaletteName(), // chosen NES system palette (display name, or 自定义)
+    paletteList: [] as string[], // built-in palette names (fetched at startup)
     fps: 0,
     status: "还没有打开游戏",
     held: new Set<string>(),
@@ -177,6 +200,53 @@ export const useEmuStore = defineStore("emu", {
     setRemoveSpriteLimit(enabled: boolean) {
       this.display.removeSpriteLimit = enabled;
       emu.setRemoveSpriteLimit(enabled);
+    },
+    // Fetch the built-in palette list and apply the persisted choice on startup.
+    // The core keeps the palette across ROM swaps, so applying once is enough.
+    async initPalettes() {
+      try {
+        this.paletteList = await emu.listPalettes();
+      } catch {
+        /* backend not ready — best-effort */
+      }
+      const custom = loadCustomPaletteBytes();
+      if (custom) {
+        try {
+          await emu.loadPaletteFile(custom);
+          return;
+        } catch {
+          /* fall through to a built-in */
+        }
+      }
+      this.setPalette(this.palette);
+    },
+    // Apply a built-in palette by display name and persist it.
+    setPalette(name: string) {
+      this.palette = name;
+      try {
+        localStorage.setItem(PALETTE_KEY, name);
+        localStorage.removeItem(PALETTE_CUSTOM_KEY);
+      } catch {
+        /* best-effort */
+      }
+      emu.setPalette(name);
+    },
+    // Apply a user-loaded `.pal` (raw bytes) and persist it for next launch.
+    async loadCustomPalette(bytes: number[], label: string) {
+      const ok = await emu.loadPaletteFile(bytes);
+      if (!ok) {
+        this.status = "调色板文件无效（需 192 或 1536 字节）";
+        return false;
+      }
+      this.palette = label;
+      try {
+        localStorage.setItem(PALETTE_KEY, label);
+        localStorage.setItem(PALETTE_CUSTOM_KEY, JSON.stringify(bytes));
+      } catch {
+        /* best-effort */
+      }
+      this.status = `已加载调色板：${label}`;
+      return true;
     },
     async save() {
       await emu.saveState("1");

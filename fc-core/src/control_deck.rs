@@ -39,8 +39,10 @@ impl ControlDeck {
     pub fn load_rom(&mut self, data: &[u8]) -> Result<(), CartridgeError> {
         let cart = Cartridge::from_bytes(data)?;
         let render_options = self.bus.ppu.render_options();
+        let palette = self.bus.ppu.palette.clone();
         self.bus = Bus::new(cart, self.region);
         self.bus.ppu.set_render_options(render_options);
+        self.bus.ppu.palette = palette; // keep the user's chosen palette across ROM swaps
         self.cpu = Cpu::new();
         self.cpu.power_on(&mut self.bus);
         self.running = true;

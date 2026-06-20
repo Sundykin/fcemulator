@@ -57,6 +57,10 @@ export const control = (action: "pause" | "resume" | "reset" | "step") => invoke
 export const setSpeed = (mult: number) => invoke("set_speed", { mult });
 export const setVolume = (volume: number) => invoke("set_volume", { volume });
 export const setRemoveSpriteLimit = (enabled: boolean) => invoke("set_remove_sprite_limit", { enabled });
+export const listPalettes = () => invoke<string[]>("list_palettes");
+export const setPalette = (name: string) => invoke<boolean>("set_palette", { name });
+export const loadPaletteFile = (bytes: number[]) => invoke<boolean>("load_palette_file", { bytes });
+export const palettePreview = (name: string) => invoke<ArrayBuffer>("palette_preview", { name });
 export const screenshot = () => invoke<string>("screenshot");
 export const exportStateTo = (path: string) => invoke("export_state", { path });
 export const importStateFrom = (path: string) => invoke("import_state", { path });

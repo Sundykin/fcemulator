@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { ref, computed } from "vue";
 import { NSelect, NSwitch } from "naive-ui";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import Icon from "./Icon.vue";
@@ -7,6 +7,33 @@ import { useEmuStore } from "../stores/emu";
 
 const store = useEmuStore();
 const tab = ref<"control" | "info">("control");
+
+// Palette picker — built-ins from the backend, plus a "load .pal file" option.
+const paletteOpts = computed(() => {
+  const opts = store.paletteList.map((n) => ({ label: n, value: n }));
+  // If the active palette is a custom file, keep it shown in the select.
+  if (store.palette && !store.paletteList.includes(store.palette)) {
+    opts.unshift({ label: store.palette, value: store.palette });
+  }
+  return opts;
+});
+const palFile = ref<HTMLInputElement | null>(null);
+function pickPaletteFile() {
+  palFile.value?.click();
+}
+async function onPaletteFile(e: Event) {
+  const input = e.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+  const buf = new Uint8Array(await file.arrayBuffer());
+  if (buf.length !== 192 && buf.length !== 1536) {
+    store.status = "调色板文件需为 192 或 1536 字节";
+    input.value = "";
+    return;
+  }
+  await store.loadCustomPalette(Array.from(buf), `自定义: ${file.name}`);
+  input.value = "";
+}
 
 // Virtual gamepad — pointer down/up toggle controller bits in the store.
 const press = (bit: number) => store.padDown(bit);
@@ -90,6 +117,9 @@ const zoomOpts = [
           <div class="row"><span>缩放</span><n-select v-model:value="store.display.zoom" :options="zoomOpts" size="small" /></div>
           <div class="row"><span>扫描线</span><n-switch v-model:value="store.display.scanline" size="small" /></div>
           <div class="row"><span>减少闪烁</span><n-switch :value="store.display.removeSpriteLimit" size="small" @update:value="store.setRemoveSpriteLimit" /></div>
+          <div class="row"><span>调色板</span><n-select :value="store.palette" :options="paletteOpts" size="small" filterable @update:value="store.setPalette" /></div>
+          <div class="row"><span></span><button class="loadpal" @click="pickPaletteFile">加载 .pal 文件…</button></div>
+          <input ref="palFile" type="file" accept=".pal" style="display: none" @change="onPaletteFile" />
         </div>
       </template>
 
@@ -292,6 +322,21 @@ const zoomOpts = [
 }
 .settings .row :deep(.n-select) {
   width: 168px;
+}
+.loadpal {
+  width: 168px;
+  height: 28px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text-dim);
+  font-size: 12px;
+  cursor: pointer;
+  transition: 0.12s;
+}
+.loadpal:hover {
+  border-color: var(--accent);
+  color: var(--text);
 }
 
 /* info */

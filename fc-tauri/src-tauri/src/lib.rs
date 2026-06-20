@@ -5,6 +5,7 @@ mod converters;
 mod emu;
 mod famistudio;
 mod map;
+mod palettes;
 mod project;
 mod storage;
 mod tracker;
@@ -48,6 +49,10 @@ pub fn run() {
             emu::set_speed,
             emu::set_volume,
             emu::set_remove_sprite_limit,
+            emu::list_palettes,
+            emu::set_palette,
+            emu::palette_preview,
+            emu::load_palette_file,
             emu::screenshot,
             emu::export_state,
             emu::import_state,

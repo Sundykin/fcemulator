@@ -36,6 +36,7 @@ function onEsc(e: KeyboardEvent) {
 
 onMounted(() => {
   library.refresh();
+  store.initPalettes();
   window.addEventListener("keydown", onEsc);
   if (import.meta.env.DEV) {
     const w = window as unknown as {

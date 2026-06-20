@@ -406,6 +406,39 @@ pub fn set_remove_sprite_limit(enabled: bool, state: State<EmuState>) {
         .set_remove_sprite_limit(enabled);
 }
 
+/// Names of all built-in NES system palettes (Smooth (FBX) first = default).
+#[tauri::command]
+pub fn list_palettes() -> Vec<String> {
+    crate::palettes::names()
+}
+
+/// Apply a built-in palette by name to the running emulator. The choice
+/// persists across ROM swaps (the core keeps the palette on load). Returns
+/// false if the name is unknown or the `.pal` data is malformed.
+#[tauri::command]
+pub fn set_palette(name: String, state: State<EmuState>) -> bool {
+    match crate::palettes::data_for(&name) {
+        Some(data) => state.shared.deck.lock().unwrap().load_palette_file(data),
+        None => false,
+    }
+}
+
+/// Apply a user-supplied `.pal` file (raw bytes, 192 or 1536 long).
+#[tauri::command]
+pub fn load_palette_file(bytes: Vec<u8>, state: State<EmuState>) -> bool {
+    state.shared.deck.lock().unwrap().load_palette_file(&bytes)
+}
+
+/// The 64 RGB colors of a built-in palette, as a flat 192-byte buffer — lets the
+/// UI draw a swatch strip without loading it into the emulator.
+#[tauri::command]
+pub fn palette_preview(name: String) -> Response {
+    let bytes = crate::palettes::data_for(&name)
+        .map(|d| d[..192.min(d.len())].to_vec())
+        .unwrap_or_default();
+    Response::new(bytes)
+}
+
 /// Encode the current frame to PNG and save it under <app_data>/screenshots/.
 #[tauri::command]
 pub fn screenshot(app: AppHandle, state: State<EmuState>) -> Result<String, String> {
