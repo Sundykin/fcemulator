@@ -16,6 +16,7 @@ const disasmBase = ref(0); // stable anchor; re-anchored only when PC leaves the
 const disasmEl = ref<HTMLElement | null>(null);
 const ppuApu = ref<emu.PpuApuState | null>(null);
 const preview = ref<HTMLCanvasElement | null>(null);
+let previewFrameId = 0;
 
 const hex = (v: number, w = 2) => v.toString(16).toUpperCase().padStart(w, "0");
 const flags = computed(() => {
@@ -63,10 +64,12 @@ async function refresh() {
     nextTick(() => disasmEl.value?.querySelector(".dline.cur")?.scrollIntoView({ block: "nearest" }));
 
     ppuApu.value = await emu.ppuApuState();
-    const buf = await emu.pollFrame();
+    const buf = await emu.pollFrame(previewFrameId);
     const ctx = preview.value?.getContext("2d");
-    if (ctx && buf.byteLength === 256 * 240 * 4) {
-      ctx.putImageData(new ImageData(new Uint8ClampedArray(buf), 256, 240), 0, 0);
+    if (ctx && buf.byteLength >= 8 + 256 * 240 * 4) {
+      const view = new DataView(buf, 0, 8);
+      previewFrameId = Number(view.getBigUint64(0, true));
+      ctx.putImageData(new ImageData(new Uint8ClampedArray(buf.slice(8)), 256, 240), 0, 0);
     }
   } catch {
     /* not under Tauri / no rom */

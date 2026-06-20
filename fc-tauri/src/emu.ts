@@ -96,7 +96,7 @@ export const listCheats = () => invoke<CheatItem[]>("list_cheats");
 export const setCheatEnabled = (idx: number, on: boolean) => invoke("set_cheat_enabled", { idx, on });
 export const removeCheat = (idx: number) => invoke("remove_cheat", { idx });
 
-export const pollFrame = () => invoke<ArrayBuffer>("poll_frame");
+export const pollFrame = (lastId: number) => invoke<ArrayBuffer>("poll_frame", { lastId });
 export const dbgPattern = (table: number, pal: number) => invoke<ArrayBuffer>("dbg_pattern", { table, pal });
 export const dbgNametable = () => invoke<ArrayBuffer>("dbg_nametable");
 export const dbgOam = () => invoke<ArrayBuffer>("dbg_oam");

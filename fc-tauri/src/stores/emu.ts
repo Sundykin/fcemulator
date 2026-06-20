@@ -63,13 +63,14 @@ export const useEmuStore = defineStore("emu", {
       aspect: "orig" as "orig" | "square" | "stretch",
       zoom: "auto" as "auto" | "2x" | "3x",
       scanline: false,
-      removeSpriteLimit: false,
+      removeSpriteLimit: true, // default on — fewer sprite flicker; toggle in 控制面板
     },
     fps: 0,
     status: "还没有打开游戏",
     held: new Set<string>(),
     pad: 0, // virtual-gamepad bits (OR'd with keyboard)
     seq: 0,
+    lastSentInput: -1,
   }),
   getters: {
     hasRom: (s) => s.rom !== null,
@@ -130,6 +131,9 @@ export const useEmuStore = defineStore("emu", {
       this.rom = info;
       this.paused = false;
       this.navPaused = false;
+      // Re-assert backend-side display settings for the freshly loaded game.
+      emu.setRemoveSpriteLimit(this.display.removeSpriteLimit);
+      this.sendInput(true);
       this.panel = ""; // fresh session, no drawer open
       if (!keepMode) {
         this.mode = "player"; // opening a ROM lands on the game page
@@ -191,7 +195,7 @@ export const useEmuStore = defineStore("emu", {
       if (!(code in KEY_MAP)) return false;
       if (this.held.has(code)) return true;
       this.held.add(code);
-      this.sendInput();
+      this.sendInput(true);
       return true;
     },
     keyUp(code: string): boolean {
@@ -213,9 +217,11 @@ export const useEmuStore = defineStore("emu", {
       this.pad &= ~(1 << bit);
       this.sendInput();
     },
-    sendInput() {
+    sendInput(force = false) {
       let p1 = this.pad;
       this.held.forEach((c) => (p1 |= 1 << KEY_MAP[c]));
+      if (!force && p1 === this.lastSentInput) return;
+      this.lastSentInput = p1;
       emu.setInput(p1, 0, ++this.seq);
     },
   },

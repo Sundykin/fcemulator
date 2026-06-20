@@ -14,6 +14,8 @@ export function useEmuLoop(stage: Ref<HTMLElement | null>) {
   let fpsTimer = 0;
   let fpsCount = 0;
   let creating = false;
+  let polling = false;
+  let lastFrameId = 0;
 
   function applySettings() {
     renderer?.setSettings({
@@ -46,18 +48,23 @@ export function useEmuLoop(stage: Ref<HTMLElement | null>) {
     // (pollFrame is ~0.3 ms, so frames never overlap).
     raf = requestAnimationFrame(loop);
     try {
-      store.sendInput(); // per-frame input heartbeat (seq-guarded on the backend)
-      if (renderer) {
+      if (renderer && !polling) {
+        polling = true;
         emu
-          .pollFrame()
+          .pollFrame(lastFrameId)
           .then((buf) => {
-            if (renderer) {
-              renderer.update(buf);
+            if (renderer && buf.byteLength >= 8 + 256 * 240 * 4) {
+              const view = new DataView(buf, 0, 8);
+              lastFrameId = Number(view.getBigUint64(0, true));
+              renderer.update(buf.slice(8));
               fpsCount++;
             }
           })
           .catch(() => {
             /* ignore transient IPC errors */
+          })
+          .finally(() => {
+            polling = false;
           });
       }
     } catch {

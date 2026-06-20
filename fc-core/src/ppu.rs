@@ -661,6 +661,13 @@ impl Ppu {
         if !self.render_options.remove_sprite_limit || self.scanline >= 240 {
             return;
         }
+        // Only the 8-sprite limit causes flicker, so the expensive 64-sprite
+        // rescan is only needed when this scanline actually overflowed. With
+        // ≤7 sprites the normal evaluation already holds them all — render falls
+        // back to it (enhanced_line stays unset for the next line).
+        if self.sprite_count < 8 {
+            return;
+        }
 
         let line = self.scanline;
         self.enhanced_sprites.clear();

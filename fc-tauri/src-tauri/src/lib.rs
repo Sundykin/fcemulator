@@ -26,8 +26,13 @@ pub fn run() {
         // start_socket_server defaults to false in PluginConfig::default(); use
         // PluginConfig::new(..) (sets it true) + a fixed socket path so the
         // `fc tauri-bridge` MCP server can always find it.
+        let sock = std::path::PathBuf::from("/tmp/fc-tauri-mcp.sock");
+        // The plugin panics with "address already in use" if a stale socket file
+        // is left behind by a crashed/orphaned dev instance (the `tauri dev`
+        // restart gotcha). Remove it before binding so restarts never collide.
+        let _ = std::fs::remove_file(&sock);
         let cfg = tauri_plugin_mcp_gui::PluginConfig::new("fc-emulator".into())
-            .socket_path(std::path::PathBuf::from("/tmp/fc-tauri-mcp.sock"));
+            .socket_path(sock);
         builder = builder.plugin(tauri_plugin_mcp_gui::init_with_config(cfg));
     }
     builder

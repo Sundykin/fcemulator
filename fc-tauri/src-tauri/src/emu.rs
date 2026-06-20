@@ -11,7 +11,7 @@ use serde::Serialize;
 use serde_json::json;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::ipc::Response;
@@ -29,6 +29,10 @@ fn data_dir(app: &AppHandle) -> PathBuf {
         .app_data_dir()
         .unwrap_or_else(|_| PathBuf::from("."))
 }
+
+const LOW_LATENCY_AUDIO_TARGET_SECS: f64 = 0.020;
+const AUDIO_CATCHUP_CAP_FRAMES: u32 = 3;
+const IDLE_WORKER_SLEEP: Duration = Duration::from_millis(5);
 
 struct Ctrl {
     running: bool,
@@ -49,12 +53,19 @@ struct Inp {
     pad: [u8; 2],
 }
 
+struct FrameSlot {
+    id: u64,
+    rgba: Vec<u8>,
+}
+
 struct Shared {
     deck: Mutex<ControlDeck>,
     input: Mutex<Inp>,
-    frame: Mutex<Vec<u8>>,
+    frame: Mutex<FrameSlot>,
     ctrl: Mutex<Ctrl>,
     rom_id: Mutex<String>,
+    wake: Condvar,
+    wake_flag: Mutex<bool>,
 }
 
 pub struct EmuState {
@@ -71,7 +82,10 @@ impl EmuState {
                 kb_seq: 0,
                 pad: [0, 0],
             }),
-            frame: Mutex::new(vec![0u8; 256 * 240 * 4]),
+            frame: Mutex::new(FrameSlot {
+                id: 0,
+                rgba: vec![0u8; 256 * 240 * 4],
+            }),
             ctrl: Mutex::new(Ctrl {
                 running: false,
                 paused: false,
@@ -81,6 +95,8 @@ impl EmuState {
                 volume: 0.8,
             }),
             rom_id: Mutex::new(String::new()),
+            wake: Condvar::new(),
+            wake_flag: Mutex::new(false),
         });
         let state = EmuState {
             shared: shared.clone(),
@@ -101,6 +117,32 @@ impl EmuState {
     }
 }
 
+fn wake_worker(shared: &Shared) {
+    *shared.wake_flag.lock().unwrap() = true;
+    shared.wake.notify_one();
+}
+
+fn wait_worker(shared: &Shared, timeout: Duration) {
+    let mut guard = shared.wake_flag.lock().unwrap();
+    if *guard {
+        *guard = false;
+        return;
+    }
+    let (mut guard, _) = shared.wake.wait_timeout(guard, timeout).unwrap();
+    *guard = false;
+}
+
+fn merged_input(shared: &Shared) -> [u8; 2] {
+    let i = shared.input.lock().unwrap();
+    [i.kb[0] | i.pad[0], i.kb[1] | i.pad[1]]
+}
+
+fn publish_frame(shared: &Shared, rgba: Vec<u8>) {
+    let mut frame = shared.frame.lock().unwrap();
+    frame.rgba = rgba;
+    frame.id = frame.id.wrapping_add(1);
+}
+
 /// Poll the first connected gamepad natively (~500 Hz) and publish controller-1
 /// bits. No IPC, no macOS permission (gilrs uses IOKit HID).
 fn gamepad_thread(shared: Arc<Shared>) {
@@ -109,6 +151,7 @@ fn gamepad_thread(shared: Arc<Shared>) {
         Ok(g) => g,
         Err(_) => return,
     };
+    let mut last_bits = 0u8;
     loop {
         while gilrs.next_event().is_some() {} // pump events to refresh state
         let mut bits = 0u8;
@@ -128,7 +171,11 @@ fn gamepad_thread(shared: Arc<Shared>) {
             set(gp.is_pressed(Button::DPadLeft) || gp.value(Axis::LeftStickX) < -dz, 6, &mut bits);
             set(gp.is_pressed(Button::DPadRight) || gp.value(Axis::LeftStickX) > dz, 7, &mut bits);
         }
-        shared.input.lock().unwrap().pad[0] = bits;
+        if bits != last_bits {
+            shared.input.lock().unwrap().pad[0] = bits;
+            last_bits = bits;
+            wake_worker(&shared);
+        }
         thread::sleep(Duration::from_millis(2));
     }
 }
@@ -164,16 +211,13 @@ fn worker(shared: Arc<Shared>) {
         };
 
         if running && (!paused || do_step) {
-            let inp = {
-                let i = shared.input.lock().unwrap();
-                [i.kb[0] | i.pad[0], i.kb[1] | i.pad[1]]
-            };
             let (fb, halted) = {
                 let mut deck = shared.deck.lock().unwrap();
-                deck.set_controller_state(0, inp[0]);
-                deck.set_controller_state(1, inp[1]);
                 let mut ran = 0u32;
                 if do_step {
+                    let inp = merged_input(&shared);
+                    deck.set_controller_state(0, inp[0]);
+                    deck.set_controller_state(1, inp[1]);
                     if deck.run_frame() {
                         let mut s = deck.drain_audio();
                         apply_volume(&mut s, volume);
@@ -183,13 +227,22 @@ fn worker(shared: Arc<Shared>) {
                     }
                     ran = 1;
                 } else if let Some(a) = &audio {
-                    // Audio-clock paced: run frames until the buffer holds ~50 ms.
+                    // Audio-clock paced: run frames until the buffer reaches a
+                    // small low-latency target. Input is sampled before every
+                    // frame, so catch-up never runs a batch on stale buttons.
                     // Under fast-forward (speed>1) run `speed` frames regardless
                     // and let queue() drop the overflow, so FF doesn't stall on
                     // the buffer. The `cap` bounds catch-up after a stall.
-                    let target = (a.sample_rate * 0.05) as usize;
-                    let cap = if speed > 1 { speed } else { 6 };
+                    let target = (a.sample_rate * LOW_LATENCY_AUDIO_TARGET_SECS) as usize;
+                    let cap = if speed > 1 {
+                        speed
+                    } else {
+                        AUDIO_CATCHUP_CAP_FRAMES
+                    };
                     while ran < cap && (speed > 1 || a.buffered() < target) {
+                        let inp = merged_input(&shared);
+                        deck.set_controller_state(0, inp[0]);
+                        deck.set_controller_state(1, inp[1]);
                         if !deck.run_frame() {
                             break; // halted at a breakpoint
                         }
@@ -201,6 +254,9 @@ fn worker(shared: Arc<Shared>) {
                 } else {
                     // No audio device: wall-clock paced, `speed` frames per tick.
                     for _ in 0..speed {
+                        let inp = merged_input(&shared);
+                        deck.set_controller_state(0, inp[0]);
+                        deck.set_controller_state(1, inp[1]);
                         if !deck.run_frame() {
                             break;
                         }
@@ -212,7 +268,7 @@ fn worker(shared: Arc<Shared>) {
                 (fb, deck.is_halted().is_some())
             };
             if let Some(fb) = fb {
-                *shared.frame.lock().unwrap() = fb;
+                publish_frame(&shared, fb);
             }
             if halted {
                 shared.ctrl.lock().unwrap().paused = true; // auto-pause on breakpoint
@@ -223,11 +279,18 @@ fn worker(shared: Arc<Shared>) {
         // avoids a busy-spin; without it, hold a fixed ~60 Hz schedule.
         if audio.is_some() {
             let busy = running && !paused;
-            thread::sleep(Duration::from_millis(if busy { 1 } else { 5 }));
+            wait_worker(
+                &shared,
+                if busy {
+                    Duration::from_millis(1)
+                } else {
+                    IDLE_WORKER_SLEEP
+                },
+            );
         } else {
             let now = Instant::now();
             if next > now {
-                thread::sleep(next - now);
+                wait_worker(&shared, next - now);
                 next += frame_dur;
             } else {
                 next = now + frame_dur;
@@ -273,6 +336,8 @@ fn apply_rom(shared: &Shared, path: &str, data: &[u8]) -> Result<RomInfo, String
     let mut ctrl = shared.ctrl.lock().unwrap();
     ctrl.running = true;
     ctrl.paused = false;
+    drop(ctrl);
+    wake_worker(shared);
     Ok(info)
 }
 
@@ -297,8 +362,16 @@ pub fn open_rom_id(id: String, app: AppHandle, state: State<EmuState>) -> Result
 }
 
 #[tauri::command]
-pub fn poll_frame(state: State<EmuState>) -> Response {
-    Response::new(state.shared.frame.lock().unwrap().clone())
+pub fn poll_frame(last_id: u64, state: State<EmuState>) -> Response {
+    let frame = state.shared.frame.lock().unwrap();
+    if frame.id == last_id {
+        Response::new(Vec::new())
+    } else {
+        let mut out = Vec::with_capacity(8 + frame.rgba.len());
+        out.extend_from_slice(&frame.id.to_le_bytes());
+        out.extend_from_slice(&frame.rgba);
+        Response::new(out)
+    }
 }
 
 #[tauri::command]
@@ -307,12 +380,15 @@ pub fn set_input(p1: u8, p2: u8, seq: u64, state: State<EmuState>) {
     if seq >= i.kb_seq {
         i.kb = [p1, p2];
         i.kb_seq = seq;
+        drop(i);
+        wake_worker(&state.shared);
     }
 }
 
 #[tauri::command]
 pub fn set_speed(mult: u32, state: State<EmuState>) {
     state.shared.ctrl.lock().unwrap().speed = mult.clamp(1, 8);
+    wake_worker(&state.shared);
 }
 
 #[tauri::command]
@@ -333,7 +409,7 @@ pub fn set_remove_sprite_limit(enabled: bool, state: State<EmuState>) {
 /// Encode the current frame to PNG and save it under <app_data>/screenshots/.
 #[tauri::command]
 pub fn screenshot(app: AppHandle, state: State<EmuState>) -> Result<String, String> {
-    let frame = state.shared.frame.lock().unwrap().clone();
+    let frame = state.shared.frame.lock().unwrap().rgba.clone();
     let dir = data_dir(&app).join("screenshots");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let name = format!("shot_{}.png", now());
@@ -375,6 +451,7 @@ pub fn control(action: String, state: State<EmuState>) {
         "reset" => state.shared.deck.lock().unwrap().reset(),
         _ => {}
     }
+    wake_worker(&state.shared);
 }
 
 #[tauri::command]
@@ -629,13 +706,14 @@ pub fn dbg_step(state: State<EmuState>) {
         deck.step_instruction();
         deck.frame_buffer().to_vec()
     };
-    *state.shared.frame.lock().unwrap() = fb;
+    publish_frame(&state.shared, fb);
 }
 
 #[tauri::command]
 pub fn dbg_resume(state: State<EmuState>) {
     state.shared.deck.lock().unwrap().resume();
     state.shared.ctrl.lock().unwrap().paused = false;
+    wake_worker(&state.shared);
 }
 
 // ------------------------------------------------------------ cheats
