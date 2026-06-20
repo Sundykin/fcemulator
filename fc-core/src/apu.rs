@@ -130,12 +130,15 @@ impl Pulse {
             self.length = LENGTH_TABLE[(v >> 3) as usize];
         }
     }
-    fn clock_timer(&mut self) {
+    /// Returns true if the duty position advanced (output may change).
+    fn clock_timer(&mut self) -> bool {
         if self.timer == 0 {
             self.timer = self.timer_period;
             self.seq = (self.seq + 1) & 7;
+            true
         } else {
             self.timer -= 1;
+            false
         }
     }
     fn target_period(&self) -> u16 {
@@ -228,14 +231,18 @@ impl Triangle {
             self.length = LENGTH_TABLE[(v >> 3) as usize];
         }
     }
-    fn clock_timer(&mut self) {
+    /// Returns true if the sequencer stepped (output may change).
+    fn clock_timer(&mut self) -> bool {
         if self.timer == 0 {
             self.timer = self.timer_period;
             if self.length > 0 && self.linear > 0 && self.timer_period >= 2 {
                 self.seq = (self.seq + 1) & 31;
+                return true;
             }
+            false
         } else {
             self.timer -= 1;
+            false
         }
     }
     fn clock_linear(&mut self) {
@@ -317,14 +324,17 @@ impl Noise {
             self.length = LENGTH_TABLE[(v >> 3) as usize];
         }
     }
-    fn clock_timer(&mut self) {
+    /// Returns true if the shift register clocked (output may change).
+    fn clock_timer(&mut self) -> bool {
         if self.timer == 0 {
             self.timer = self.timer_period;
             let bit = if self.mode { 6 } else { 1 };
             let feedback = (self.shift & 1) ^ ((self.shift >> bit) & 1);
             self.shift = (self.shift >> 1) | (feedback << 14);
+            true
         } else {
             self.timer -= 1;
+            false
         }
     }
     fn clock_length(&mut self) {
@@ -543,14 +553,17 @@ impl Dmc {
         }
     }
 
-    fn tick(&mut self) {
+    /// Returns true if the output unit clocked (output level may change).
+    fn tick(&mut self) -> bool {
         if self.timer == 0 {
             // The rate table value is the period in CPU cycles; a divider that
             // clocks at 0 must reload with period-1 to give exactly that period.
             self.timer = self.rate.saturating_sub(1);
             self.clock_output();
+            true
         } else {
             self.timer -= 1;
+            false
         }
     }
 
@@ -671,6 +684,12 @@ pub struct Apu {
     last_amp: i32,
     #[serde(skip)]
     frame_clock: u32,
+    // Channel outputs only change on timer wraps / frame-counter clocks / register
+    // writes — not every cycle. We recompute the (expensive) non-linear mix only
+    // when this is set, which is provably output-identical: on a non-dirty cycle
+    // mix_raw would equal last_amp, so no blip delta would have been added anyway.
+    #[serde(skip)]
+    audio_dirty: bool,
     // Profiling ablation: skip the per-cycle mix + blip resample (audio output)
     // while still clocking the channels — keeps timing/IRQs identical so
     // `fc bench --profile` can attribute the resample cost. Off in normal use.
@@ -794,6 +813,7 @@ impl Apu {
             blip: None,
             last_amp: 0,
             frame_clock: 0,
+            audio_dirty: true,
             profile_no_resample: false,
             filter: None,
             samples: Vec::with_capacity(1024),
@@ -807,6 +827,7 @@ impl Apu {
         self.filter = None;
         self.last_amp = 0;
         self.frame_clock = 0;
+        self.audio_dirty = true;
     }
 
     pub fn irq(&self) -> bool {
@@ -822,6 +843,7 @@ impl Apu {
         // Channels fall silent — clear the resampler/filter so neither emits a click.
         self.last_amp = 0;
         self.frame_clock = 0;
+        self.audio_dirty = true;
         if let Some(b) = &mut self.blip {
             b.clear();
         }
@@ -844,15 +866,18 @@ impl Apu {
 
     /// One CPU cycle.
     pub fn tick(&mut self) {
-        // Triangle timer runs at CPU rate; pulses/noise at CPU/2.
-        self.triangle.clock_timer();
-        self.dmc.tick();
+        // Triangle timer runs at CPU rate; pulses/noise at CPU/2. Each clock
+        // reports whether it could change the channel output, so the resampler
+        // recomputes the mix only when something actually moved.
+        let mut changed = self.triangle.clock_timer();
+        changed |= self.dmc.tick();
         if self.even {
-            self.pulse1.clock_timer();
-            self.pulse2.clock_timer();
-            self.noise.clock_timer();
+            changed |= self.pulse1.clock_timer();
+            changed |= self.pulse2.clock_timer();
+            changed |= self.noise.clock_timer();
         }
         self.even = !self.even;
+        self.audio_dirty |= changed;
 
         self.clock_frame_sequencer();
         self.clock_pending_frame_reset();
@@ -867,16 +892,25 @@ impl Apu {
         if self.filter.is_none() {
             self.filter = Some(NesFilter::new(self.sample_rate as f32));
         }
-        let amp = (self.mix_raw() * AMP_SCALE) as i32;
+        // Compute the new amplitude (borrowing &self) before taking &mut blip,
+        // and only when something changed (the whole point of the dirty flag).
+        let amp = if self.audio_dirty {
+            self.audio_dirty = false;
+            Some((self.mix_raw() * AMP_SCALE) as i32)
+        } else {
+            None
+        };
         let (cpu_hz, sr) = (self.cpu_hz, self.sample_rate);
         let blip = self.blip.get_or_insert_with(|| {
             let mut b = crate::blip::Blip::new(BLIP_BUF);
             b.set_rates(cpu_hz, sr);
             b
         });
-        if amp != self.last_amp {
-            blip.add_delta(self.frame_clock, amp - self.last_amp);
-            self.last_amp = amp;
+        if let Some(amp) = amp {
+            if amp != self.last_amp {
+                blip.add_delta(self.frame_clock, amp - self.last_amp);
+                self.last_amp = amp;
+            }
         }
         self.frame_clock += 1;
         if self.frame_clock >= BLIP_FRAME {
@@ -976,12 +1010,16 @@ impl Apu {
     }
 
     fn quarter(&mut self) {
+        // Envelopes / linear counter change channel output levels.
+        self.audio_dirty = true;
         self.pulse1.env.clock();
         self.pulse2.env.clock();
         self.noise.env.clock();
         self.triangle.clock_linear();
     }
     fn half(&mut self) {
+        // Length counters (mute) and sweeps (period) change output.
+        self.audio_dirty = true;
         self.pulse1.clock_length();
         self.pulse2.clock_length();
         self.triangle.clock_length();
@@ -1010,6 +1048,7 @@ impl Apu {
         let Some(write) = self.pending_length_write.take() else {
             return;
         };
+        self.audio_dirty = true; // halt/length reload can change output
         match write {
             PendingLengthWrite::Halt { target, halt } => self.set_channel_halt(target, halt),
             PendingLengthWrite::Reload { target, value } => {
@@ -1062,6 +1101,9 @@ impl Apu {
     // ------------------------------------------------------------ registers
 
     pub fn write(&mut self, addr: u16, value: u8) {
+        // Any register write can change a channel's output (duty/volume/period/
+        // enable/sweep/dmc); recompute on the next cycle.
+        self.audio_dirty = true;
         match addr {
             0x4000 => {
                 if self.will_clock_length_next_tick() {
