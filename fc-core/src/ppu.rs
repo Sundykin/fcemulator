@@ -91,6 +91,18 @@ pub struct Ppu {
     enhanced_frame: u64,
     #[serde(skip)]
     enhanced_ready: bool,
+    // Per-scanline sprite X-coverage (mirrors Mesen's `_hasSprite`): true at any
+    // pixel x covered by a hardware sprite this line, so render_pixel skips the
+    // sprite scan on the common uncovered pixels. Derived state — rebuilt lazily
+    // from `sprites` on the first covered pixel of each line; the (line, frame)
+    // tag (initialised invalid) forces a rebuild after a load-state too, so it is
+    // never serialized.
+    #[serde(skip, default = "default_sprite_cover")]
+    sprite_cover: [bool; 256],
+    #[serde(skip, default = "invalid_line")]
+    sprite_cover_line: u16,
+    #[serde(skip)]
+    sprite_cover_frame: u64,
 
     // Memory.
     #[serde(with = "serde_big_array_vram")]
@@ -142,6 +154,12 @@ fn default_render_options() -> PpuRenderOptions {
 fn default_enhanced_sprites() -> Vec<SpriteUnit> {
     Vec::new()
 }
+fn default_sprite_cover() -> [bool; 256] {
+    [false; 256]
+}
+fn invalid_line() -> u16 {
+    u16::MAX
+}
 
 impl std::fmt::Debug for Ppu {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -189,6 +207,9 @@ impl Ppu {
             enhanced_line: 0,
             enhanced_frame: 0,
             enhanced_ready: false,
+            sprite_cover: [false; 256],
+            sprite_cover_line: u16::MAX,
+            sprite_cover_frame: 0,
             vram: [0; 0x1000],
             palette_ram: [0; 0x20],
             oam: [0; 0x100],
@@ -324,102 +345,138 @@ impl Ppu {
 
     // ---------------------------------------------------------------- ticking
 
-    /// Advance the PPU by one dot.
+    /// Advance the PPU by one dot. Dispatches by scanline phase
+    /// (visible / pre-render / VBlank), mirroring Mesen's `ProcessScanline`
+    /// segmentation. Per-dot timing and memory-access ordering are unchanged;
+    /// `vblank_line` (241 NTSC / 291 Dendy) never overlaps the visible (`<240`)
+    /// or pre-render (`261`) ranges, so this `if/else` chain reproduces the old
+    /// four independent `if`s exactly.
     pub fn tick(&mut self, cart: &mut Cartridge) {
         self.master_cycle += 1;
         self.clock_nmi_delay();
 
-        let visible = self.scanline < 240;
-        let prerender = self.scanline == 261;
+        if self.scanline < 240 {
+            self.tick_visible(cart);
+        } else if self.scanline == 261 {
+            self.tick_prerender(cart);
+        } else if self.scanline == self.vblank_line && self.dot == 1 {
+            self.enter_vblank();
+        }
 
-        if prerender && self.dot == 1 {
+        self.advance_clock();
+    }
+
+    /// Visible scanlines (0–239): sprite-overflow timing, the background/sprite
+    /// fetch pipeline, then pixel output. `render_pixel` runs even with
+    /// rendering disabled — it emits the backdrop colour.
+    fn tick_visible(&mut self, cart: &mut Cartridge) {
+        if self.rendering() {
+            if self.dot == 65 {
+                self.schedule_sprite_overflow();
+            }
+            if self.sprite_overflow_dot != 0 && self.dot == self.sprite_overflow_dot {
+                self.status |= 0x20;
+                self.sprite_overflow_dot = 0;
+            }
+            self.run_render_pipeline(cart);
+        }
+
+        if self.dot >= 1 && self.dot <= 256 {
+            self.render_pixel();
+        }
+    }
+
+    /// Pre-render scanline (261): clears VBL/sprite0/overflow at dot 1, runs the
+    /// same fetch pipeline as a visible line to prime the shifters for scanline
+    /// 0, and reloads vertical scroll from `t` at dots 280–304.
+    fn tick_prerender(&mut self, cart: &mut Cartridge) {
+        if self.dot == 1 {
             self.status &= !0xE0; // clear vblank, sprite0, overflow
             self.sprite_overflow_dot = 0;
             self.update_nmi();
         }
 
-        if self.rendering() && (visible || prerender) {
-            if visible && self.dot == 65 {
-                self.schedule_sprite_overflow();
-            }
-            if visible && self.sprite_overflow_dot != 0 && self.dot == self.sprite_overflow_dot {
-                self.status |= 0x20;
-                self.sprite_overflow_dot = 0;
-            }
-
-            if (self.dot >= 2 && self.dot <= 257) || (self.dot >= 321 && self.dot <= 337) {
-                self.update_shifters();
-                match (self.dot - 1) % 8 {
-                    0 => {
-                        self.load_bg_shifters();
-                        self.bg_next_id = self.ppu_read(cart, 0x2000 | (self.v & 0x0FFF));
-                    }
-                    2 => {
-                        let a = 0x23C0
-                            | (self.v & 0x0C00)
-                            | ((self.v >> 4) & 0x38)
-                            | ((self.v >> 2) & 0x07);
-                        let mut at = self.ppu_read(cart, a);
-                        if self.v & 0x0040 != 0 {
-                            at >>= 4;
-                        }
-                        if self.v & 0x0002 != 0 {
-                            at >>= 2;
-                        }
-                        self.bg_next_attr = at & 0x03;
-                    }
-                    3 => {
-                        let addr = self.bg_pattern_base()
-                            + (self.bg_next_id as u16) * 16
-                            + ((self.v >> 12) & 0x07);
-                        self.bg_next_lo = self.ppu_read_for(cart, addr, ChrAccess::Background);
-                    }
-                    5 => {
-                        let addr = self.bg_pattern_base()
-                            + (self.bg_next_id as u16) * 16
-                            + ((self.v >> 12) & 0x07)
-                            + 8;
-                        self.bg_next_hi = self.ppu_read_for(cart, addr, ChrAccess::Background);
-                    }
-                    7 => self.increment_scroll_x(),
-                    _ => {}
-                }
-            }
-
-            if self.dot == 256 {
-                self.increment_scroll_y();
-            }
-            if self.dot == 257 {
-                self.load_bg_shifters();
-                self.transfer_x();
-                self.evaluate_sprites(cart);
-            }
-            if (257..=320).contains(&self.dot) {
-                self.fetch_sprite_pattern(cart);
-            }
-            if prerender && self.dot >= 280 && self.dot <= 304 {
+        if self.rendering() {
+            self.run_render_pipeline(cart);
+            if self.dot >= 280 && self.dot <= 304 {
                 self.transfer_y();
             }
         }
+    }
 
-        if visible && self.dot >= 1 && self.dot <= 256 {
-            self.render_pixel();
-        }
-
-        if self.scanline == self.vblank_line && self.dot == 1 {
-            self.frame_complete = true;
-            if self.suppress_vblank {
-                self.suppress_vblank = false;
-            } else {
-                self.status |= 0x80;
-                self.update_nmi();
+    /// Background fetch + scroll + sprite evaluation/fetch pipeline shared by the
+    /// visible and pre-render scanlines. The order of `ppu_read*` accesses here
+    /// is timing-critical (MMC3 A12 edges, MMC2/4 CHR latch) — do not reorder.
+    fn run_render_pipeline(&mut self, cart: &mut Cartridge) {
+        if (self.dot >= 2 && self.dot <= 257) || (self.dot >= 321 && self.dot <= 337) {
+            self.update_shifters();
+            match (self.dot - 1) % 8 {
+                0 => {
+                    self.load_bg_shifters();
+                    self.bg_next_id = self.ppu_read(cart, 0x2000 | (self.v & 0x0FFF));
+                }
+                2 => {
+                    let a = 0x23C0
+                        | (self.v & 0x0C00)
+                        | ((self.v >> 4) & 0x38)
+                        | ((self.v >> 2) & 0x07);
+                    let mut at = self.ppu_read(cart, a);
+                    if self.v & 0x0040 != 0 {
+                        at >>= 4;
+                    }
+                    if self.v & 0x0002 != 0 {
+                        at >>= 2;
+                    }
+                    self.bg_next_attr = at & 0x03;
+                }
+                3 => {
+                    let addr = self.bg_pattern_base()
+                        + (self.bg_next_id as u16) * 16
+                        + ((self.v >> 12) & 0x07);
+                    self.bg_next_lo = self.ppu_read_for(cart, addr, ChrAccess::Background);
+                }
+                5 => {
+                    let addr = self.bg_pattern_base()
+                        + (self.bg_next_id as u16) * 16
+                        + ((self.v >> 12) & 0x07)
+                        + 8;
+                    self.bg_next_hi = self.ppu_read_for(cart, addr, ChrAccess::Background);
+                }
+                7 => self.increment_scroll_x(),
+                _ => {}
             }
         }
 
-        // Advance dot / scanline / frame. On odd frames with rendering enabled,
-        // the last dot of the pre-render line (261,339) is skipped: jump
-        // straight to (0,0). The hardware samples rendering just before the
-        // decision point, so PPUMASK writes on dot 339 are too late to affect it.
+        if self.dot == 256 {
+            self.increment_scroll_y();
+        }
+        if self.dot == 257 {
+            self.load_bg_shifters();
+            self.transfer_x();
+            self.evaluate_sprites(cart);
+        }
+        if (257..=320).contains(&self.dot) {
+            self.fetch_sprite_pattern(cart);
+        }
+    }
+
+    /// VBlank flag set at (vblank_line, 1), unless a `$2002` read on that exact
+    /// dot suppressed it.
+    fn enter_vblank(&mut self) {
+        self.frame_complete = true;
+        if self.suppress_vblank {
+            self.suppress_vblank = false;
+        } else {
+            self.status |= 0x80;
+            self.update_nmi();
+        }
+    }
+
+    /// Advance dot / scanline / frame. On odd frames with rendering enabled,
+    /// the last dot of the pre-render line (261,339) is skipped: jump
+    /// straight to (0,0). The hardware samples rendering just before the
+    /// decision point, so PPUMASK writes on dot 339 are too late to affect it.
+    fn advance_clock(&mut self) {
         if self.scanline == 261 && self.dot == 338 {
             self.skip_rendering = self.rendering();
         }
@@ -719,7 +776,7 @@ impl Ppu {
     }
 
     #[inline]
-    fn sprite_pattern_pixel(sprite: SpriteUnit, x: usize) -> Option<u8> {
+    fn sprite_pattern_pixel(sprite: &SpriteUnit, x: usize) -> Option<u8> {
         let dx = (x as i32) - (sprite.x as i32);
         if !(0..8).contains(&dx) {
             return None;
@@ -737,12 +794,30 @@ impl Ppu {
 
     fn hardware_sprite_zero_pixel(&self, x: usize) -> bool {
         for i in 0..self.sprite_count {
-            let sprite = self.sprites[i];
+            let sprite = &self.sprites[i];
             if sprite.is_zero {
                 return Self::sprite_pattern_pixel(sprite, x).is_some();
             }
         }
         false
+    }
+
+    /// Rebuild `sprite_cover` from the hardware sprite X positions for the
+    /// current line. Each sprite spans `[x, x+8)`; pixels outside every span can
+    /// never produce a sprite pixel (or sprite-0 hit), so render_pixel skips the
+    /// per-sprite scan there. Tagged with (line, frame) so it rebuilds once per
+    /// line and after a load-state.
+    fn rebuild_sprite_cover(&mut self) {
+        self.sprite_cover = [false; 256];
+        for i in 0..self.sprite_count {
+            let start = self.sprites[i].x as usize;
+            let end = (start + 8).min(256);
+            for c in &mut self.sprite_cover[start..end] {
+                *c = true;
+            }
+        }
+        self.sprite_cover_line = self.scanline;
+        self.sprite_cover_frame = self.frame;
     }
 
     fn render_pixel(&mut self) {
@@ -768,27 +843,48 @@ impl Ppu {
         let mut sp_priority = false;
         let mut sprite_zero_hit_pixel = false;
         if self.mask & 0x10 != 0 && !(self.mask & 0x04 == 0 && x < 8) {
-            sprite_zero_hit_pixel = self.hardware_sprite_zero_pixel(x);
             let enhanced_valid = self.render_options.remove_sprite_limit
                 && self.enhanced_ready
                 && self.enhanced_line == self.scanline
                 && self.enhanced_frame == self.frame;
-            let sprite_len = if enhanced_valid {
-                self.enhanced_sprites.len()
-            } else {
-                self.sprite_count
-            };
-            for i in 0..sprite_len {
-                let s = if enhanced_valid {
-                    self.enhanced_sprites[i]
-                } else {
-                    self.sprites[i]
-                };
-                if let Some(p) = Self::sprite_pattern_pixel(s, x) {
-                    sp_pixel = p;
-                    sp_pal = s.palette;
-                    sp_priority = s.priority;
-                    break;
+            if enhanced_valid {
+                // Sprite-0 hit always uses the hardware-limited set, never the
+                // visual-only enhanced sprites — so it needs its own scan here.
+                sprite_zero_hit_pixel = self.hardware_sprite_zero_pixel(x);
+                for s in &self.enhanced_sprites {
+                    if let Some(p) = Self::sprite_pattern_pixel(s, x) {
+                        sp_pixel = p;
+                        sp_pal = s.palette;
+                        sp_priority = s.priority;
+                        break;
+                    }
+                }
+            } else if self.sprite_count > 0 {
+                // Rebuild the X-coverage mask once per line (the tag also forces
+                // a rebuild after a load-state). Uncovered pixels can't yield a
+                // sprite pixel or sprite-0 hit, so the per-sprite scan is skipped.
+                if self.sprite_cover_line != self.scanline
+                    || self.sprite_cover_frame != self.frame
+                {
+                    self.rebuild_sprite_cover();
+                }
+                if self.sprite_cover[x] {
+                    // Hardware path: sprite 0 (is_zero) is always slot 0 and the
+                    // highest priority, so the first opaque sprite that wins the
+                    // mux is also where sprite-0 hit is decided — one scan covers
+                    // both (a separate sprite-0 pass would only re-confirm slot 0).
+                    for i in 0..self.sprite_count {
+                        let s = &self.sprites[i];
+                        if let Some(p) = Self::sprite_pattern_pixel(s, x) {
+                            if s.is_zero {
+                                sprite_zero_hit_pixel = true;
+                            }
+                            sp_pixel = p;
+                            sp_pal = s.palette;
+                            sp_priority = s.priority;
+                            break;
+                        }
+                    }
                 }
             }
         }
