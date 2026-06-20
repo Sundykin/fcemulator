@@ -671,6 +671,9 @@ pub struct Apu {
     last_amp: i32,
     #[serde(skip)]
     frame_clock: u32,
+    // NES analog output filter chain; lazily built at the current sample rate.
+    #[serde(skip)]
+    filter: Option<NesFilter>,
     #[serde(skip)]
     pub samples: Vec<f32>,
 }
@@ -683,6 +686,86 @@ const AMP_SCALE: f32 = 8192.0;
 const BLIP_FRAME: u32 = 4096;
 /// Output-sample capacity of the blip buffer (one BLIP_FRAME yields ~100).
 const BLIP_BUF: usize = 4096;
+
+/// Precomputed non-linear DAC mix tables (the NESdev lookup approach used by
+/// fceux's `wlookup1`/`wlookup2`): turns the per-cycle mix into two array reads,
+/// eliminating ~7 divisions per CPU cycle. Values are the *exact same* formula
+/// fc evaluated inline, so output is unchanged — this is purely a speed win.
+struct MixTables {
+    /// Indexed by `pulse1 + pulse2` output (0..=30).
+    pulse: [f32; 31],
+    /// Indexed by `(triangle*16 + noise)*128 + dmc`.
+    tnd: Vec<f32>,
+}
+
+fn mix_tables() -> &'static MixTables {
+    use std::sync::OnceLock;
+    static TABLES: OnceLock<MixTables> = OnceLock::new();
+    TABLES.get_or_init(|| {
+        let mut pulse = [0f32; 31];
+        for (s, p) in pulse.iter_mut().enumerate().skip(1) {
+            *p = 95.88 / (8128.0 / s as f32 + 100.0);
+        }
+        let mut tnd = vec![0f32; 16 * 16 * 128];
+        for t in 0..16usize {
+            for n in 0..16usize {
+                for d in 0..128usize {
+                    let v = t as f32 / 8227.0 + n as f32 / 12241.0 + d as f32 / 22638.0;
+                    tnd[(t * 16 + n) * 128 + d] = if v == 0.0 {
+                        0.0
+                    } else {
+                        159.79 / (1.0 / v + 100.0)
+                    };
+                }
+            }
+        }
+        MixTables { pulse, tnd }
+    })
+}
+
+// NES analog output filtering. The 2A03 spec chain is 90 Hz + 440 Hz high-pass
+// and a 14 kHz low-pass, but the 440 Hz stage is a heavy bass cut (≈ −5 dB
+// overall) that neither fceux nor Mesen actually apply — fceux's `SexyFilter`
+// high-passes near ~15 Hz, and Mesen leans on blip's gentle bass roll-off. We
+// match that intent: a gentle 90 Hz high-pass (clears subsonic mud the blip DC
+// blocker leaves) plus a 14 kHz low-pass (smooths residual high-frequency
+// harshness), applied to the band-limited blip output at the device rate.
+const NES_HP_HZ: f32 = 90.0;
+const NES_LP_HZ: f32 = 14_000.0;
+
+#[derive(Debug, Clone, Default)]
+struct NesFilter {
+    hp_a: f32,
+    hp_pin: f32,
+    hp_pout: f32,
+    lp_a: f32,
+    lp_pout: f32,
+}
+
+impl NesFilter {
+    fn new(sample_rate: f32) -> Self {
+        use std::f32::consts::PI;
+        // One-pole RC coefficients from the cutoff frequencies.
+        let hp = 1.0 / (1.0 + 2.0 * PI * NES_HP_HZ / sample_rate);
+        let lpx = 2.0 * PI * NES_LP_HZ / sample_rate;
+        NesFilter {
+            hp_a: hp,
+            lp_a: lpx / (1.0 + lpx),
+            ..Default::default()
+        }
+    }
+
+    fn process(&mut self, x: f32) -> f32 {
+        // High-pass 90 Hz.
+        let y1 = self.hp_a * (self.hp_pout + x - self.hp_pin);
+        self.hp_pin = x;
+        self.hp_pout = y1;
+        // Low-pass 14 kHz.
+        let y2 = self.lp_pout + self.lp_a * (y1 - self.lp_pout);
+        self.lp_pout = y2;
+        y2
+    }
+}
 
 impl Apu {
     pub fn new(region: Region) -> Self {
@@ -706,14 +789,16 @@ impl Apu {
             blip: None,
             last_amp: 0,
             frame_clock: 0,
+            filter: None,
             samples: Vec::with_capacity(1024),
         }
     }
 
     pub fn set_sample_rate(&mut self, rate: f64) {
         self.sample_rate = rate;
-        // Drop the resampler so it is rebuilt at the new rate on the next tick.
+        // Drop the resampler + filter so they rebuild at the new rate next tick.
         self.blip = None;
+        self.filter = None;
         self.last_amp = 0;
         self.frame_clock = 0;
     }
@@ -728,12 +813,13 @@ impl Apu {
         self.frame_irq = false;
         self.pending_length_write = None;
         self.apply_frame_reset(frame_value, RESET_FRAME_ADVANCE);
-        // Channels fall silent — clear the resampler so it doesn't emit a click.
+        // Channels fall silent — clear the resampler/filter so neither emits a click.
         self.last_amp = 0;
         self.frame_clock = 0;
         if let Some(b) = &mut self.blip {
             b.clear();
         }
+        self.filter = None;
     }
 
     /// PRG address the DMC wants to read this cycle (bus performs the DMA fetch).
@@ -767,7 +853,11 @@ impl Apu {
         self.apply_pending_length_write();
 
         // Band-limited resample: register a sinc step whenever the mixed output
-        // changes, then flush fixed clock chunks into `samples`.
+        // changes, then flush fixed clock chunks (filtered by the analog chain)
+        // into `samples`.
+        if self.filter.is_none() {
+            self.filter = Some(NesFilter::new(self.sample_rate as f32));
+        }
         let amp = (self.mix_raw() * AMP_SCALE) as i32;
         let (cpu_hz, sr) = (self.cpu_hz, self.sample_rate);
         let blip = self.blip.get_or_insert_with(|| {
@@ -786,8 +876,9 @@ impl Apu {
             let avail = blip.samples_avail();
             let n = blip.read_samples(&mut tmp, avail);
             self.frame_clock = 0;
+            let filter = self.filter.as_mut().unwrap();
             self.samples
-                .extend(tmp[..n].iter().map(|&s| s as f32 / AMP_SCALE));
+                .extend(tmp[..n].iter().map(|&s| filter.process(s as f32 / AMP_SCALE)));
         }
     }
 
@@ -948,25 +1039,15 @@ impl Apu {
     }
 
     /// Non-linear channel mix (NESdev DAC model), ~0.0..1.0. Pure — no filtering,
-    /// so it can be summed every CPU cycle for the integrate-and-average path.
+    /// so it can be sampled every CPU cycle for the blip resampler. Uses the
+    /// precomputed [`mix_tables`] (two array reads, no divisions).
     fn mix_raw(&self) -> f32 {
-        let p1 = self.pulse1.output() as f32;
-        let p2 = self.pulse2.output() as f32;
-        let t = self.triangle.output() as f32;
-        let n = self.noise.output() as f32;
-        let d = self.dmc.output() as f32;
-        let pulse_out = if p1 + p2 == 0.0 {
-            0.0
-        } else {
-            95.88 / (8128.0 / (p1 + p2) + 100.0)
-        };
-        let tnd = t / 8227.0 + n / 12241.0 + d / 22638.0;
-        let tnd_out = if tnd == 0.0 {
-            0.0
-        } else {
-            159.79 / (1.0 / tnd + 100.0)
-        };
-        pulse_out + tnd_out
+        let p = (self.pulse1.output() + self.pulse2.output()) as usize;
+        let t = self.triangle.output() as usize;
+        let n = self.noise.output() as usize;
+        let d = self.dmc.output() as usize;
+        let tab = mix_tables();
+        tab.pulse[p] + tab.tnd[(t * 16 + n) * 128 + d]
     }
 
     // ------------------------------------------------------------ registers
