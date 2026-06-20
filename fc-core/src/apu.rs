@@ -88,10 +88,18 @@ impl Pulse {
     }
     fn write0(&mut self, v: u8) {
         self.duty = v >> 6;
-        self.halt = v & 0x20 != 0;
-        self.env.loop_flag = self.halt;
+        self.set_halt(v & 0x20 != 0);
         self.env.constant = v & 0x10 != 0;
         self.env.volume = v & 0x0F;
+    }
+    fn write0_except_halt(&mut self, v: u8) {
+        self.duty = v >> 6;
+        self.env.constant = v & 0x10 != 0;
+        self.env.volume = v & 0x0F;
+    }
+    fn set_halt(&mut self, halt: bool) {
+        self.halt = halt;
+        self.env.loop_flag = halt;
     }
     fn write1(&mut self, v: u8) {
         self.sweep_enabled = v & 0x80 != 0;
@@ -105,11 +113,19 @@ impl Pulse {
     }
     fn write3(&mut self, v: u8) {
         self.timer_period = (self.timer_period & 0x00FF) | (((v & 0x07) as u16) << 8);
+        self.load_length(v);
+        self.seq = 0;
+        self.env.start = true;
+    }
+    fn write3_except_length(&mut self, v: u8) {
+        self.timer_period = (self.timer_period & 0x00FF) | (((v & 0x07) as u16) << 8);
+        self.seq = 0;
+        self.env.start = true;
+    }
+    fn load_length(&mut self, v: u8) {
         if self.enabled {
             self.length = LENGTH_TABLE[(v >> 3) as usize];
         }
-        self.seq = 0;
-        self.env.start = true;
     }
     fn clock_timer(&mut self) {
         if self.timer == 0 {
@@ -178,18 +194,31 @@ struct Triangle {
 }
 impl Triangle {
     fn write0(&mut self, v: u8) {
-        self.halt = v & 0x80 != 0;
+        self.set_halt(v & 0x80 != 0);
         self.linear_reload_value = v & 0x7F;
+    }
+    fn write0_except_halt(&mut self, v: u8) {
+        self.linear_reload_value = v & 0x7F;
+    }
+    fn set_halt(&mut self, halt: bool) {
+        self.halt = halt;
     }
     fn write2(&mut self, v: u8) {
         self.timer_period = (self.timer_period & 0xFF00) | v as u16;
     }
     fn write3(&mut self, v: u8) {
         self.timer_period = (self.timer_period & 0x00FF) | (((v & 0x07) as u16) << 8);
+        self.load_length(v);
+        self.linear_reload = true;
+    }
+    fn write3_except_length(&mut self, v: u8) {
+        self.timer_period = (self.timer_period & 0x00FF) | (((v & 0x07) as u16) << 8);
+        self.linear_reload = true;
+    }
+    fn load_length(&mut self, v: u8) {
         if self.enabled {
             self.length = LENGTH_TABLE[(v >> 3) as usize];
         }
-        self.linear_reload = true;
     }
     fn clock_timer(&mut self) {
         if self.timer == 0 {
@@ -252,20 +281,33 @@ impl Default for Noise {
 }
 impl Noise {
     fn write0(&mut self, v: u8) {
-        self.halt = v & 0x20 != 0;
-        self.env.loop_flag = self.halt;
+        self.set_halt(v & 0x20 != 0);
         self.env.constant = v & 0x10 != 0;
         self.env.volume = v & 0x0F;
+    }
+    fn write0_except_halt(&mut self, v: u8) {
+        self.env.constant = v & 0x10 != 0;
+        self.env.volume = v & 0x0F;
+    }
+    fn set_halt(&mut self, halt: bool) {
+        self.halt = halt;
+        self.env.loop_flag = halt;
     }
     fn write2(&mut self, v: u8) {
         self.mode = v & 0x80 != 0;
         self.timer_period = NOISE_PERIOD[(v & 0x0F) as usize];
     }
     fn write3(&mut self, v: u8) {
+        self.load_length(v);
+        self.env.start = true;
+    }
+    fn write3_except_length(&mut self, _v: u8) {
+        self.env.start = true;
+    }
+    fn load_length(&mut self, v: u8) {
         if self.enabled {
             self.length = LENGTH_TABLE[(v >> 3) as usize];
         }
-        self.env.start = true;
     }
     fn clock_timer(&mut self) {
         if self.timer == 0 {
@@ -295,6 +337,67 @@ impl Noise {
 const DMC_RATE_NTSC: [u16; 16] = [
     428, 380, 340, 320, 286, 254, 226, 214, 190, 160, 142, 128, 106, 84, 72, 54,
 ];
+
+#[derive(Debug, Clone, Copy)]
+struct FrameTimings {
+    mode0_q1: u32,
+    mode0_h1: u32,
+    mode0_q2: u32,
+    mode0_irq_start: u32,
+    mode0_h2: u32,
+    mode0_wrap: u32,
+
+    mode1_q1: u32,
+    mode1_h1: u32,
+    mode1_q2: u32,
+    mode1_h2: u32,
+    mode1_q3: u32,
+    mode1_h3: u32,
+    mode1_tail_cycle: u32,
+}
+
+const FRAME_TIMINGS_NTSC: FrameTimings = FrameTimings {
+    mode0_q1: 7457,
+    mode0_h1: 14913,
+    mode0_q2: 22371,
+    mode0_irq_start: 29828,
+    mode0_h2: 29829,
+    mode0_wrap: 29830,
+
+    mode1_q1: 7457,
+    mode1_h1: 14913,
+    mode1_q2: 22371,
+    mode1_h2: 37281,
+    mode1_q3: 44739,
+    mode1_h3: 52195,
+    mode1_tail_cycle: 14916,
+};
+
+const FRAME_TIMINGS_PAL: FrameTimings = FrameTimings {
+    mode0_q1: 8313,
+    mode0_h1: 16627,
+    mode0_q2: 24939,
+    mode0_irq_start: 33252,
+    mode0_h2: 33253,
+    mode0_wrap: 33254,
+
+    mode1_q1: 8313,
+    mode1_h1: 16627,
+    mode1_q2: 24939,
+    mode1_h2: 41565,
+    mode1_q3: 49879,
+    mode1_h3: 58193,
+    mode1_tail_cycle: 16630,
+};
+
+impl FrameTimings {
+    fn for_region(region: Region) -> Self {
+        match region {
+            Region::Pal => FRAME_TIMINGS_PAL,
+            Region::Ntsc | Region::Dendy => FRAME_TIMINGS_NTSC,
+        }
+    }
+}
 
 /// DMC — full DPCM playback: rate timer, memory reader (DMA via the bus),
 /// 8-bit output shift unit, looping, and end-of-sample IRQ.
@@ -488,6 +591,20 @@ enum FrameMode {
     Five,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+enum LengthTarget {
+    Pulse1,
+    Pulse2,
+    Triangle,
+    Noise,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+enum PendingLengthWrite {
+    Halt { target: LengthTarget, halt: bool },
+    Reload { target: LengthTarget, value: u8 },
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Apu {
     pulse1: Pulse,
@@ -495,6 +612,7 @@ pub struct Apu {
     triangle: Triangle,
     noise: Noise,
     dmc: Dmc,
+    region: Region,
 
     frame_mode: FrameMode,
     frame_cycle: u32,
@@ -505,6 +623,7 @@ pub struct Apu {
     frame_reset_delay: u8,
     #[serde(default)]
     frame_reset_value: u8,
+    pending_length_write: Option<PendingLengthWrite>,
 
     // resampling
     cpu_hz: f64,
@@ -524,6 +643,7 @@ impl Apu {
             triangle: Triangle::default(),
             noise: Noise::default(),
             dmc: Dmc::default(),
+            region,
             frame_mode: FrameMode::Four,
             frame_cycle: RESET_FRAME_ADVANCE,
             irq_inhibit: false,
@@ -531,6 +651,7 @@ impl Apu {
             even: false,
             frame_reset_delay: 0,
             frame_reset_value: 0,
+            pending_length_write: None,
             cpu_hz: region.cpu_hz(),
             sample_rate: 44_100.0,
             sample_acc: 0.0,
@@ -552,6 +673,7 @@ impl Apu {
         let frame_value = self.frame_reset_value;
         self.write_status(0);
         self.frame_irq = false;
+        self.pending_length_write = None;
         self.apply_frame_reset(frame_value, RESET_FRAME_ADVANCE);
     }
 
@@ -583,6 +705,7 @@ impl Apu {
 
         self.clock_frame_sequencer();
         self.clock_pending_frame_reset();
+        self.apply_pending_length_write();
 
         // Resample.
         self.sample_acc += self.sample_rate / self.cpu_hz;
@@ -594,56 +717,56 @@ impl Apu {
     }
 
     fn clock_frame_sequencer(&mut self) {
+        let t = FrameTimings::for_region(self.region);
         self.frame_cycle += 1;
         match self.frame_mode {
-            FrameMode::Four => match self.frame_cycle {
-                7457 => self.quarter(),
-                14913 => {
+            FrameMode::Four => {
+                if self.frame_cycle == t.mode0_q1 {
+                    self.quarter();
+                } else if self.frame_cycle == t.mode0_h1 {
                     self.quarter();
                     self.half();
-                }
-                22371 => self.quarter(),
-                29828 => {
+                } else if self.frame_cycle == t.mode0_q2 {
+                    self.quarter();
+                } else if self.frame_cycle == t.mode0_irq_start {
                     if !self.irq_inhibit {
                         self.frame_irq = true;
                     }
-                }
-                29829 => {
+                } else if self.frame_cycle == t.mode0_h2 {
                     if !self.irq_inhibit {
                         self.frame_irq = true;
                     }
                     self.quarter();
                     self.half();
-                }
-                29830 => {
+                } else if self.frame_cycle == t.mode0_wrap {
                     if !self.irq_inhibit {
                         self.frame_irq = true;
                     }
                     self.frame_cycle = 0;
                 }
-                _ => {}
-            },
-            FrameMode::Five => match self.frame_cycle {
-                7457 => self.quarter(),
-                14913 => {
+            }
+            FrameMode::Five => {
+                if self.frame_cycle == t.mode1_q1 {
+                    self.quarter();
+                } else if self.frame_cycle == t.mode1_h1 {
                     self.quarter();
                     self.half();
+                } else if self.frame_cycle == t.mode1_q2 {
+                    self.quarter();
                 }
-                22371 => self.quarter(),
                 // The 5-step sequence has a long idle tail before the next
                 // quarter/half clocks; this boundary is visible to length tests.
-                37281 => {
+                else if self.frame_cycle == t.mode1_h2 {
                     self.quarter();
                     self.half();
-                }
-                44739 => self.quarter(),
-                52195 => {
+                } else if self.frame_cycle == t.mode1_q3 {
+                    self.quarter();
+                } else if self.frame_cycle == t.mode1_h3 {
                     self.quarter();
                     self.half();
-                    self.frame_cycle = 14916;
+                    self.frame_cycle = t.mode1_tail_cycle;
                 }
-                _ => {}
-            },
+            }
         }
     }
 
@@ -692,6 +815,63 @@ impl Apu {
         self.pulse2.clock_sweep();
     }
 
+    fn will_clock_length_next_tick(&self) -> bool {
+        if self.frame_reset_delay == 1 && self.frame_reset_value & 0x80 != 0 {
+            return true;
+        }
+        let next = self.frame_cycle + 1;
+        let t = FrameTimings::for_region(self.region);
+        match self.frame_mode {
+            FrameMode::Four => next == t.mode0_h1 || next == t.mode0_h2,
+            FrameMode::Five => next == t.mode1_h1 || next == t.mode1_h2 || next == t.mode1_h3,
+        }
+    }
+
+    fn queue_length_write(&mut self, write: PendingLengthWrite) {
+        self.pending_length_write = Some(write);
+    }
+
+    fn apply_pending_length_write(&mut self) {
+        let Some(write) = self.pending_length_write.take() else {
+            return;
+        };
+        match write {
+            PendingLengthWrite::Halt { target, halt } => self.set_channel_halt(target, halt),
+            PendingLengthWrite::Reload { target, value } => {
+                if self.channel_length(target) == 0 {
+                    self.load_channel_length(target, value);
+                }
+            }
+        }
+    }
+
+    fn set_channel_halt(&mut self, target: LengthTarget, halt: bool) {
+        match target {
+            LengthTarget::Pulse1 => self.pulse1.set_halt(halt),
+            LengthTarget::Pulse2 => self.pulse2.set_halt(halt),
+            LengthTarget::Triangle => self.triangle.set_halt(halt),
+            LengthTarget::Noise => self.noise.set_halt(halt),
+        }
+    }
+
+    fn channel_length(&self, target: LengthTarget) -> u8 {
+        match target {
+            LengthTarget::Pulse1 => self.pulse1.length,
+            LengthTarget::Pulse2 => self.pulse2.length,
+            LengthTarget::Triangle => self.triangle.length,
+            LengthTarget::Noise => self.noise.length,
+        }
+    }
+
+    fn load_channel_length(&mut self, target: LengthTarget, value: u8) {
+        match target {
+            LengthTarget::Pulse1 => self.pulse1.load_length(value),
+            LengthTarget::Pulse2 => self.pulse2.load_length(value),
+            LengthTarget::Triangle => self.triangle.load_length(value),
+            LengthTarget::Noise => self.noise.load_length(value),
+        }
+    }
+
     fn mix(&mut self) -> f32 {
         let p1 = self.pulse1.output() as f32;
         let p2 = self.pulse2.output() as f32;
@@ -722,20 +902,100 @@ impl Apu {
 
     pub fn write(&mut self, addr: u16, value: u8) {
         match addr {
-            0x4000 => self.pulse1.write0(value),
+            0x4000 => {
+                if self.will_clock_length_next_tick() {
+                    self.pulse1.write0_except_halt(value);
+                    self.queue_length_write(PendingLengthWrite::Halt {
+                        target: LengthTarget::Pulse1,
+                        halt: value & 0x20 != 0,
+                    });
+                } else {
+                    self.pulse1.write0(value);
+                }
+            }
             0x4001 => self.pulse1.write1(value),
             0x4002 => self.pulse1.write2(value),
-            0x4003 => self.pulse1.write3(value),
-            0x4004 => self.pulse2.write0(value),
+            0x4003 => {
+                if self.will_clock_length_next_tick() {
+                    self.pulse1.write3_except_length(value);
+                    self.queue_length_write(PendingLengthWrite::Reload {
+                        target: LengthTarget::Pulse1,
+                        value,
+                    });
+                } else {
+                    self.pulse1.write3(value);
+                }
+            }
+            0x4004 => {
+                if self.will_clock_length_next_tick() {
+                    self.pulse2.write0_except_halt(value);
+                    self.queue_length_write(PendingLengthWrite::Halt {
+                        target: LengthTarget::Pulse2,
+                        halt: value & 0x20 != 0,
+                    });
+                } else {
+                    self.pulse2.write0(value);
+                }
+            }
             0x4005 => self.pulse2.write1(value),
             0x4006 => self.pulse2.write2(value),
-            0x4007 => self.pulse2.write3(value),
-            0x4008 => self.triangle.write0(value),
+            0x4007 => {
+                if self.will_clock_length_next_tick() {
+                    self.pulse2.write3_except_length(value);
+                    self.queue_length_write(PendingLengthWrite::Reload {
+                        target: LengthTarget::Pulse2,
+                        value,
+                    });
+                } else {
+                    self.pulse2.write3(value);
+                }
+            }
+            0x4008 => {
+                if self.will_clock_length_next_tick() {
+                    self.triangle.write0_except_halt(value);
+                    self.queue_length_write(PendingLengthWrite::Halt {
+                        target: LengthTarget::Triangle,
+                        halt: value & 0x80 != 0,
+                    });
+                } else {
+                    self.triangle.write0(value);
+                }
+            }
             0x400A => self.triangle.write2(value),
-            0x400B => self.triangle.write3(value),
-            0x400C => self.noise.write0(value),
+            0x400B => {
+                if self.will_clock_length_next_tick() {
+                    self.triangle.write3_except_length(value);
+                    self.queue_length_write(PendingLengthWrite::Reload {
+                        target: LengthTarget::Triangle,
+                        value,
+                    });
+                } else {
+                    self.triangle.write3(value);
+                }
+            }
+            0x400C => {
+                if self.will_clock_length_next_tick() {
+                    self.noise.write0_except_halt(value);
+                    self.queue_length_write(PendingLengthWrite::Halt {
+                        target: LengthTarget::Noise,
+                        halt: value & 0x20 != 0,
+                    });
+                } else {
+                    self.noise.write0(value);
+                }
+            }
             0x400E => self.noise.write2(value),
-            0x400F => self.noise.write3(value),
+            0x400F => {
+                if self.will_clock_length_next_tick() {
+                    self.noise.write3_except_length(value);
+                    self.queue_length_write(PendingLengthWrite::Reload {
+                        target: LengthTarget::Noise,
+                        value,
+                    });
+                } else {
+                    self.noise.write3(value);
+                }
+            }
             0x4010 => self.dmc.write0(value),
             0x4011 => self.dmc.write1(value),
             0x4012 => self.dmc.write2(value),

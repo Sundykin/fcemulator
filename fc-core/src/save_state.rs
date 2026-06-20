@@ -6,7 +6,7 @@ use crate::bus::Bus;
 use crate::cpu::Cpu;
 use serde::{Deserialize, Serialize};
 
-pub const VERSION: u32 = 2;
+pub const VERSION: u32 = 3;
 
 #[derive(Serialize, Deserialize)]
 pub struct SaveState {
