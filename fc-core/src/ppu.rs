@@ -77,6 +77,8 @@ pub struct Ppu {
     master_cycle: u64,
     #[serde(default)]
     skip_rendering: bool,
+    #[serde(default)]
+    sprite_overflow_dot: u16,
 
     // Signals.
     pub frame_complete: bool,
@@ -152,6 +154,7 @@ impl Ppu {
             vblank_line: region.vblank_scanline(),
             master_cycle: 0,
             skip_rendering: false,
+            sprite_overflow_dot: 0,
             frame_complete: false,
             nmi_pending: false,
             prev_nmi: false,
@@ -258,10 +261,19 @@ impl Ppu {
 
         if prerender && self.dot == 1 {
             self.status &= !0xE0; // clear vblank, sprite0, overflow
+            self.sprite_overflow_dot = 0;
             self.update_nmi();
         }
 
         if self.rendering() && (visible || prerender) {
+            if visible && self.dot == 65 {
+                self.schedule_sprite_overflow();
+            }
+            if visible && self.sprite_overflow_dot != 0 && self.dot == self.sprite_overflow_dot {
+                self.status |= 0x20;
+                self.sprite_overflow_dot = 0;
+            }
+
             if (self.dot >= 2 && self.dot <= 257) || (self.dot >= 321 && self.dot <= 337) {
                 self.update_shifters();
                 match (self.dot - 1) % 8 {
@@ -416,6 +428,38 @@ impl Ppu {
     }
     fn transfer_y(&mut self) {
         self.v = (self.v & !0x7BE0) | (self.t & 0x7BE0);
+    }
+
+    fn schedule_sprite_overflow(&mut self) {
+        self.sprite_overflow_dot = 0;
+        let height: u16 = if self.ctrl & 0x20 != 0 { 16 } else { 8 };
+        let line = self.scanline;
+        let mut found = 0usize;
+        let mut overflow_byte = 0usize;
+        let mut dot = 65u16;
+
+        for i in 0..64 {
+            let y = self.oam[i * 4 + overflow_byte] as u16;
+            let row = line.wrapping_sub(y);
+            if row < height {
+                if found < 8 {
+                    found += 1;
+                    dot += 8;
+                } else {
+                    self.sprite_overflow_dot = (dot + 1).min(256);
+                    return;
+                }
+            } else {
+                if found >= 8 {
+                    overflow_byte = (overflow_byte + 1) & 0x03;
+                }
+                dot += 2;
+            }
+
+            if dot > 256 {
+                return;
+            }
+        }
     }
 
     fn evaluate_sprites(&mut self) {
