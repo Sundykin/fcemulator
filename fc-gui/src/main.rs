@@ -143,6 +143,7 @@ struct App {
     fps_timer: Instant,
     show_debug: bool,
     show_ppu: bool,
+    remove_sprite_limit: bool,
 }
 
 impl App {
@@ -166,6 +167,7 @@ impl App {
             fps_timer: Instant::now(),
             show_debug: false,
             show_ppu: false,
+            remove_sprite_limit: false,
         }
     }
 
@@ -173,6 +175,7 @@ impl App {
         match std::fs::read(&path) {
             Ok(data) => {
                 if self.deck.load_rom(&data).is_ok() {
+                    self.deck.set_remove_sprite_limit(self.remove_sprite_limit);
                     if let Some(a) = &self.audio {
                         self.deck.set_audio_sample_rate(a.sample_rate);
                     }
@@ -344,6 +347,7 @@ impl App {
         let frame = self.deck.frame_count();
         let mut show_debug = self.show_debug;
         let mut show_ppu = self.show_ppu;
+        let mut remove_sprite_limit = self.remove_sprite_limit;
         let mut pal_row = self.pal_row;
         let mut toggle_pause = false;
 
@@ -364,6 +368,7 @@ impl App {
                     }
                     ui.checkbox(&mut show_debug, "🐞 CPU");
                     ui.checkbox(&mut show_ppu, "🖼 PPU");
+                    ui.checkbox(&mut remove_sprite_limit, "reduce flicker");
                     ui.separator();
                     ui.label(format!("{fps:.0} FPS"));
                     if !running {
@@ -545,6 +550,10 @@ impl App {
         // Apply UI-driven actions now that the `gfx` borrow has ended.
         self.show_debug = show_debug;
         self.show_ppu = show_ppu;
+        if self.remove_sprite_limit != remove_sprite_limit {
+            self.remove_sprite_limit = remove_sprite_limit;
+            self.deck.set_remove_sprite_limit(remove_sprite_limit);
+        }
         self.pal_row = pal_row;
         if toggle_pause {
             self.paused = !self.paused;

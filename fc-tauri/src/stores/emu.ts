@@ -63,6 +63,7 @@ export const useEmuStore = defineStore("emu", {
       aspect: "orig" as "orig" | "square" | "stretch",
       zoom: "auto" as "auto" | "2x" | "3x",
       scanline: false,
+      removeSpriteLimit: false,
     },
     fps: 0,
     status: "还没有打开游戏",
@@ -168,6 +169,10 @@ export const useEmuStore = defineStore("emu", {
     setVolume(v: number) {
       this.volume = v;
       emu.setVolume(v / 100);
+    },
+    setRemoveSpriteLimit(enabled: boolean) {
+      this.display.removeSpriteLimit = enabled;
+      emu.setRemoveSpriteLimit(enabled);
     },
     async save() {
       await emu.saveState("1");

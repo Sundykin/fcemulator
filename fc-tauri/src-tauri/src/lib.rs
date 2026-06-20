@@ -42,6 +42,7 @@ pub fn run() {
             emu::set_input,
             emu::set_speed,
             emu::set_volume,
+            emu::set_remove_sprite_limit,
             emu::screenshot,
             emu::export_state,
             emu::import_state,

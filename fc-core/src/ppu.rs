@@ -14,6 +14,7 @@ use crate::types::{Mirroring, Region, SCREEN_HEIGHT, SCREEN_WIDTH};
 use serde::{Deserialize, Serialize};
 
 const OPEN_BUS_DECAY_DOTS: u64 = 3_000_000;
+const MAX_SCANLINE_SPRITES: usize = 64;
 
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 struct SpriteUnit {
@@ -24,6 +25,14 @@ struct SpriteUnit {
     priority: bool, // true = in front of background
     is_zero: bool,
     flip_h: bool,
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+pub struct PpuRenderOptions {
+    /// Visual enhancement: render all in-range sprites on a scanline instead of
+    /// only the hardware-selected first 8. CPU-visible PPU behavior remains
+    /// hardware-limited.
+    pub remove_sprite_limit: bool,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -60,6 +69,16 @@ pub struct Ppu {
     sprites: [SpriteUnit; 8],
     sprite_fetch_addr: [u16; 8],
     sprite_count: usize,
+    #[serde(skip, default = "default_render_options")]
+    render_options: PpuRenderOptions,
+    #[serde(skip, default = "default_enhanced_sprites")]
+    enhanced_sprites: Vec<SpriteUnit>,
+    #[serde(skip)]
+    enhanced_line: u16,
+    #[serde(skip)]
+    enhanced_frame: u64,
+    #[serde(skip)]
+    enhanced_ready: bool,
 
     // Memory.
     #[serde(with = "serde_big_array_vram")]
@@ -105,6 +124,12 @@ fn default_frame() -> Vec<u8> {
 fn default_palette() -> Vec<Rgb> {
     DEFAULT_PALETTE.to_vec()
 }
+fn default_render_options() -> PpuRenderOptions {
+    PpuRenderOptions::default()
+}
+fn default_enhanced_sprites() -> Vec<SpriteUnit> {
+    Vec::new()
+}
 
 impl std::fmt::Debug for Ppu {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -145,6 +170,11 @@ impl Ppu {
             sprites: [SpriteUnit::default(); 8],
             sprite_fetch_addr: [0; 8],
             sprite_count: 0,
+            render_options: PpuRenderOptions::default(),
+            enhanced_sprites: Vec::new(),
+            enhanced_line: 0,
+            enhanced_frame: 0,
+            enhanced_ready: false,
             vram: [0; 0x1000],
             palette_ram: [0; 0x20],
             oam: [0; 0x100],
@@ -169,6 +199,18 @@ impl Ppu {
 
     pub fn set_palette(&mut self, p: &Palette) {
         self.palette = p.colors.clone();
+    }
+
+    pub fn render_options(&self) -> PpuRenderOptions {
+        self.render_options
+    }
+
+    pub fn set_render_options(&mut self, options: PpuRenderOptions) {
+        if self.render_options.remove_sprite_limit != options.remove_sprite_limit {
+            self.enhanced_ready = false;
+            self.enhanced_sprites.clear();
+        }
+        self.render_options = options;
     }
 
     #[inline]
@@ -320,7 +362,7 @@ impl Ppu {
             if self.dot == 257 {
                 self.load_bg_shifters();
                 self.transfer_x();
-                self.evaluate_sprites();
+                self.evaluate_sprites(cart);
             }
             if (257..=320).contains(&self.dot) {
                 self.fetch_sprite_pattern(cart);
@@ -463,7 +505,9 @@ impl Ppu {
         }
     }
 
-    fn evaluate_sprites(&mut self) {
+    fn evaluate_sprites(&mut self, cart: &Cartridge) {
+        self.enhanced_ready = false;
+        self.enhanced_sprites.clear();
         let height: u16 = if self.ctrl & 0x20 != 0 { 16 } else { 8 };
         let mut found = 0usize;
         // Sprites evaluated on scanline S are displayed on S+1. OAM Y puts the
@@ -540,6 +584,7 @@ impl Ppu {
             self.sprite_fetch_addr[i] = dummy;
         }
         self.sprite_count = found;
+        self.evaluate_enhanced_sprites(cart, height);
     }
 
     fn fetch_sprite_pattern(&mut self, cart: &mut Cartridge) {
@@ -558,6 +603,109 @@ impl Ppu {
                 self.sprites[slot].pat_hi = value;
             }
         }
+    }
+
+    fn sprite_candidate_for_scanline(
+        &self,
+        i: usize,
+        line: u16,
+        height: u16,
+    ) -> Option<(SpriteUnit, u16)> {
+        let y = self.oam[i * 4] as u16;
+        let row = line.wrapping_sub(y);
+        if row >= height {
+            return None;
+        }
+
+        let tile = self.oam[i * 4 + 1];
+        let attr = self.oam[i * 4 + 2];
+        let x = self.oam[i * 4 + 3];
+        let flip_v = attr & 0x80 != 0;
+        let flip_h = attr & 0x40 != 0;
+        let addr = if height == 16 {
+            let table = ((tile & 1) as u16) * 0x1000;
+            let mut base = (tile & 0xFE) as u16;
+            let mut rr = row;
+            if flip_v {
+                rr = 15 - rr;
+            }
+            if rr >= 8 {
+                base += 1;
+                rr -= 8;
+            }
+            table + base * 16 + rr
+        } else {
+            let table = if self.ctrl & 0x08 != 0 { 0x1000 } else { 0 };
+            let mut rr = row;
+            if flip_v {
+                rr = 7 - rr;
+            }
+            table + (tile as u16) * 16 + rr
+        };
+
+        Some((
+            SpriteUnit {
+                x,
+                pat_lo: 0,
+                pat_hi: 0,
+                palette: attr & 0x03,
+                priority: attr & 0x20 == 0,
+                is_zero: i == 0,
+                flip_h,
+            },
+            addr,
+        ))
+    }
+
+    fn evaluate_enhanced_sprites(&mut self, cart: &Cartridge, height: u16) {
+        if !self.render_options.remove_sprite_limit || self.scanline >= 240 {
+            return;
+        }
+
+        let line = self.scanline;
+        self.enhanced_sprites.clear();
+        for i in 0..64 {
+            let Some((mut s, addr)) = self.sprite_candidate_for_scanline(i, line, height) else {
+                continue;
+            };
+            s.pat_lo = cart.ppu_read_for(addr, ChrAccess::Sprite);
+            s.pat_hi = cart.ppu_read_for(addr + 8, ChrAccess::Sprite);
+            self.enhanced_sprites.push(s);
+            if self.enhanced_sprites.len() >= MAX_SCANLINE_SPRITES {
+                break;
+            }
+        }
+        // Sprite evaluation at scanline S feeds rendering on S+1.
+        self.enhanced_line = self.scanline + 1;
+        self.enhanced_frame = self.frame;
+        self.enhanced_ready = true;
+    }
+
+    #[inline]
+    fn sprite_pattern_pixel(sprite: SpriteUnit, x: usize) -> Option<u8> {
+        let dx = (x as i32) - (sprite.x as i32);
+        if !(0..8).contains(&dx) {
+            return None;
+        }
+        let bit = if sprite.flip_h {
+            dx as u8
+        } else {
+            7 - dx as u8
+        };
+        let lo = (sprite.pat_lo >> bit) & 1;
+        let hi = (sprite.pat_hi >> bit) & 1;
+        let pixel = (hi << 1) | lo;
+        (pixel != 0).then_some(pixel)
+    }
+
+    fn hardware_sprite_zero_pixel(&self, x: usize) -> bool {
+        for i in 0..self.sprite_count {
+            let sprite = self.sprites[i];
+            if sprite.is_zero {
+                return Self::sprite_pattern_pixel(sprite, x).is_some();
+            }
+        }
+        false
     }
 
     fn render_pixel(&mut self) {
@@ -581,31 +729,36 @@ impl Ppu {
         let mut sp_pixel = 0u8;
         let mut sp_pal = 0u8;
         let mut sp_priority = false;
-        let mut sp_zero = false;
+        let mut sprite_zero_hit_pixel = false;
         if self.mask & 0x10 != 0 && !(self.mask & 0x04 == 0 && x < 8) {
-            for i in 0..self.sprite_count {
-                let s = self.sprites[i];
-                let dx = (x as i32) - (s.x as i32);
-                if (0..8).contains(&dx) {
-                    let bit = if s.flip_h { dx as u8 } else { 7 - dx as u8 };
-                    let lo = (s.pat_lo >> bit) & 1;
-                    let hi = (s.pat_hi >> bit) & 1;
-                    let p = (hi << 1) | lo;
-                    if p != 0 {
-                        sp_pixel = p;
-                        sp_pal = s.palette;
-                        sp_priority = s.priority;
-                        sp_zero = s.is_zero;
-                        break;
-                    }
+            sprite_zero_hit_pixel = self.hardware_sprite_zero_pixel(x);
+            let enhanced_valid = self.render_options.remove_sprite_limit
+                && self.enhanced_ready
+                && self.enhanced_line == self.scanline
+                && self.enhanced_frame == self.frame;
+            let sprite_len = if enhanced_valid {
+                self.enhanced_sprites.len()
+            } else {
+                self.sprite_count
+            };
+            for i in 0..sprite_len {
+                let s = if enhanced_valid {
+                    self.enhanced_sprites[i]
+                } else {
+                    self.sprites[i]
+                };
+                if let Some(p) = Self::sprite_pattern_pixel(s, x) {
+                    sp_pixel = p;
+                    sp_pal = s.palette;
+                    sp_priority = s.priority;
+                    break;
                 }
             }
         }
 
         // Sprite-0 hit.
-        if sp_zero
+        if sprite_zero_hit_pixel
             && bg_pixel != 0
-            && sp_pixel != 0
             && x != 255
             && self.mask & 0x08 != 0
             && self.mask & 0x10 != 0
@@ -944,6 +1097,38 @@ impl Ppu {
             *slot = self.color_at(self.palette_ram[i]);
         }
         p
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sprite_zero_hit_ignores_visual_only_enhanced_sprite_zero() {
+        let mut ppu = Ppu::new(Region::Ntsc);
+        ppu.mask = 0x18;
+        ppu.dot = 1;
+        ppu.scanline = 0;
+        ppu.bg_sh_pat_lo = 0x8000;
+        ppu.sprite_count = 0;
+        ppu.render_options.remove_sprite_limit = true;
+        ppu.enhanced_ready = true;
+        ppu.enhanced_line = ppu.scanline;
+        ppu.enhanced_frame = ppu.frame;
+        ppu.enhanced_sprites.push(SpriteUnit {
+            x: 0,
+            pat_lo: 0x80,
+            pat_hi: 0,
+            palette: 0,
+            priority: true,
+            is_zero: true,
+            flip_h: false,
+        });
+
+        ppu.render_pixel();
+
+        assert_eq!(ppu.status & 0x40, 0);
     }
 }
 

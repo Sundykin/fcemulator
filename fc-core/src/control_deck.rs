@@ -7,6 +7,7 @@ use crate::cpu::Cpu;
 use crate::debug::{BpKind, Breakpoint, Debugger};
 use crate::disasm;
 use crate::palette::{Palette, Rgb};
+use crate::ppu::PpuRenderOptions;
 use crate::save_state::SaveState;
 use crate::types::{Button, Region};
 
@@ -37,7 +38,9 @@ impl ControlDeck {
     /// Load an iNES/NES 2.0 ROM image and power-cycle.
     pub fn load_rom(&mut self, data: &[u8]) -> Result<(), CartridgeError> {
         let cart = Cartridge::from_bytes(data)?;
+        let render_options = self.bus.ppu.render_options();
         self.bus = Bus::new(cart, self.region);
+        self.bus.ppu.set_render_options(render_options);
         self.cpu = Cpu::new();
         self.cpu.power_on(&mut self.bus);
         self.running = true;
@@ -209,6 +212,20 @@ impl ControlDeck {
     pub fn set_palette(&mut self, p: &Palette) {
         self.bus.ppu.set_palette(p);
     }
+
+    pub fn ppu_render_options(&self) -> PpuRenderOptions {
+        self.bus.ppu.render_options()
+    }
+
+    pub fn set_ppu_render_options(&mut self, options: PpuRenderOptions) {
+        self.bus.ppu.set_render_options(options);
+    }
+
+    pub fn set_remove_sprite_limit(&mut self, enabled: bool) {
+        let mut options = self.ppu_render_options();
+        options.remove_sprite_limit = enabled;
+        self.set_ppu_render_options(options);
+    }
     pub fn get_palette(&self) -> Palette {
         Palette {
             colors: self.bus.ppu.palette.clone(),
@@ -234,9 +251,11 @@ impl ControlDeck {
         match SaveState::from_bytes(data) {
             Ok(s) => {
                 let palette = self.bus.ppu.palette.clone();
+                let render_options = self.bus.ppu.render_options();
                 self.cpu = s.cpu;
                 self.bus = s.bus;
                 self.bus.ppu.palette = palette;
+                self.bus.ppu.set_render_options(render_options);
                 self.bus.ppu.frame_buffer = vec![0; 256 * 240 * 4];
                 self.running = true;
                 true

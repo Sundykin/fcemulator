@@ -89,6 +89,7 @@ const zoomOpts = [
           <div class="row"><span>宽高比</span><n-select v-model:value="store.display.aspect" :options="aspectOpts" size="small" /></div>
           <div class="row"><span>缩放</span><n-select v-model:value="store.display.zoom" :options="zoomOpts" size="small" /></div>
           <div class="row"><span>扫描线</span><n-switch v-model:value="store.display.scanline" size="small" /></div>
+          <div class="row"><span>减少闪烁</span><n-switch :value="store.display.removeSpriteLimit" size="small" @update:value="store.setRemoveSpriteLimit" /></div>
         </div>
       </template>
 

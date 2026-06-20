@@ -73,7 +73,10 @@ export function useEmuLoop(stage: Ref<HTMLElement | null>) {
     },
     { flush: "post" }
   );
-  watch(() => ({ ...store.display }), applySettings, { deep: true });
+  watch(
+    () => [store.display.filter, store.display.aspect, store.display.zoom],
+    applySettings
+  );
 
   onMounted(() => {
     ensureRenderer();

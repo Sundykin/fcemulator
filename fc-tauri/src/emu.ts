@@ -56,6 +56,7 @@ export const setInput = (p1: number, p2: number, seq: number) => invoke("set_inp
 export const control = (action: "pause" | "resume" | "reset" | "step") => invoke("control", { action });
 export const setSpeed = (mult: number) => invoke("set_speed", { mult });
 export const setVolume = (volume: number) => invoke("set_volume", { volume });
+export const setRemoveSpriteLimit = (enabled: boolean) => invoke("set_remove_sprite_limit", { enabled });
 export const screenshot = () => invoke<string>("screenshot");
 export const exportStateTo = (path: string) => invoke("export_state", { path });
 export const importStateFrom = (path: string) => invoke("import_state", { path });

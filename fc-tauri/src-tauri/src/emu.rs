@@ -320,6 +320,16 @@ pub fn set_volume(volume: f64, state: State<EmuState>) {
     state.shared.ctrl.lock().unwrap().volume = volume.clamp(0.0, 1.0) as f32;
 }
 
+#[tauri::command]
+pub fn set_remove_sprite_limit(enabled: bool, state: State<EmuState>) {
+    state
+        .shared
+        .deck
+        .lock()
+        .unwrap()
+        .set_remove_sprite_limit(enabled);
+}
+
 /// Encode the current frame to PNG and save it under <app_data>/screenshots/.
 #[tauri::command]
 pub fn screenshot(app: AppHandle, state: State<EmuState>) -> Result<String, String> {

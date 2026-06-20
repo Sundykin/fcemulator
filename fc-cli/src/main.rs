@@ -1,6 +1,6 @@
 //! FC/NES emulator CLI.
 //!
-//!   fc run <rom> [--frames N] [--region ntsc|pal|dendy] [--palette f.pal]
+//!   fc run <rom> [--frames N] [--region ntsc|pal|dendy] [--palette f.pal] [--remove-sprite-limit]
 //!   fc test <rom> [--entry C000] [--frames N]   # CPU test ROMs (nestest etc.)
 //!   fc disasm <rom> <addr-hex> [--count N]
 //!   fc info <rom>
@@ -36,6 +36,9 @@ enum Commands {
         /// Tap Start around frame 60 (to enter gameplay for demos/tests).
         #[arg(long)]
         autostart: bool,
+        /// Visual enhancement: render sprites beyond the NES 8-per-scanline limit.
+        #[arg(long)]
+        remove_sprite_limit: bool,
         /// Write all emulated audio to a mono 16-bit WAV file.
         #[arg(long)]
         wav: Option<String>,
@@ -192,11 +195,13 @@ fn main() -> Result<()> {
             palette,
             shot,
             autostart,
+            remove_sprite_limit,
             wav,
         } => {
             let data = std::fs::read(&rom)?;
             let mut deck = ControlDeck::new(Region::from_str(&region));
             deck.load_rom(&data)?;
+            deck.set_remove_sprite_limit(remove_sprite_limit);
             if let Some(p) = palette {
                 let pd = std::fs::read(&p)?;
                 if deck.load_palette_file(&pd) {
