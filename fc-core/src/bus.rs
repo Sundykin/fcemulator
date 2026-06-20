@@ -60,6 +60,8 @@ pub struct Bus {
     pub cartridge: Cartridge,
     pub controllers: Controllers,
     pub region: Region,
+    #[serde(default)]
+    ppu_phase: u8,
     dma: Dma,
     open_bus: u8,
     nmi_latch: bool,
@@ -82,6 +84,7 @@ impl Bus {
             cartridge,
             controllers: Controllers::new(),
             region,
+            ppu_phase: 0,
             dma: Dma::default(),
             open_bus: 0,
             nmi_latch: false,
@@ -95,7 +98,10 @@ impl Bus {
     pub fn tick(&mut self) {
         // The get/put cadence advances every physical CPU cycle.
         self.dma.get_cycle = !self.dma.get_cycle;
-        for _ in 0..3 {
+        let (dots_num, dots_den) = self.region.ppu_dots_per_cpu_cycle();
+        self.ppu_phase += dots_num;
+        while self.ppu_phase >= dots_den {
+            self.ppu_phase -= dots_den;
             self.ppu.tick(&mut self.cartridge);
             if self.ppu.take_nmi() {
                 self.nmi_latch = true;
@@ -401,5 +407,16 @@ mod tests {
         bus.dmc_conflict_read(0x4016, DmcConflictRead::Dummy);
 
         assert_eq!(bus.read(0x4016) & 1, 0);
+    }
+
+    #[test]
+    fn pal_ppu_clock_uses_16_to_5_cpu_ratio() {
+        let mut bus = Bus::new(Cartridge::empty(), Region::Pal);
+
+        for _ in 0..5 {
+            bus.tick();
+        }
+
+        assert_eq!(bus.ppu.dot, 16);
     }
 }

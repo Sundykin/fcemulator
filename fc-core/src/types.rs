@@ -59,6 +59,14 @@ impl Region {
         }
     }
 
+    /// PPU dots per CPU cycle as an exact rational numerator/denominator.
+    pub fn ppu_dots_per_cpu_cycle(self) -> (u8, u8) {
+        match self {
+            Region::Ntsc => (3, 1),
+            Region::Pal | Region::Dendy => (16, 5),
+        }
+    }
+
     /// Whether DMC DMA can cause the extra-read side effects seen on 2A03
     /// controller and PPU register reads. The PAL 2A07 fixes this defect.
     pub fn has_dmc_read_conflict(self) -> bool {
