@@ -14,6 +14,10 @@ use crate::types::{Mirroring, Region, SCREEN_HEIGHT, SCREEN_WIDTH};
 use serde::{Deserialize, Serialize};
 
 const OPEN_BUS_DECAY_DOTS: u64 = 3_000_000;
+// PPUDATA read fetches update the internal buffer after the immediate CPU read
+// window, so a page-cross dummy read and the following real read can both see
+// the previous buffer value while still advancing VRAM address twice.
+const PPUDATA_BUFFER_DELAY_DOTS: u64 = 4;
 const MAX_SCANLINE_SPRITES: usize = 64;
 
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
@@ -50,6 +54,8 @@ pub struct Ppu {
     pub w: bool,
 
     pub read_buffer: u8,
+    #[serde(default)]
+    read_buffer_pending: Option<(u8, u64)>,
     open_bus: u8,
     #[serde(default)]
     open_bus_decay_at: [u64; 8],
@@ -157,6 +163,7 @@ impl Ppu {
             fine_x: 0,
             w: false,
             read_buffer: 0,
+            read_buffer_pending: None,
             open_bus: 0,
             open_bus_decay_at: [0; 8],
             bg_next_id: 0,
@@ -290,6 +297,22 @@ impl Ppu {
                 };
             }
         }
+    }
+
+    fn promote_read_buffer(&mut self) {
+        if let Some((value, ready_at)) = self.read_buffer_pending {
+            if self.master_cycle >= ready_at {
+                self.read_buffer = value;
+                self.read_buffer_pending = None;
+            }
+        }
+    }
+
+    fn schedule_read_buffer(&mut self, value: u8) {
+        self.read_buffer_pending = Some((
+            value,
+            self.master_cycle.saturating_add(PPUDATA_BUFFER_DELAY_DOTS),
+        ));
     }
 
     // ---------------------------------------------------------------- ticking
@@ -851,6 +874,17 @@ impl Ppu {
         v
     }
 
+    pub fn peek_memory(&self, cart: &Cartridge, addr: u16) -> u8 {
+        let addr = addr & 0x3FFF;
+        match addr {
+            0x0000..=0x1FFF => cart.ppu_read(addr),
+            0x2000..=0x3EFF => cart
+                .peek_nametable(addr, &self.vram)
+                .unwrap_or_else(|| self.vram[self.mirror_nt(cart, addr)]),
+            _ => self.palette_ram[Self::palette_index(addr)],
+        }
+    }
+
     fn ppu_write(&mut self, cart: &mut Cartridge, addr: u16, value: u8) {
         let addr = addr & 0x3FFF;
         cart.mapper.notify_a12(addr, self.master_cycle);
@@ -922,15 +956,18 @@ impl Ppu {
                 r
             }
             7 => {
+                self.promote_read_buffer();
                 let addr = self.v & 0x3FFF;
                 let r;
                 if addr < 0x3F00 {
                     r = self.read_buffer;
-                    self.read_buffer = self.ppu_read(cart, addr);
+                    let fetched = self.ppu_read(cart, addr);
+                    self.schedule_read_buffer(fetched);
                     self.refresh_open_bus_bits(r, 0xFF);
                 } else {
                     r = (self.ppu_read(cart, addr) & 0x3F) | (self.open_bus_value() & 0xC0);
-                    self.read_buffer = self.ppu_read(cart, addr - 0x1000);
+                    let fetched = self.ppu_read(cart, addr - 0x1000);
+                    self.schedule_read_buffer(fetched);
                     self.refresh_open_bus_bits(r, 0x3F);
                 }
                 self.v = self.v.wrapping_add(self.addr_increment());
@@ -1110,6 +1147,24 @@ impl Ppu {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ppudata_read_buffer_updates_after_dot_delay() {
+        let mut ppu = Ppu::new(Region::Ntsc);
+        let mut cart = Cartridge::empty();
+        ppu.vram[0] = 0x11;
+        ppu.vram[1] = 0x22;
+        ppu.read_buffer = 0xAA;
+        ppu.v = 0x2000;
+
+        assert_eq!(ppu.read_register(0x2007, &mut cart), 0xAA);
+        assert_eq!(ppu.read_register(0x2007, &mut cart), 0xAA);
+
+        for _ in 0..PPUDATA_BUFFER_DELAY_DOTS {
+            ppu.tick(&mut cart);
+        }
+        assert_eq!(ppu.read_register(0x2007, &mut cart), 0x22);
+    }
 
     #[test]
     fn sprite_zero_hit_ignores_visual_only_enhanced_sprite_zero() {

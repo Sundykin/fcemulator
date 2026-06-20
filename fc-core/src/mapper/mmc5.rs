@@ -311,6 +311,29 @@ impl MapperOps for Mmc5 {
         Some(v)
     }
 
+    fn peek_nametable(&self, addr: u16, ciram: &[u8; 0x1000]) -> Option<u8> {
+        let source = self.table_source(addr);
+        let off = (addr & 0x03FF) as usize;
+        let v = match source {
+            0 | 1 => {
+                if self.exram_mode == 1 && off >= 0x3C0 && self.nt_fetch_seen {
+                    self.extended_attribute_byte()
+                } else {
+                    ciram[self.ciram_index(addr, source)]
+                }
+            }
+            2 => self.exram_nt_read(off),
+            _ => {
+                if off >= 0x3C0 {
+                    self.fill_attr * 0x55
+                } else {
+                    self.fill_tile
+                }
+            }
+        };
+        Some(v)
+    }
+
     fn nametable_write(&mut self, addr: u16, value: u8, ciram: &mut [u8; 0x1000]) -> bool {
         let source = self.table_source(addr);
         let off = (addr & 0x03FF) as usize;

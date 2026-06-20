@@ -218,6 +218,10 @@ impl Cartridge {
         self.mapper.nametable_read(addr, ciram)
     }
 
+    pub fn peek_nametable(&self, addr: u16, ciram: &[u8; 0x1000]) -> Option<u8> {
+        self.mapper.peek_nametable(addr, ciram)
+    }
+
     pub fn nametable_write(&mut self, addr: u16, value: u8, ciram: &mut [u8; 0x1000]) -> bool {
         self.mapper.nametable_write(addr, value, ciram)
     }

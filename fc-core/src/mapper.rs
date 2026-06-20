@@ -56,6 +56,10 @@ pub trait MapperOps {
     fn nametable_read(&mut self, _addr: u16, _ciram: &[u8; 0x1000]) -> Option<u8> {
         None
     }
+    /// Optional mapper-owned nametable peek without side effects.
+    fn peek_nametable(&self, _addr: u16, _ciram: &[u8; 0x1000]) -> Option<u8> {
+        None
+    }
     /// Optional mapper-owned nametable write (`$2000..=$3EFF`).
     fn nametable_write(&mut self, _addr: u16, _value: u8, _ciram: &mut [u8; 0x1000]) -> bool {
         false
@@ -192,6 +196,9 @@ impl MapperOps for Mapper {
     }
     fn nametable_read(&mut self, addr: u16, ciram: &[u8; 0x1000]) -> Option<u8> {
         dispatch!(self, m => m.nametable_read(addr, ciram))
+    }
+    fn peek_nametable(&self, addr: u16, ciram: &[u8; 0x1000]) -> Option<u8> {
+        dispatch!(self, m => m.peek_nametable(addr, ciram))
     }
     fn nametable_write(&mut self, addr: u16, value: u8, ciram: &mut [u8; 0x1000]) -> bool {
         dispatch!(self, m => m.nametable_write(addr, value, ciram))

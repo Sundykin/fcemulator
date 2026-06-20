@@ -290,6 +290,9 @@ impl ControlDeck {
     pub fn write_memory(&mut self, addr: u16, value: u8) {
         self.bus.write(addr, value);
     }
+    pub fn read_ppu_memory(&self, addr: u16) -> u8 {
+        self.bus.ppu.peek_memory(&self.bus.cartridge, addr)
+    }
     pub fn disassemble(&self, addr: u16, count: usize) -> Vec<String> {
         disasm::disassemble_range(&self.bus, addr, count)
     }

@@ -9,7 +9,7 @@
 mod tauri_bridge;
 
 use anyhow::Result;
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use fc_core::{ControlDeck, Region};
 
 #[derive(Parser)]
@@ -60,13 +60,17 @@ enum Commands {
     },
     /// Print ROM header info.
     Info { rom: String },
-    /// Run self-checking test ROMs (blargg $6000 protocol) and score them.
+    /// Run self-checking test ROMs and score them.
     Testsuite {
         roms: Vec<String>,
         #[arg(short, long, default_value = "ntsc")]
         region: String,
         #[arg(short, long, default_value_t = 3000)]
         frames: u64,
+        #[arg(long, value_enum, default_value_t = TestProtocol::Blargg)]
+        protocol: TestProtocol,
+        #[arg(long)]
+        expect_text: Vec<String>,
     },
     /// Dump PPU debug views (pattern tables + nametables) to PNGs.
     Dbg {
@@ -85,9 +89,24 @@ enum Commands {
     TauriBridge,
 }
 
+#[derive(Clone, Copy, Debug, ValueEnum)]
+enum TestProtocol {
+    /// blargg $6000 signature/status protocol.
+    Blargg,
+    /// Text-console ROMs that print Passed/Failed/Error into nametable memory.
+    Console,
+    /// Validation ROMs that report final result in zero page $00F8 (1 = pass).
+    Validation,
+}
+
+enum TestOutcome {
+    Pass(String),
+    Fail(String),
+    Timeout(String),
+}
+
 /// Run a blargg-style self-checking ROM until it reports a result via $6000.
-/// Returns (status, message): status 0x00 = pass, 0xFF = timeout, else fail code.
-fn run_blargg(deck: &mut ControlDeck, max_frames: u64) -> (u8, String) {
+fn run_blargg(deck: &mut ControlDeck, max_frames: u64) -> TestOutcome {
     let mut f = 0;
     let mut resets = 0;
     while f < max_frames {
@@ -104,7 +123,7 @@ fn run_blargg(deck: &mut ControlDeck, max_frames: u64) -> (u8, String) {
             let s = deck.read_memory(0x6000);
             if s == 0x81 {
                 if resets >= 8 {
-                    return (0xFF, "too many reset requests".into());
+                    return TestOutcome::Timeout("too many reset requests".into());
                 }
                 for _ in 0..6 {
                     deck.run_frame();
@@ -125,11 +144,85 @@ fn run_blargg(deck: &mut ControlDeck, max_frames: u64) -> (u8, String) {
                         msg.push(b as char);
                     }
                 }
-                return (s, msg);
+                return if s == 0 {
+                    TestOutcome::Pass(msg)
+                } else {
+                    TestOutcome::Fail(format!("code ${s:02X} {}", msg.trim()))
+                };
             }
         }
     }
-    (0xFF, "timeout".into())
+    TestOutcome::Timeout("timeout".into())
+}
+
+/// Run a validation-style ROM for a fixed budget and read its final result.
+/// These ROMs initialize $00F8 to 0, store an error code while testing, then
+/// store 1 only when `tests_passed` is reached.
+fn run_validation(deck: &mut ControlDeck, max_frames: u64) -> TestOutcome {
+    for _ in 0..max_frames {
+        deck.run_frame();
+    }
+    let result = deck.read_memory(0x00F8);
+    match result {
+        1 => TestOutcome::Pass("validation $00F8=01".into()),
+        0 => TestOutcome::Timeout("no validation result ($00F8=00)".into()),
+        n => TestOutcome::Fail(format!("validation failed #{n} ($00F8=${n:02X})")),
+    }
+}
+
+fn run_console(deck: &mut ControlDeck, max_frames: u64, expected: &[String]) -> TestOutcome {
+    for _ in 0..max_frames {
+        deck.run_frame();
+    }
+    let text = console_text(deck);
+    let compact = compact_console_text(&text);
+    if let Some(missing) = expected
+        .iter()
+        .find(|needle| !compact.contains(needle.as_str()))
+    {
+        return TestOutcome::Fail(format!(
+            "missing expected text {missing:?}; console: {compact}"
+        ));
+    }
+    if !expected.is_empty() {
+        return TestOutcome::Pass(compact);
+    }
+    if compact.contains("Passed") {
+        TestOutcome::Pass(compact)
+    } else if let Some(i) = compact.find("Failed").or_else(|| compact.find("Error ")) {
+        TestOutcome::Fail(compact[i..].chars().take(120).collect())
+    } else {
+        TestOutcome::Timeout("no console result".into())
+    }
+}
+
+fn console_text(deck: &ControlDeck) -> String {
+    let mut text = String::new();
+    for table in 0..4u16 {
+        let base = 0x2000 + table * 0x400;
+        for row in 0..30u16 {
+            for col in 0..32u16 {
+                let b = deck.read_ppu_memory(base + row * 32 + col);
+                let ch = if (0x20..=0x7E).contains(&b) {
+                    b as char
+                } else {
+                    ' '
+                };
+                text.push(ch);
+            }
+            text.push('\n');
+        }
+        text.push('\n');
+    }
+    text
+}
+
+fn compact_console_text(text: &str) -> String {
+    text.lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn short(path: &str) -> String {
@@ -292,6 +385,8 @@ fn main() -> Result<()> {
             roms,
             region,
             frames,
+            protocol,
+            expect_text,
         } => {
             let mut pass = 0;
             let mut total = 0;
@@ -310,14 +405,18 @@ fn main() -> Result<()> {
                     println!("  {:<48} ERR  bad ROM", short(rom));
                     continue;
                 }
-                let (status, msg) = run_blargg(&mut deck, frames);
-                let verdict = match status {
-                    0x00 => {
+                let outcome = match protocol {
+                    TestProtocol::Blargg => run_blargg(&mut deck, frames),
+                    TestProtocol::Console => run_console(&mut deck, frames, &expect_text),
+                    TestProtocol::Validation => run_validation(&mut deck, frames),
+                };
+                let (verdict, msg) = match outcome {
+                    TestOutcome::Pass(msg) => {
                         pass += 1;
-                        "PASS"
+                        ("PASS", msg)
                     }
-                    0xFF => "TIMEOUT",
-                    _ => "FAIL",
+                    TestOutcome::Fail(msg) => ("FAIL", msg),
+                    TestOutcome::Timeout(msg) => ("TIMEOUT", msg),
                 };
                 println!("  {:<48} {verdict:<8} {}", short(rom), msg.trim());
             }
