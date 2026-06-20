@@ -140,6 +140,13 @@ pub struct Ppu {
     pub frame_buffer: Vec<u8>, // 256*240*4 RGBA
     #[serde(skip, default = "default_palette")]
     pub palette: Vec<Rgb>,
+    // [emphasis 0..8][nes color 0..64] -> packed RGBA (`[r,g,b,255]` little-endian),
+    // so render_pixel does one fixed-array lookup + one 4-byte store instead of a
+    // `Vec` palette index, an `apply_emphasis` call, and four bounds-checked writes.
+    // Derived from `palette`; rebuilt in `set_palette`; #[serde(skip)] (the palette
+    // it derives from is itself skip → both reset to the default palette on load).
+    #[serde(skip, default = "default_palette_lut")]
+    palette_lut: [[u32; 64]; 8],
 }
 
 fn default_frame() -> Vec<u8> {
@@ -159,6 +166,34 @@ fn default_sprite_cover() -> [bool; 256] {
 }
 fn invalid_line() -> u16 {
     u16::MAX
+}
+fn default_palette_lut() -> [[u32; 64]; 8] {
+    Ppu::build_palette_lut(&DEFAULT_PALETTE)
+}
+
+/// NES colour emphasis: the 0.82 dim is applied to the channels that are NOT
+/// emphasized (verbatim from the former per-pixel `apply_emphasis`).
+fn emphasize(c: Rgb, e: u8) -> Rgb {
+    if e == 0 {
+        return c;
+    }
+    let dim = |v: u8| ((v as f32) * 0.82) as u8;
+    let mut r = c.r;
+    let mut g = c.g;
+    let mut b = c.b;
+    if e & 0x01 != 0 {
+        g = dim(g);
+        b = dim(b);
+    }
+    if e & 0x02 != 0 {
+        r = dim(r);
+        b = dim(b);
+    }
+    if e & 0x04 != 0 {
+        r = dim(r);
+        g = dim(g);
+    }
+    Rgb { r, g, b }
 }
 
 impl std::fmt::Debug for Ppu {
@@ -229,11 +264,26 @@ impl Ppu {
             nmi_suppressed: false,
             frame_buffer: default_frame(),
             palette: default_palette(),
+            palette_lut: default_palette_lut(),
         }
     }
 
     pub fn set_palette(&mut self, p: &Palette) {
         self.palette = p.colors.clone();
+        self.palette_lut = Self::build_palette_lut(&self.palette);
+    }
+
+    /// Precompute `[emphasis][nes color] -> packed RGBA` from a 64-entry palette.
+    fn build_palette_lut(palette: &[Rgb]) -> [[u32; 64]; 8] {
+        let mut lut = [[0u32; 64]; 8];
+        for (e, row) in lut.iter_mut().enumerate() {
+            for (c, slot) in row.iter_mut().enumerate() {
+                let base = palette.get(c).copied().unwrap_or(Rgb::new(0, 0, 0));
+                let p = emphasize(base, e as u8);
+                *slot = u32::from_le_bytes([p.r, p.g, p.b, 255]);
+            }
+        }
+        lut
     }
 
     pub fn render_options(&self) -> PpuRenderOptions {
@@ -923,42 +973,12 @@ impl Ppu {
             (if sprite { 0x10 } else { 0x00 }) + (pal << 2) + pixel
         };
         let grayscale = if self.mask & 0x01 != 0 { 0x30 } else { 0x3F };
-        let color = self.palette_ram[(pal_addr & 0x1F) as usize] & grayscale;
-        let rgb = self.apply_emphasis(self.palette[(color & 0x3F) as usize]);
+        let color = (self.palette_ram[(pal_addr & 0x1F) as usize] & grayscale & 0x3F) as usize;
+        let emphasis = ((self.mask >> 5) & 0x07) as usize;
+        let rgba = self.palette_lut[emphasis][color];
 
         let off = (y * SCREEN_WIDTH + x) * 4;
-        self.frame_buffer[off] = rgb.r;
-        self.frame_buffer[off + 1] = rgb.g;
-        self.frame_buffer[off + 2] = rgb.b;
-        self.frame_buffer[off + 3] = 255;
-    }
-
-    fn apply_emphasis(&self, c: Rgb) -> Rgb {
-        let e = (self.mask >> 5) & 0x07;
-        if e == 0 {
-            return c;
-        }
-        let dim = |v: u8| ((v as f32) * 0.82) as u8;
-        let mut r = c.r;
-        let mut g = c.g;
-        let mut b = c.b;
-        if e & 0x01 == 0 {
-            // not red-emphasis -> dim red contribution
-        }
-        // Emphasis darkens the channels that are NOT emphasized.
-        if e & 0x01 != 0 {
-            g = dim(g);
-            b = dim(b);
-        }
-        if e & 0x02 != 0 {
-            r = dim(r);
-            b = dim(b);
-        }
-        if e & 0x04 != 0 {
-            r = dim(r);
-            g = dim(g);
-        }
-        Rgb { r, g, b }
+        self.frame_buffer[off..off + 4].copy_from_slice(&rgba.to_le_bytes());
     }
 
     // ----------------------------------------------------------- PPU memory
@@ -1272,6 +1292,24 @@ mod tests {
             ppu.tick(&mut cart);
         }
         assert_eq!(ppu.read_register(0x2007, &mut cart), 0x22);
+    }
+
+    #[test]
+    fn palette_lut_matches_emphasis_math() {
+        // The LUT must reproduce the former per-pixel apply_emphasis output for
+        // every (emphasis, colour) so the framebuffer stays byte-identical.
+        let ppu = Ppu::new(Region::Ntsc);
+        for e in 0..8u8 {
+            for c in 0..64usize {
+                let want = emphasize(ppu.palette[c], e);
+                let got = ppu.palette_lut[e as usize][c].to_le_bytes();
+                assert_eq!(
+                    got,
+                    [want.r, want.g, want.b, 255],
+                    "lut mismatch at emphasis={e} colour={c}"
+                );
+            }
+        }
     }
 
     #[test]
