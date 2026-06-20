@@ -55,6 +55,10 @@ pub trait MapperOps {
     /// PPU dot counter). MMC3 uses the A12 (bit 12) rising edge to clock its
     /// scanline IRQ counter; other mappers ignore it.
     fn notify_a12(&mut self, _addr: u16, _cycle: u64) {}
+    /// Clock the mapper once per CPU cycle. Konami VRC IRQs count CPU cycles (or
+    /// scanlines via a CPU-cycle prescaler) rather than A12 edges; most mappers
+    /// ignore it.
+    fn cpu_clock(&mut self) {}
     /// Whether a mapper IRQ is currently asserted.
     fn irq(&self) -> bool {
         false
@@ -70,6 +74,7 @@ mod mmc2;
 mod mmc3;
 mod mmc4;
 mod mmc5;
+mod vrc4;
 
 pub use basic::{Axrom, Cnrom, Codemasters, ColorDreams, Gxrom, Nrom, Unrom};
 pub use mmc1::Mmc1;
@@ -77,6 +82,7 @@ pub use mmc2::Mmc2;
 pub use mmc3::Mmc3;
 pub use mmc4::Mmc4;
 pub use mmc5::Mmc5;
+pub use vrc4::Vrc4;
 
 /// Enum dispatch over all supported mappers (keeps the cartridge serializable).
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -93,6 +99,7 @@ pub enum Mapper {
     ColorDreams(ColorDreams),
     Gxrom(Gxrom),
     Codemasters(Codemasters),
+    Vrc4(Vrc4),
 }
 
 impl Mapper {
@@ -117,6 +124,7 @@ impl Mapper {
             11 => Mapper::ColorDreams(ColorDreams::new(mirroring)),
             66 => Mapper::Gxrom(Gxrom::new(mirroring)),
             71 => Mapper::Codemasters(Codemasters::new(prg_16k, mirroring)),
+            25 => Mapper::Vrc4(Vrc4::new(prg_16k, chr_8k)),
             other => return Err(other),
         })
     }
@@ -137,6 +145,7 @@ macro_rules! dispatch {
             Mapper::ColorDreams($m) => $body,
             Mapper::Gxrom($m) => $body,
             Mapper::Codemasters($m) => $body,
+            Mapper::Vrc4($m) => $body,
         }
     };
 }
@@ -174,6 +183,9 @@ impl MapperOps for Mapper {
     }
     fn notify_a12(&mut self, addr: u16, cycle: u64) {
         dispatch!(self, m => m.notify_a12(addr, cycle))
+    }
+    fn cpu_clock(&mut self) {
+        dispatch!(self, m => m.cpu_clock())
     }
     fn irq(&self) -> bool {
         dispatch!(self, m => m.irq())

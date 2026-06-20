@@ -108,6 +108,9 @@ impl Bus {
             }
         }
         self.apu.tick();
+        // Clock CPU-cycle-driven mapper IRQs (Konami VRC). A12-edge mappers
+        // (MMC3) ignore this and are driven from the PPU instead.
+        self.cartridge.mapper.cpu_clock();
         // DMC sample DMA is now a *request*: the arbiter performs the PRG read on
         // a `get` cycle (see `dma_clock`), so the DMC dummy/repeated-read side
         // effects on $4016/$2007 are modelled instead of an instant fetch.
