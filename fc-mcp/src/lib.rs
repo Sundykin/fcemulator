@@ -83,4 +83,24 @@ pub const TOOLS: &[ToolDef] = &[
         description: "Disassemble N 6502 instructions starting at an address.",
         schema: r#"{"type":"object","properties":{"addr":{"type":"integer"},"count":{"type":"integer","default":10}},"required":["addr"]}"#,
     },
+    ToolDef {
+        name: "emu_set_breakpoint",
+        description: "Set a breakpoint at addr, optionally conditional. kind: exec|read|write (default exec). condition is an expression over a/x/y/p/sp/pc/cycles/scanline/dot/value/addr + flags n/v/d/i/z/c, e.g. 'a == 0xff && scanline >= 30' — the BP only fires when it is non-zero.",
+        schema: r#"{"type":"object","properties":{"addr":{"type":"integer"},"kind":{"type":"string","default":"exec"},"condition":{"type":"string"}},"required":["addr"]}"#,
+    },
+    ToolDef {
+        name: "emu_clear_breakpoints",
+        description: "Remove all breakpoints and clear any halt.",
+        schema: r#"{"type":"object","properties":{}}"#,
+    },
+    ToolDef {
+        name: "emu_run_until_break",
+        description: "Resume and run until a breakpoint fires or max_frames elapse; returns the halt PC (null if none) plus CPU/PPU state.",
+        schema: r#"{"type":"object","properties":{"max_frames":{"type":"integer","default":600}}}"#,
+    },
+    ToolDef {
+        name: "emu_trace",
+        description: "Trace up to instrs executed instructions in nestest/Nintendulator layout (stops early at a breakpoint).",
+        schema: r#"{"type":"object","properties":{"instrs":{"type":"integer","default":200}}}"#,
+    },
 ];
