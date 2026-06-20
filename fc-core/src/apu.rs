@@ -163,7 +163,12 @@ impl Pulse {
         }
     }
     fn muted(&self) -> bool {
-        self.timer_period < 8 || self.target_period() > 0x7FF
+        // The sweep-overflow mute only applies in *add* mode. In negate mode the
+        // target is computed with wrapping subtraction (and a −1 bias on pulse 1),
+        // so a small period underflows to a huge u16 that is not a real overflow —
+        // gating on `!sweep_negate` keeps negate-mode sweeps (common in SFX like a
+        // ball-bounce pitch slide) audible. Matches Mesen2 SquareChannel::IsMuted.
+        self.timer_period < 8 || (!self.sweep_negate && self.target_period() > 0x7FF)
     }
     fn clock_length(&mut self) {
         if !self.halt && self.length > 0 {
@@ -656,6 +661,16 @@ pub struct Apu {
     sample_acc: f64,
     hp_prev_in: f32,
     hp_prev_out: f32,
+    // Integrate-and-average decimation: sum the raw mix every CPU cycle and emit
+    // the window mean per output sample. Unlike point-sampling this captures the
+    // energy of short transients (a ball-bounce blip never falls "between" two
+    // sample points) and applies a sinc roll-off that tames aliasing — the cheap
+    // approximation of Mesen's band-limited (blip_buf) synthesis. Transient, so
+    // not serialized.
+    #[serde(skip)]
+    mix_sum: f64,
+    #[serde(skip)]
+    mix_count: u32,
     #[serde(skip)]
     pub samples: Vec<f32>,
 }
@@ -682,6 +697,8 @@ impl Apu {
             sample_acc: 0.0,
             hp_prev_in: 0.0,
             hp_prev_out: 0.0,
+            mix_sum: 0.0,
+            mix_count: 0,
             samples: Vec::with_capacity(1024),
         }
     }
@@ -732,11 +749,13 @@ impl Apu {
         self.clock_pending_frame_reset();
         self.apply_pending_length_write();
 
-        // Resample.
+        // Resample: integrate the raw mix every cycle, emit the window mean.
+        self.mix_sum += self.mix_raw() as f64;
+        self.mix_count += 1;
         self.sample_acc += self.sample_rate / self.cpu_hz;
         if self.sample_acc >= 1.0 {
             self.sample_acc -= 1.0;
-            let s = self.mix();
+            let s = self.emit_sample();
             self.samples.push(s);
         }
     }
@@ -897,7 +916,9 @@ impl Apu {
         }
     }
 
-    fn mix(&mut self) -> f32 {
+    /// Non-linear channel mix (NESdev DAC model), ~0.0..1.0. Pure — no filtering,
+    /// so it can be summed every CPU cycle for the integrate-and-average path.
+    fn mix_raw(&self) -> f32 {
         let p1 = self.pulse1.output() as f32;
         let p2 = self.pulse2.output() as f32;
         let t = self.triangle.output() as f32;
@@ -914,9 +935,20 @@ impl Apu {
         } else {
             159.79 / (1.0 / tnd + 100.0)
         };
-        let raw = pulse_out + tnd_out; // ~0.0..1.0
+        pulse_out + tnd_out
+    }
 
-        // One-pole DC-blocking high-pass.
+    /// Emit one output sample from the integrated window: take the mean of the
+    /// raw mix over the cycles since the last sample, then run the one-pole
+    /// DC-blocking high-pass at the output rate (so its cutoff stays fixed).
+    fn emit_sample(&mut self) -> f32 {
+        let raw = if self.mix_count > 0 {
+            (self.mix_sum / self.mix_count as f64) as f32
+        } else {
+            self.mix_raw()
+        };
+        self.mix_sum = 0.0;
+        self.mix_count = 0;
         let out = raw - self.hp_prev_in + 0.995 * self.hp_prev_out;
         self.hp_prev_in = raw;
         self.hp_prev_out = out;
@@ -1187,6 +1219,26 @@ mod preview_tests {
         assert!(samples.iter().any(|&s| s.abs() > 0.0001), "应有非零输出");
         let levels = p.channel_levels();
         assert!(levels[0].0, "脉冲1 应处于活动状态");
+    }
+
+    #[test]
+    fn negate_sweep_does_not_falsely_mute_pulse1() {
+        // A negate-mode sweep with shift 0 makes pulse 1's target period
+        // underflow (period − period − 1 = 0xFFFF). That is not a real >0x7FF
+        // overflow, so the channel must stay audible — the classic SFX pitch-slide
+        // (e.g. a ball bounce) that used to vanish. See `Pulse::muted`.
+        let mut p = ApuPreview::new(Region::Ntsc, 44_100.0);
+        p.write_register(0x4000, 0b1011_1111); // duty 10, halt, constant volume 15
+        p.write_register(0x4001, 0x08); // sweep: negate=1, shift=0
+        p.write_register(0x4002, 0x00); // timer low
+        p.write_register(0x4003, 0x09); // timer high=1 (period 0x100), length load
+        p.tick_cycles(29_780); // ~1 NTSC frame
+        let samples = p.drain_samples();
+        assert!(
+            samples.iter().any(|&s| s.abs() > 0.0001),
+            "negate 扫频不应静音脉冲1"
+        );
+        assert!(p.channel_levels()[0].0, "脉冲1 应处于活动状态");
     }
 
     #[test]
