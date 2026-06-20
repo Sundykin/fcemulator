@@ -7,6 +7,29 @@ use std::collections::HashMap;
 
 const INES_MAGIC: [u8; 4] = [0x4E, 0x45, 0x53, 0x1A]; // "NES\x1A"
 
+#[derive(Debug, Clone, Copy)]
+struct MapperCorrection {
+    crc32: u32,
+    mapper: u16,
+}
+
+const MAPPER_CORRECTIONS: &[MapperCorrection] = &[
+    // Dai-2-Ji - Super Robot Taisen (Chinese) is commonly dumped with an iNES
+    // mapper 74 header, but the board behavior is TW MMC3+VRAM Rev. C.
+    MapperCorrection {
+        crc32: 0xD0F6_CBCF,
+        mapper: 194,
+    },
+];
+
+fn corrected_mapper_number(header_mapper: u16, data: &[u8]) -> u16 {
+    let crc32 = crc32fast::hash(data);
+    MAPPER_CORRECTIONS
+        .iter()
+        .find(|c| c.crc32 == crc32)
+        .map_or(header_mapper, |c| c.mapper)
+}
+
 /// A loaded cartridge.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Cartridge {
@@ -61,6 +84,7 @@ impl Cartridge {
         if is_nes20 {
             mapper_number |= ((data[8] & 0x0F) as u16) << 8;
         }
+        mapper_number = corrected_mapper_number(mapper_number, data);
 
         let has_battery = flags6 & 0x02 != 0;
         let has_trainer = flags6 & 0x04 != 0;
@@ -228,5 +252,26 @@ impl Cartridge {
 
     pub fn mirroring(&self) -> Mirroring {
         self.mapper.mirroring()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mapper_correction_keeps_unknown_crc_header_mapper() {
+        let data = [0u8; 32];
+        assert_eq!(corrected_mapper_number(74, &data), 74);
+    }
+
+    #[test]
+    fn mapper_correction_can_remap_known_bad_header() {
+        // `corrected_mapper_number` is keyed by the full ROM CRC. The unit test
+        // checks the correction table contents directly so it stays independent
+        // of external ROM files.
+        assert!(MAPPER_CORRECTIONS
+            .iter()
+            .any(|c| c.crc32 == 0xD0F6_CBCF && c.mapper == 194));
     }
 }

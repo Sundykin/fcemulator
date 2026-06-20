@@ -11,3 +11,4 @@ bincode = { workspace = true }
 bitflags = { workspace = true }
 thiserror = { workspace = true }
 log = { workspace = true }
+crc32fast = "1"

@@ -4,7 +4,7 @@
 Improve emulator precision for APU, PPU, and related NES hardware by using the repository's accuracy test ROMs to identify and fix high-value issues without breaking timing invariants.
 
 ## Current Phase
-Phase 15: Enhanced sprite display planning
+Phase 16: Chinese RPG mapper compatibility and accuracy
 
 ## Phases
 
@@ -99,6 +99,13 @@ Phase 15: Enhanced sprite display planning
 - [x] Inspect current PPU sprite evaluation/rendering structure
 - [x] Draft implementation plan that preserves hardware-accurate default behavior
 - **Status:** complete
+
+### Phase 16: Chinese RPG mapper compatibility and accuracy
+- [x] Reproduce `10302_吞食天地2.nes` gray-screen failure and identify whether it is PRG banking, CHR-RAM, IRQ, or reset/header behavior
+- [x] Reproduce `10306_第二次超级机器人大战.nes` dialogue-text failure beyond the title/menu screen
+- [x] Implement clean mapper/board behavior without ROM-name hacks
+- [x] Verify both ROMs visually plus mapper/core regression suites
+- **Status:** in_progress
 
 ## Key Questions
 1. Which repository test ROMs currently fail deterministically?

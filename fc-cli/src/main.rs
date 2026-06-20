@@ -10,7 +10,7 @@ mod tauri_bridge;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand, ValueEnum};
-use fc_core::{ControlDeck, Region};
+use fc_core::{Button, ControlDeck, Region};
 
 #[derive(Parser)]
 #[command(name = "fc", version, about = "FC/NES emulator with LLM co-play (MCP)")]
@@ -36,6 +36,9 @@ enum Commands {
         /// Tap Start around frame 60 (to enter gameplay for demos/tests).
         #[arg(long)]
         autostart: bool,
+        /// Script controller input as FRAME:DURATION:BUTTON[+BUTTON...].
+        #[arg(long = "press", value_name = "FRAME:DURATION:BUTTONS")]
+        presses: Vec<String>,
         /// Visual enhancement: render sprites beyond the NES 8-per-scanline limit.
         #[arg(long)]
         remove_sprite_limit: bool,
@@ -79,6 +82,9 @@ enum Commands {
         frames: u64,
         #[arg(long)]
         autostart: bool,
+        /// Script controller input as FRAME:DURATION:BUTTON[+BUTTON...].
+        #[arg(long = "press", value_name = "FRAME:DURATION:BUTTONS")]
+        presses: Vec<String>,
     },
     /// Start the MCP server (stdio) for LLM agents.
     Mcp {
@@ -103,6 +109,66 @@ enum TestOutcome {
     Pass(String),
     Fail(String),
     Timeout(String),
+}
+
+#[derive(Debug, Clone)]
+struct InputPress {
+    start: u64,
+    end: u64,
+    buttons: u8,
+}
+
+fn parse_presses(specs: &[String]) -> Result<Vec<InputPress>> {
+    let mut out = Vec::new();
+    for spec in specs {
+        let mut parts = spec.split(':');
+        let start = parts
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("missing input start frame in {spec:?}"))?
+            .parse::<u64>()?;
+        let duration = parts
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("missing input duration in {spec:?}"))?
+            .parse::<u64>()?;
+        let buttons = parts
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("missing input buttons in {spec:?}"))?;
+        if parts.next().is_some() {
+            anyhow::bail!("input spec has too many ':' fields: {spec:?}");
+        }
+
+        let mut mask = 0u8;
+        for name in buttons.split(['+', ',']) {
+            let Some(button) = Button::from_name(name.trim()) else {
+                anyhow::bail!("unknown button {name:?} in {spec:?}");
+            };
+            mask |= 1 << button.bit();
+        }
+        out.push(InputPress {
+            start,
+            end: start.saturating_add(duration),
+            buttons: mask,
+        });
+    }
+    Ok(out)
+}
+
+fn scripted_buttons(frame: u64, autostart: bool, presses: &[InputPress]) -> u8 {
+    let mut buttons = 0u8;
+    if autostart {
+        if (60..64).contains(&frame) {
+            buttons |= 1 << Button::Start.bit();
+        }
+        if frame >= 90 {
+            buttons |= 1 << Button::Right.bit();
+        }
+    }
+    for press in presses {
+        if (press.start..press.end).contains(&frame) {
+            buttons |= press.buttons;
+        }
+    }
+    buttons
 }
 
 /// Run a blargg-style self-checking ROM until it reports a result via $6000.
@@ -288,6 +354,7 @@ fn main() -> Result<()> {
             palette,
             shot,
             autostart,
+            presses,
             remove_sprite_limit,
             wav,
         } => {
@@ -302,13 +369,10 @@ fn main() -> Result<()> {
                 }
             }
             let mut audio: Vec<f32> = Vec::new();
+            let presses = parse_presses(&presses)?;
             let start = std::time::Instant::now();
             for f in 0..frames {
-                if autostart {
-                    // Tap Start to enter the level, then hold Right to walk/scroll.
-                    deck.set_button(0, fc_core::Button::Start, (60..64).contains(&f));
-                    deck.set_button(0, fc_core::Button::Right, f >= 90);
-                }
+                deck.set_controller_state(0, scripted_buttons(f, autostart, &presses));
                 deck.run_frame();
                 let samples = deck.drain_audio();
                 if wav.is_some() {
@@ -426,15 +490,14 @@ fn main() -> Result<()> {
             rom,
             frames,
             autostart,
+            presses,
         } => {
             let data = std::fs::read(&rom)?;
             let mut deck = ControlDeck::new(Region::Ntsc);
             deck.load_rom(&data)?;
+            let presses = parse_presses(&presses)?;
             for f in 0..frames {
-                if autostart {
-                    deck.set_button(0, fc_core::Button::Start, (60..64).contains(&f));
-                    deck.set_button(0, fc_core::Button::Right, f >= 90);
-                }
+                deck.set_controller_state(0, scripted_buttons(f, autostart, &presses));
                 deck.run_frame();
             }
             write_png_sized("/tmp/dbg_pattern0.png", &deck.pattern_table(0, 0), 128, 128)?;

@@ -132,7 +132,10 @@ impl Mapper {
             2 => Mapper::Unrom(Unrom::new(prg_16k, mirroring)),
             3 => Mapper::Cnrom(Cnrom::new(prg_16k, mirroring)),
             7 => Mapper::Axrom(Axrom::new()),
-            4 => Mapper::Mmc3(Mmc3::new(prg_16k, chr_8k)),
+            4 if prg_16k > 32 && chr_8k == 0 => {
+                Mapper::Mmc3(Mmc3::new_with_low_wram(prg_16k, chr_8k, mirroring))
+            }
+            4 => Mapper::Mmc3(Mmc3::new(prg_16k, chr_8k, mirroring)),
             5 => Mapper::Mmc5(Mmc5::new(prg_16k, chr_8k)),
             9 => Mapper::Mmc2(Mmc2::new(prg_16k, mirroring)),
             10 => Mapper::Mmc4(Mmc4::new(prg_16k, mirroring)),
@@ -140,7 +143,8 @@ impl Mapper {
             66 => Mapper::Gxrom(Gxrom::new(mirroring)),
             71 => Mapper::Codemasters(Codemasters::new(prg_16k, mirroring)),
             25 => Mapper::Vrc4(Vrc4::new(prg_16k, chr_8k)),
-            74 => Mapper::Mmc3(Mmc3::new_74(prg_16k, chr_8k)),
+            74 => Mapper::Mmc3(Mmc3::new_74(prg_16k, chr_8k, mirroring)),
+            194 => Mapper::Mmc3(Mmc3::new_194(prg_16k, chr_8k, mirroring)),
             other => return Err(other),
         })
     }

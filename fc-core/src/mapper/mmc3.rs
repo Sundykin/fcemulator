@@ -30,25 +30,29 @@ pub struct Mmc3 {
     // A12 edge detection
     a12_prev: bool,
     a12_low_since: u64,
-    // Mapper 74: CHR bank numbers 8/9 address a 2KB CHR-RAM instead of CHR-ROM
-    // (used by the Chinese RPG carts for dynamic text tiles).
+    // Some TW MMC3+VRAM boards route a small CHR-RAM window through selected
+    // CHR bank numbers instead of CHR-ROM (used for dynamic text/map tiles).
     #[serde(default)]
-    chr_ram_8_9: bool,
+    chr_ram_bank_base: Option<u8>,
     #[serde(default)]
     chr_ram: Vec<u8>,
+    // Some MMC3 clone boards used by large Chinese RPG translations expose
+    // 4KB of executable WRAM at $5000-$5FFF for generated helper code.
+    #[serde(default)]
+    low_wram: Vec<u8>,
 }
 
 impl Mmc3 {
-    pub(super) fn new(prg_16k: usize, chr_8k: usize) -> Self {
+    pub(super) fn new(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
         Mmc3 {
             prg_8k: (prg_16k * 2).max(1),
             chr_1k: (chr_8k * 8).max(8),
             chr_is_ram: chr_8k == 0,
             bank_select: 0,
-            banks: [0; 8],
+            banks: [0, 2, 4, 5, 6, 7, 0, 1],
             prg_mode: false,
             chr_mode: false,
-            mirroring: Mirroring::Horizontal,
+            mirroring,
             irq_latch: 0,
             irq_counter: 0,
             irq_reload: false,
@@ -57,15 +61,31 @@ impl Mmc3 {
             irq_suppress_zero_reload: false,
             a12_prev: false,
             a12_low_since: 0,
-            chr_ram_8_9: false,
+            chr_ram_bank_base: None,
             chr_ram: Vec::new(),
+            low_wram: Vec::new(),
         }
     }
 
+    pub(super) fn new_with_low_wram(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
+        let mut m = Mmc3::new(prg_16k, chr_8k, mirroring);
+        m.low_wram = vec![0u8; 0x1000];
+        m
+    }
+
     /// Mapper 74 — MMC3 with a 2KB CHR-RAM addressed by CHR bank numbers 8/9.
-    pub(super) fn new_74(prg_16k: usize, chr_8k: usize) -> Self {
-        let mut m = Mmc3::new(prg_16k, chr_8k);
-        m.chr_ram_8_9 = true;
+    pub(super) fn new_74(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
+        let mut m = Mmc3::new(prg_16k, chr_8k, mirroring);
+        m.chr_ram_bank_base = Some(8);
+        m.chr_ram = vec![0u8; 0x800]; // 2KB
+        m
+    }
+
+    /// Mapper 194 — TW MMC3+VRAM Rev. C, with the 2KB CHR-RAM window addressed
+    /// by CHR bank numbers 0/1.
+    pub(super) fn new_194(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
+        let mut m = Mmc3::new(prg_16k, chr_8k, mirroring);
+        m.chr_ram_bank_base = Some(0);
         m.chr_ram = vec![0u8; 0x800]; // 2KB
         m
     }
@@ -102,14 +122,12 @@ impl Mmc3 {
         (bank, off)
     }
 
-    /// Index into the mapper's 2KB CHR-RAM if this access targets bank 8 or 9.
-    fn chr_ram_index(&self, a: u16) -> Option<usize> {
-        if !self.chr_ram_8_9 {
-            return None;
-        }
+    /// Index into the mapper's 2KB CHR-RAM for CPU-visible PPU reads/writes.
+    fn chr_ram_read_index(&self, a: u16) -> Option<usize> {
+        let base = self.chr_ram_bank_base?;
         let (bank, off) = self.chr_1k_bank(a);
-        if bank == 8 || bank == 9 {
-            Some((bank as usize & 1) * 0x400 + off as usize)
+        if bank == base as u16 || bank == base as u16 + 1 {
+            Some(((bank - base as u16) as usize) * 0x400 + off as usize)
         } else {
             None
         }
@@ -226,12 +244,35 @@ impl MapperOps for Mmc3 {
         }
     }
 
+    fn read_expansion(&mut self, addr: u16) -> Option<u8> {
+        self.peek_expansion(addr)
+    }
+
+    fn peek_expansion(&self, addr: u16) -> Option<u8> {
+        if self.low_wram.is_empty() {
+            return None;
+        }
+        match addr {
+            0x5000..=0x5FFF => Some(self.low_wram[(addr as usize - 0x5000) & 0x0FFF]),
+            _ => None,
+        }
+    }
+
+    fn write_expansion(&mut self, addr: u16, value: u8) {
+        if self.low_wram.is_empty() {
+            return;
+        }
+        if let 0x5000..=0x5FFF = addr {
+            self.low_wram[(addr as usize - 0x5000) & 0x0FFF] = value;
+        }
+    }
+
     fn chr_read(&self, addr: u16, _access: super::ChrAccess) -> Option<u8> {
-        self.chr_ram_index(addr).map(|i| self.chr_ram[i])
+        self.chr_ram_read_index(addr).map(|i| self.chr_ram[i])
     }
 
     fn chr_write(&mut self, addr: u16, value: u8) -> bool {
-        if let Some(i) = self.chr_ram_index(addr) {
+        if let Some(i) = self.chr_ram_read_index(addr) {
             self.chr_ram[i] = value;
             true
         } else {
@@ -264,5 +305,69 @@ impl MapperOps for Mmc3 {
 
     fn clear_irq(&mut self) {
         self.irq_pending = false;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn low_wram_maps_executable_expansion_area() {
+        let mut mapper = Mmc3::new_with_low_wram(40, 0, Mirroring::Horizontal);
+        assert_eq!(mapper.read_expansion(0x4FFF), None);
+        assert_eq!(mapper.read_expansion(0x6000), None);
+
+        mapper.write_expansion(0x5462, 0x8D);
+        mapper.write_expansion(0x5FFF, 0x60);
+        assert_eq!(mapper.read_expansion(0x5462), Some(0x8D));
+        assert_eq!(mapper.peek_expansion(0x5FFF), Some(0x60));
+    }
+
+    #[test]
+    fn plain_mmc3_leaves_expansion_area_unmapped() {
+        let mut mapper = Mmc3::new(4, 0, Mirroring::Horizontal);
+        mapper.write_expansion(0x5462, 0x8D);
+        assert_eq!(mapper.read_expansion(0x5462), None);
+    }
+
+    #[test]
+    fn mapper74_only_routes_banks_8_and_9_to_chr_ram() {
+        let mut mapper = Mmc3::new_74(16, 32, Mirroring::Vertical);
+
+        mapper.write_register(0x8000, 0x02);
+        mapper.write_register(0x8001, 0x00);
+        assert_eq!(mapper.chr_write(0x1000, 0xAA), false);
+        assert_eq!(
+            mapper.chr_read(0x1000, super::super::ChrAccess::Default),
+            None
+        );
+
+        mapper.write_register(0x8001, 0x08);
+        assert_eq!(mapper.chr_write(0x1000, 0x55), true);
+        assert_eq!(
+            mapper.chr_read(0x1000, super::super::ChrAccess::Default),
+            Some(0x55)
+        );
+    }
+
+    #[test]
+    fn mapper194_routes_banks_0_and_1_to_chr_ram() {
+        let mut mapper = Mmc3::new_194(16, 32, Mirroring::Vertical);
+
+        mapper.write_register(0x8000, 0x02);
+        mapper.write_register(0x8001, 0x00);
+        assert_eq!(mapper.chr_write(0x1000, 0x66), true);
+        assert_eq!(
+            mapper.chr_read(0x1000, super::super::ChrAccess::Default),
+            Some(0x66)
+        );
+
+        mapper.write_register(0x8001, 0x08);
+        assert_eq!(mapper.chr_write(0x1000, 0xAA), false);
+        assert_eq!(
+            mapper.chr_read(0x1000, super::super::ChrAccess::Default),
+            None
+        );
     }
 }
