@@ -64,6 +64,31 @@ mismatch after any `load_state()` forces a rebuild before first use — so it is
 never serialized and can never be stale. Rebuild only runs when
 `sprite_count > 0`, so empty scanlines pay nothing.
 
+### 4. Palette LUT for pixel output (L1.3, contained)
+
+`render_pixel`'s output tail ran a `Vec<Rgb>` palette index (bounds-checked,
+can't be elided), an `apply_emphasis` call, and four bounds-checked `Vec<u8>`
+framebuffer writes per pixel — ~5 bounds checks × 61 440 pixels/frame. The
+`palette_lut: [[u32;64];8]` (emphasis × NES colour → packed `[r,g,b,255]`)
+collapses that to one elided fixed-array lookup + one `copy_from_slice` (1 bounds
+check). The LUT entries are computed by the *verbatim* former emphasis math, so
+output is byte-identical by construction.
+
+The **framebuffer stays `Vec<u8>` RGBA** — the win is on the PPU compute side, so
+no frontend touches the change. (Switching `frame_buffer` to `Vec<u32>` to also
+drop the frontends' RGBA conversion is the cross-cutting half of L1.3 and is left
+as a separate change.)
+
+Save-state: `palette_lut` is derived from `palette`, which is itself
+`#[serde(skip)]` (resets to the default palette on load). The LUT's serde default
+builds from that same default palette, so the two always stay consistent across
+load; `set_palette` rebuilds the LUT for any runtime palette change.
+
+Because the trace gate is blind to pixel colours, L1.3 adds a **pixel gate**:
+`fc run --shot` before/after on the three games at two frame counts each, all
+byte-identical; plus a unit test asserting `lut[e][c]` equals the old
+`apply_emphasis` output for every (emphasis, colour).
+
 ## Risks & mitigation
 
 - **1-dot timing drift** (the classic refactor failure) → caught by the trace

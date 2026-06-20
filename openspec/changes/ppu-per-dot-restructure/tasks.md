@@ -28,14 +28,28 @@
       uncovered pixels; rebuild only when `sprite_count > 0`
 - [x] 3.3 Gate: 27/27, 47/47, SMB+DD3+TMNT trace 0-diff
 
-## 4. Evidence + landing
+## 4. Step L1.3 — palette LUT output (contained, pixel-identical)
 
-- [x] 4.1 After fps (best-of-3): SMB 459.6 (+7.9%) / TMNT 389.9 (+5.7%) /
-      DD3 381.0 (+4.6%); `bench --profile` remainder −5.1% / −7.5% / −4.0%
-- [x] 4.2 `cargo clippy -p fc-core` — zero new warnings from this change
-- [x] 4.3 Confirm no leftover `FC_TRACE`/`eprintln!` probes in `ppu.rs`
-- [ ] 4.4 Commit on a branch (small steps) and open for review
-- [ ] 4.5 Archive this change once merged; fold the perf delta into
+- [x] 4.1 Precompute `palette_lut[emphasis][colour] -> u32` (`build_palette_lut`,
+      rebuilt in `set_palette`); `render_pixel` does one fixed-array lookup + one
+      4-byte `copy_from_slice` instead of `Vec` palette index + `apply_emphasis`
+      + four bounds-checked writes. Framebuffer stays `Vec<u8>` RGBA.
+- [x] 4.2 `#[serde(skip)]` LUT with default = build-from-default-palette (matches
+      the also-skip `palette` field → both reset consistently on load)
+- [x] 4.3 Unit test `palette_lut_matches_emphasis_math` (LUT == old apply_emphasis
+      for all 8×64 entries) → 28/28
+- [x] 4.4 **Pixel gate** (trace can't see colours): `fc run --shot` before/after
+      on SMB/TMNT/DD3 at frames 240 & 900 — all 6 byte-identical
+- [x] 4.5 Hard gates after L1.3: 47/47, trace 0-diff ×3
+
+## 5. Evidence + landing
+
+- [x] 5.1 Cumulative fps (best-of-3): SMB 426→466 (+9.4%) / TMNT 369→397 (+7.7%)
+      / DD3 364→386 (+5.8%)
+- [x] 5.2 `cargo clippy -p fc-core` — zero new warnings from this change
+- [x] 5.3 Confirm no leftover `FC_TRACE`/`eprintln!` probes in `ppu.rs`
+- [x] 5.4 Commit on a branch (`perf/ppu-per-dot`), small steps
+- [ ] 5.5 Archive this change once merged; fold the perf delta into
       `docs/模拟器优化计划.md` progress snapshot
 
 ## Notes / deferred (separate changes)

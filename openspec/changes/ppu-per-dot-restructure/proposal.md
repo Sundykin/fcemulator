@@ -31,6 +31,11 @@ machine modelled on Mesen2 `NesPpu.cpp` (`ProcessScanline` / `LoadTileInfo` /
   on the (common) pixels no sprite covers.
 - **Per-pixel copy removal (L1.2)** — `sprite_pattern_pixel` takes `&SpriteUnit`
   instead of copying the struct on each of up to 16 calls/pixel.
+- **Palette LUT output (L1.3, contained)** — `render_pixel` indexes a precomputed
+  `[emphasis][colour] -> u32` table (one fixed-array lookup + one 4-byte store)
+  instead of a `Vec<Rgb>` palette index, an `apply_emphasis` call, and four
+  bounds-checked framebuffer writes. The framebuffer stays `Vec<u8>` RGBA, so no
+  frontend changes — output is byte-identical (verified pixel-exact, below).
 
 **No emulation timing/behavior change.** The lock-step invariant, memory-access
 ordering (MMC3 A12 / MMC2-4 latch), VBL/NMI/sprite-0/overflow/odd-frame timing
@@ -48,23 +53,27 @@ are all preserved — proven by a self-vs-self trace 0-diff (below).
 
 ## Impact
 
-- **Code**: `fc-core/src/ppu.rs` only (+189 / −93). New private methods
-  `tick_visible` / `tick_prerender` / `run_render_pipeline` / `enter_vblank` /
-  `advance_clock` / `rebuild_sprite_cover`; three `#[serde(skip)]` derived fields
-  (`sprite_cover*`) that always rebuild on first use (no save-state hazard).
-- **Behavior**: none. `cargo test -p fc-core` 27/27, accuracy baseline 47/47,
-  and `fc trace` 0-diff vs the pre-change binary on SMB / 双截龙3 (MMC3) /
-  忍者神龟3 (heavy sprites), 250 000 instrs each.
-- **Performance** (release headless, best-of-3 fps): SMB 426→460 (**+7.9%**),
-  忍者神龟3 369→390 (**+5.7%**), 双截龙3 364→381 (**+4.6%**); `bench --profile`
-  "remainder" per-frame drops 4–7.5% (CPU/mapper unchanged, so attributable to
-  the PPU core).
+- **Code**: `fc-core/src/ppu.rs` only. New private methods `tick_visible` /
+  `tick_prerender` / `run_render_pipeline` / `enter_vblank` / `advance_clock` /
+  `rebuild_sprite_cover` / `build_palette_lut`; derived `#[serde(skip)]` fields
+  (`sprite_cover*`, `palette_lut`) that always rebuild on first use / from the
+  (also-skip) palette, so no save-state hazard.
+- **Behavior**: none. `cargo test -p fc-core` 28/28, accuracy baseline 47/47,
+  `fc trace` 0-diff vs the pre-change binary on SMB / 双截龙3 (MMC3) / 忍者神龟3
+  (heavy sprites) 250 000 instrs each, and **framebuffer pixel-identical** across
+  the three games at frames 240 & 900 (L1.3 verification).
+- **Performance** (release headless, best-of-3 fps): SMB 426→466 (**+9.4%**),
+  忍者神龟3 369→397 (**+7.7%**), 双截龙3 364→386 (**+5.8%**); `bench --profile`
+  "remainder" per-frame drops accordingly (CPU/mapper unchanged, so attributable
+  to the PPU core).
 - **Downstream**: keeps the L1.2/L1.3/L1.4 quick-wins open; structure now
   matches Mesen so later accuracy work (L3.2 PPU edge cases) maps file-to-file.
 
 ## Non-goals
 
-- L1.3 (u32 framebuffer LUT direct-out) — touches all four frontends' frame
-  format; separate change.
+- L1.3 **frontend** u32 passthrough — changing `frame_buffer` from `Vec<u8>`
+  RGBA to `Vec<u32>` to drop the frontends' RGBA conversion touches all four
+  frontends; deferred. (The PPU-side palette LUT, the bulk of the win, is done
+  here.)
 - L1.4 (debug-hook dual path), expansion-audio mappers, PAL/Dendy scanline-count
   accuracy (the pre-existing 262-line wrap is preserved, not fixed here).

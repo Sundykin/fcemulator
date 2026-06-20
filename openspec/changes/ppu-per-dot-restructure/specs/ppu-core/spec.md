@@ -31,8 +31,10 @@ flat implementation.
 The segmented pipeline SHALL reduce the PPU's per-dot cost relative to the flat
 implementation, measured by `fc bench --profile`, with no other subsystem
 regressing. Optimizations on the pixel path (eliminating redundant per-pixel
-sprite scans and per-pixel struct copies) MUST be coverage/priority-exact:
-sprite-0 hit and the sprite priority multiplexer MUST produce identical results.
+sprite scans, per-pixel struct copies, and the per-pixel palette/emphasis
+recompute via a precomputed LUT) MUST be coverage/priority/output-exact:
+sprite-0 hit, the sprite priority multiplexer, and the emitted framebuffer bytes
+MUST be identical.
 
 #### Scenario: Headless fps improves on the standard scenes
 
@@ -40,6 +42,13 @@ sprite-0 hit and the sprite priority multiplexer MUST produce identical results.
   before and after the change on the same release build
 - **THEN** each scene's headless fps improves and the `bench --profile`
   "remainder" (CPU + PPU-core + mapper) per-frame time decreases
+
+#### Scenario: Framebuffer output is byte-identical
+
+- **WHEN** the same ROM is run to a fixed frame with and without the pixel-path
+  optimizations and a screenshot is taken (`fc run --shot`)
+- **THEN** the two screenshots are byte-identical (the palette LUT reproduces the
+  former per-pixel palette+emphasis output exactly)
 
 ### Requirement: Derived render state is not serialized
 
