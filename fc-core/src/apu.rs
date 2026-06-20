@@ -671,6 +671,11 @@ pub struct Apu {
     last_amp: i32,
     #[serde(skip)]
     frame_clock: u32,
+    // Profiling ablation: skip the per-cycle mix + blip resample (audio output)
+    // while still clocking the channels — keeps timing/IRQs identical so
+    // `fc bench --profile` can attribute the resample cost. Off in normal use.
+    #[serde(skip)]
+    pub profile_no_resample: bool,
     // NES analog output filter chain; lazily built at the current sample rate.
     #[serde(skip)]
     filter: Option<NesFilter>,
@@ -789,6 +794,7 @@ impl Apu {
             blip: None,
             last_amp: 0,
             frame_clock: 0,
+            profile_no_resample: false,
             filter: None,
             samples: Vec::with_capacity(1024),
         }
@@ -855,6 +861,9 @@ impl Apu {
         // Band-limited resample: register a sinc step whenever the mixed output
         // changes, then flush fixed clock chunks (filtered by the analog chain)
         // into `samples`.
+        if self.profile_no_resample {
+            return;
+        }
         if self.filter.is_none() {
             self.filter = Some(NesFilter::new(self.sample_rate as f32));
         }

@@ -77,6 +77,12 @@ pub struct Ppu {
     sprite_count: usize,
     #[serde(skip, default = "default_render_options")]
     render_options: PpuRenderOptions,
+    // Profiling ablation: when set, render_pixel skips the per-pixel *output*
+    // (priority mux + palette/emphasis + frame-buffer write) while keeping all
+    // emulation-visible state (sprite-0 hit). Lets `fc bench --profile` attribute
+    // the render-output cost without perturbing timing. Off in normal use.
+    #[serde(skip)]
+    pub profile_no_output: bool,
     #[serde(skip, default = "default_enhanced_sprites")]
     enhanced_sprites: Vec<SpriteUnit>,
     #[serde(skip)]
@@ -178,6 +184,7 @@ impl Ppu {
             sprite_fetch_addr: [0; 8],
             sprite_count: 0,
             render_options: PpuRenderOptions::default(),
+            profile_no_output: false,
             enhanced_sprites: Vec::new(),
             enhanced_line: 0,
             enhanced_frame: 0,
@@ -794,6 +801,11 @@ impl Ppu {
             && self.mask & 0x10 != 0
         {
             self.status |= 0x40;
+        }
+
+        // Profiling: skip only the output below (no emulation-visible effect).
+        if self.profile_no_output {
+            return;
         }
 
         // Priority multiplexer.

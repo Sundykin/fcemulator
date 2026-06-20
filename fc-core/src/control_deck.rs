@@ -241,6 +241,14 @@ impl ControlDeck {
         self.bus.apu.set_sample_rate(rate);
     }
 
+    /// Profiling ablation toggles (see `fc bench --profile`). Skips a subsystem's
+    /// *output* work (PPU per-pixel render / APU resample) without changing any
+    /// emulation-visible state, so the resulting fps delta attributes that cost.
+    pub fn set_profile_ablation(&mut self, no_render_output: bool, no_apu_resample: bool) {
+        self.bus.ppu.profile_no_output = no_render_output;
+        self.bus.apu.profile_no_resample = no_apu_resample;
+    }
+
     pub fn set_button(&mut self, port: usize, button: Button, pressed: bool) {
         self.bus.controllers.set_button(port, button, pressed);
     }

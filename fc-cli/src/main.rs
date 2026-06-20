@@ -89,6 +89,10 @@ enum Commands {
         /// Warmup frames run before timing starts.
         #[arg(long, default_value_t = 120)]
         warmup: u64,
+        /// Per-subsystem attribution: re-run with PPU render-output and APU
+        /// resample ablated, reporting each one's share of frame time.
+        #[arg(long, default_value_t = false)]
+        profile: bool,
     },
     /// Run self-checking test ROMs and score them.
     Testsuite {
@@ -506,26 +510,53 @@ fn main() -> Result<()> {
             }
             w.flush()?;
         }
-        Commands::Bench { rom, region, frames, warmup } => {
+        Commands::Bench { rom, region, frames, warmup, profile } => {
             let data = std::fs::read(&rom)?;
-            let mut deck = ControlDeck::new(Region::from_str(&region));
-            deck.load_rom(&data)?;
-            for _ in 0..warmup {
-                deck.run_frame();
-                deck.drain_audio();
-            }
-            let t0 = std::time::Instant::now();
-            for _ in 0..frames {
-                deck.run_frame();
-                deck.drain_audio();
-            }
-            let elapsed = t0.elapsed().as_secs_f64();
+            let region = Region::from_str(&region);
+
+            // Time `frames` frames with the given ablation, after `warmup`.
+            let time_run = |no_render: bool, no_apu: bool| -> f64 {
+                let mut deck = ControlDeck::new(region);
+                deck.load_rom(&data).expect("load rom");
+                deck.set_profile_ablation(no_render, no_apu);
+                for _ in 0..warmup {
+                    deck.run_frame();
+                    deck.drain_audio();
+                }
+                let t0 = std::time::Instant::now();
+                for _ in 0..frames {
+                    deck.run_frame();
+                    deck.drain_audio();
+                }
+                t0.elapsed().as_secs_f64()
+            };
+
+            let realtime = ControlDeck::new(region).region_frame_rate();
+            let elapsed = time_run(false, false);
             let fps = frames as f64 / elapsed;
-            let realtime = deck.region_frame_rate();
             println!(
                 "bench {rom}: {frames} frames in {elapsed:.3}s = {fps:.1} fps ({:.1}x realtime @ {realtime:.2})",
                 fps / realtime
             );
+
+            if profile {
+                // Ablation deltas: each variant skips one subsystem's *output*
+                // work only (behavior identical), so `full − variant` per-frame
+                // time is that subsystem's cost. The remainder is CPU + PPU core
+                // (dot machine, fetch, sprite eval) + mapper.
+                let t_full = elapsed / frames as f64;
+                let t_no_render = time_run(true, false) / frames as f64;
+                let t_no_apu = time_run(false, true) / frames as f64;
+                let render = (t_full - t_no_render).max(0.0);
+                let apu = (t_full - t_no_apu).max(0.0);
+                let rest = (t_full - render - apu).max(0.0);
+                let us = |t: f64| t * 1e6;
+                let pct = |t: f64| t / t_full * 100.0;
+                println!("  per-frame {:.0}µs — subsystem attribution (ablation):", us(t_full));
+                println!("    PPU render-output : {:6.0}µs  {:4.1}%", us(render), pct(render));
+                println!("    APU resample      : {:6.0}µs  {:4.1}%", us(apu), pct(apu));
+                println!("    CPU + PPU-core + mapper (remainder): {:6.0}µs  {:4.1}%", us(rest), pct(rest));
+            }
         }
         Commands::Disasm { rom, addr, count } => {
             let data = std::fs::read(&rom)?;
