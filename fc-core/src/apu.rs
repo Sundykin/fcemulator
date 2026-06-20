@@ -20,8 +20,11 @@ const TRIANGLE_SEQ: [u8; 32] = [
     15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
     13, 14, 15,
 ];
-const NOISE_PERIOD: [u16; 16] = [
+const NOISE_PERIOD_NTSC: [u16; 16] = [
     4, 8, 16, 32, 64, 96, 128, 160, 202, 254, 380, 508, 762, 1016, 2034, 4068,
+];
+const NOISE_PERIOD_PAL: [u16; 16] = [
+    4, 8, 14, 30, 60, 88, 118, 148, 188, 236, 354, 472, 708, 944, 1890, 3778,
 ];
 const RESET_FRAME_ADVANCE: u32 = 5;
 
@@ -293,9 +296,9 @@ impl Noise {
         self.halt = halt;
         self.env.loop_flag = halt;
     }
-    fn write2(&mut self, v: u8) {
+    fn write2(&mut self, v: u8, region: Region) {
         self.mode = v & 0x80 != 0;
-        self.timer_period = NOISE_PERIOD[(v & 0x0F) as usize];
+        self.timer_period = noise_period_table(region)[(v & 0x0F) as usize];
     }
     fn write3(&mut self, v: u8) {
         self.load_length(v);
@@ -337,6 +340,23 @@ impl Noise {
 const DMC_RATE_NTSC: [u16; 16] = [
     428, 380, 340, 320, 286, 254, 226, 214, 190, 160, 142, 128, 106, 84, 72, 54,
 ];
+const DMC_RATE_PAL: [u16; 16] = [
+    398, 354, 316, 298, 276, 236, 210, 198, 176, 148, 132, 118, 98, 78, 66, 50,
+];
+
+fn noise_period_table(region: Region) -> &'static [u16; 16] {
+    match region {
+        Region::Pal => &NOISE_PERIOD_PAL,
+        Region::Ntsc | Region::Dendy => &NOISE_PERIOD_NTSC,
+    }
+}
+
+fn dmc_rate_table(region: Region) -> &'static [u16; 16] {
+    match region {
+        Region::Pal => &DMC_RATE_PAL,
+        Region::Ntsc | Region::Dendy => &DMC_RATE_NTSC,
+    }
+}
 
 #[derive(Debug, Clone, Copy)]
 struct FrameTimings {
@@ -446,13 +466,20 @@ struct Dmc {
 
 impl Default for Dmc {
     fn default() -> Self {
+        Self::new(Region::Ntsc)
+    }
+}
+
+impl Dmc {
+    fn new(region: Region) -> Self {
+        let rate = dmc_rate_table(region)[0];
         Dmc {
             enabled: false,
             irq_enabled: false,
             loop_flag: false,
             irq_flag: false,
-            rate: DMC_RATE_NTSC[0],
-            timer: DMC_RATE_NTSC[0],
+            rate,
+            timer: rate,
             output: 0,
             sample_addr: 0xC000,
             sample_len: 1,
@@ -466,13 +493,11 @@ impl Default for Dmc {
             dma_id: 0,
         }
     }
-}
 
-impl Dmc {
-    fn write0(&mut self, v: u8) {
+    fn write0(&mut self, v: u8, region: Region) {
         self.irq_enabled = v & 0x80 != 0;
         self.loop_flag = v & 0x40 != 0;
-        self.rate = DMC_RATE_NTSC[(v & 0x0F) as usize];
+        self.rate = dmc_rate_table(region)[(v & 0x0F) as usize];
         if !self.irq_enabled {
             self.irq_flag = false;
         }
@@ -642,7 +667,7 @@ impl Apu {
             pulse2: Pulse::new(false),
             triangle: Triangle::default(),
             noise: Noise::default(),
-            dmc: Dmc::default(),
+            dmc: Dmc::new(region),
             region,
             frame_mode: FrameMode::Four,
             frame_cycle: RESET_FRAME_ADVANCE,
@@ -984,7 +1009,7 @@ impl Apu {
                     self.noise.write0(value);
                 }
             }
-            0x400E => self.noise.write2(value),
+            0x400E => self.noise.write2(value, self.region),
             0x400F => {
                 if self.will_clock_length_next_tick() {
                     self.noise.write3_except_length(value);
@@ -996,7 +1021,7 @@ impl Apu {
                     self.noise.write3(value);
                 }
             }
-            0x4010 => self.dmc.write0(value),
+            0x4010 => self.dmc.write0(value, self.region),
             0x4011 => self.dmc.write1(value),
             0x4012 => self.dmc.write2(value),
             0x4013 => self.dmc.write3(value),
@@ -1162,5 +1187,19 @@ mod preview_tests {
         assert!(samples.iter().any(|&s| s.abs() > 0.0001), "应有非零输出");
         let levels = p.channel_levels();
         assert!(levels[0].0, "脉冲1 应处于活动状态");
+    }
+
+    #[test]
+    fn pal_uses_2a07_dmc_and_noise_periods() {
+        let mut dmc = Dmc::new(Region::Pal);
+        assert_eq!(dmc.rate, 398);
+        dmc.write0(0x0F, Region::Pal);
+        assert_eq!(dmc.rate, 50);
+
+        let mut noise = Noise::default();
+        noise.write2(0x0F, Region::Pal);
+        assert_eq!(noise.timer_period, 3778);
+        noise.write2(0x0F, Region::Ntsc);
+        assert_eq!(noise.timer_period, 4068);
     }
 }

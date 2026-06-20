@@ -59,6 +59,15 @@ impl Region {
         }
     }
 
+    /// Whether DMC DMA can cause the extra-read side effects seen on 2A03
+    /// controller and PPU register reads. The PAL 2A07 fixes this defect.
+    pub fn has_dmc_read_conflict(self) -> bool {
+        match self {
+            Region::Pal => false,
+            Region::Ntsc | Region::Dendy => true,
+        }
+    }
+
     pub fn from_str(s: &str) -> Region {
         match s.to_ascii_lowercase().as_str() {
             "pal" => Region::Pal,

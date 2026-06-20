@@ -17,6 +17,12 @@ enum ReadMode {
     DmcAlignment,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DmcConflictRead {
+    Dummy,
+    Alignment,
+}
+
 /// 2A03 DMA arbiter — schedules OAM ($4014) and DMC sample DMA on the same
 /// per-CPU-cycle timeline. See `docs/DMA仲裁设计说明.md`. OAM and DMC share one
 /// get/put cadence; DMC `get` preempts OAM `get`, OAM `put` is unaffected.
@@ -172,7 +178,7 @@ impl Bus {
                 return;
             }
             if !self.dma.dmc_dummy_done {
-                let _ = self.read(cpu_addr);
+                self.dmc_conflict_read(cpu_addr, DmcConflictRead::Dummy);
                 self.dma.dmc_dummy_done = true;
                 self.clock_oam_if_possible(get);
                 return;
@@ -193,7 +199,7 @@ impl Bus {
             }
             // DMC is waiting for a get cycle. The held CPU read is still driven
             // on the bus, so MMIO reads such as $2007 can observe another access.
-            let _ = self.read_with_mode(cpu_addr, ReadMode::DmcAlignment);
+            self.dmc_conflict_read(cpu_addr, DmcConflictRead::Alignment);
             self.clock_oam_if_possible(get);
             return;
         }
@@ -257,6 +263,20 @@ impl Bus {
         let d = &self.dma;
         if !d.oam_active && !d.dmc_active && !d.oam_req && !d.dmc_req {
             self.dma.halted = false;
+        }
+    }
+
+    fn dmc_conflict_read(&mut self, addr: u16, kind: DmcConflictRead) {
+        if !self.region.has_dmc_read_conflict() {
+            return;
+        }
+        match kind {
+            DmcConflictRead::Dummy => {
+                let _ = self.read(addr);
+            }
+            DmcConflictRead::Alignment => {
+                let _ = self.read_with_mode(addr, ReadMode::DmcAlignment);
+            }
         }
     }
 
@@ -352,5 +372,34 @@ mod ram_serde {
         let mut a = [0u8; 0x800];
         a[..v.len().min(0x800)].copy_from_slice(&v[..v.len().min(0x800)]);
         Ok(a)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn bus_with_latched_controller(region: Region) -> Bus {
+        let mut bus = Bus::new(Cartridge::empty(), region);
+        bus.controllers.set_state(0, 0b0000_0010);
+        bus.controllers.write_strobe(1);
+        bus.controllers.write_strobe(0);
+        bus
+    }
+
+    #[test]
+    fn dmc_dummy_read_shifts_controller_on_ntsc() {
+        let mut bus = bus_with_latched_controller(Region::Ntsc);
+        bus.dmc_conflict_read(0x4016, DmcConflictRead::Dummy);
+
+        assert_eq!(bus.read(0x4016) & 1, 1);
+    }
+
+    #[test]
+    fn dmc_dummy_read_does_not_shift_controller_on_pal() {
+        let mut bus = bus_with_latched_controller(Region::Pal);
+        bus.dmc_conflict_read(0x4016, DmcConflictRead::Dummy);
+
+        assert_eq!(bus.read(0x4016) & 1, 0);
     }
 }
