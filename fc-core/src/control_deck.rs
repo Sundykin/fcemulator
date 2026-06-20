@@ -68,8 +68,12 @@ impl ControlDeck {
         let mut guard = 0u32;
         while !self.bus.ppu.frame_complete {
             if dbg && !self.debugger.skip_once && self.debugger.exec_bp_at(self.cpu.pc) {
-                self.debugger.halted = Some(self.cpu.pc);
-                return false;
+                // Address matched (cheap gate); evaluate any condition before halting.
+                let ctx = self.eval_ctx(-1, -1);
+                if self.debugger.exec_break(self.cpu.pc, &ctx) {
+                    self.debugger.halted = Some(self.cpu.pc);
+                    return false;
+                }
             }
             self.debugger.skip_once = false;
             self.cpu.step(&mut self.bus);
@@ -90,6 +94,24 @@ impl ControlDeck {
     pub fn step_instruction(&mut self) {
         self.debugger.halted = None;
         self.cpu.step(&mut self.bus);
+    }
+
+    /// Build the conditional-breakpoint evaluator context from live CPU/PPU
+    /// state. `value`/`addr` (= -1 when N/A) feed read/write watchpoint conditions.
+    fn eval_ctx(&self, value: i64, addr: i64) -> crate::expr::Ctx {
+        crate::expr::Ctx {
+            a: self.cpu.a,
+            x: self.cpu.x,
+            y: self.cpu.y,
+            p: self.cpu.p,
+            sp: self.cpu.sp,
+            pc: self.cpu.pc,
+            cycles: self.cpu.cycles,
+            scanline: self.bus.ppu.scanline,
+            dot: self.bus.ppu.dot,
+            value,
+            addr,
+        }
     }
 
     /// Enable/disable per-instruction execution tracing. When off, the hot path
@@ -123,7 +145,14 @@ impl ControlDeck {
     // ---- debugger ----
 
     pub fn add_breakpoint(&mut self, kind: BpKind, addr: u16) -> u32 {
-        let id = self.debugger.add(kind, addr);
+        self.add_breakpoint_cond(kind, addr, None)
+    }
+
+    /// Add a breakpoint with an optional condition expression (see [`crate::expr`]),
+    /// e.g. `a == 0xff && scanline >= 30`. Empty/whitespace condition = none.
+    pub fn add_breakpoint_cond(&mut self, kind: BpKind, addr: u16, condition: Option<String>) -> u32 {
+        let condition = condition.filter(|c| !c.trim().is_empty());
+        let id = self.debugger.add_cond(kind, addr, condition);
         self.sync_watch();
         id
     }
@@ -356,5 +385,43 @@ impl ControlDeck {
                 }
             })
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::debug::BpKind;
+
+    // The empty cartridge executes NOPs from $8000, so we can drive the
+    // conditional-breakpoint logic without a real ROM.
+    #[test]
+    fn conditional_exec_breakpoint() {
+        let mut deck = ControlDeck::new(Region::Ntsc);
+        deck.running = true;
+
+        // Condition is false (x defaults to 0) → address matches but no halt.
+        deck.cpu.pc = 0x8000;
+        let id = deck.add_breakpoint_cond(BpKind::Exec, 0x8000, Some("x == 5".into()));
+        deck.run_frame();
+        assert!(deck.is_halted().is_none(), "false condition must not halt");
+
+        // Make the condition true → halt at $8000.
+        deck.remove_breakpoint(id);
+        deck.debugger.halted = None;
+        deck.cpu.pc = 0x8000;
+        deck.cpu.x = 5;
+        deck.add_breakpoint_cond(BpKind::Exec, 0x8000, Some("x == 5".into()));
+        let ran = deck.run_frame();
+        assert!(!ran, "true condition must stop the frame");
+        assert_eq!(deck.is_halted(), Some(0x8000), "must halt at the breakpoint");
+
+        // An unconditional breakpoint always halts.
+        deck.debugger.halted = None;
+        deck.cpu.pc = 0x8000;
+        deck.add_breakpoint(BpKind::Exec, 0x9000);
+        deck.add_breakpoint(BpKind::Exec, 0x8000);
+        deck.run_frame();
+        assert_eq!(deck.is_halted(), Some(0x8000));
     }
 }

@@ -20,6 +20,7 @@ pub mod control_deck;
 pub mod cpu;
 pub mod debug;
 pub mod disasm;
+pub mod expr;
 pub mod input;
 pub mod mapper;
 pub mod palette;

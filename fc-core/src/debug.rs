@@ -16,6 +16,10 @@ pub struct Breakpoint {
     pub kind: BpKind,
     pub addr: u16,
     pub enabled: bool,
+    /// Optional condition expression (see [`crate::expr`]); the breakpoint only
+    /// fires when it evaluates non-zero. `None` = unconditional.
+    #[serde(default)]
+    pub condition: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -31,6 +35,11 @@ pub struct Debugger {
 
 impl Debugger {
     pub fn add(&mut self, kind: BpKind, addr: u16) -> u32 {
+        self.add_cond(kind, addr, None)
+    }
+
+    /// Add a breakpoint with an optional condition expression.
+    pub fn add_cond(&mut self, kind: BpKind, addr: u16, condition: Option<String>) -> u32 {
         self.next_id += 1;
         let id = self.next_id;
         self.breakpoints.push(Breakpoint {
@@ -38,6 +47,7 @@ impl Debugger {
             kind,
             addr,
             enabled: true,
+            condition,
         });
         id
     }
@@ -59,10 +69,26 @@ impl Debugger {
         }
     }
 
+    /// Cheap address-only gate: is there any enabled exec breakpoint at `pc`?
+    /// (Conditions are checked separately by [`exec_break`] only on a match.)
     pub fn exec_bp_at(&self, pc: u16) -> bool {
         self.breakpoints
             .iter()
             .any(|b| b.enabled && b.kind == BpKind::Exec && b.addr == pc)
+    }
+
+    /// Should execution actually break at `pc`? True if any enabled exec
+    /// breakpoint at `pc` is unconditional or has a condition evaluating
+    /// non-zero against `ctx`.
+    pub fn exec_break(&self, pc: u16, ctx: &crate::expr::Ctx) -> bool {
+        self.breakpoints.iter().any(|b| {
+            b.enabled
+                && b.kind == BpKind::Exec
+                && b.addr == pc
+                && b.condition
+                    .as_deref()
+                    .map_or(true, |c| crate::expr::eval_cond(c, ctx))
+        })
     }
 
     pub fn addrs(&self, kind: BpKind) -> Vec<u16> {
