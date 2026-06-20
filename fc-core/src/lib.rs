@@ -8,7 +8,8 @@
 //! - **PPU**: 2C02 scanline pipeline with background shift registers, real CHR
 //!   sprite fetches, accurate sprite-0 hit, mirroring driven by the mapper
 //! - **APU**: pulse ×2 / triangle / noise / DMC + frame sequencer with IRQ
-//! - **Mappers**: NROM, MMC1, UNROM, CNROM, AxROM, MMC3 (scanline IRQ)
+//! - **Mappers**: NROM, MMC1, UNROM, CNROM, AxROM, MMC2/4, MMC3, MMC5, and
+//!   several discrete boards
 //! - **Save states**: full machine snapshot; battery-backed SRAM
 
 pub mod apu;
