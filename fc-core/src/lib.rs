@@ -13,6 +13,7 @@
 //! - **Save states**: full machine snapshot; battery-backed SRAM
 
 pub mod apu;
+pub mod blip;
 pub mod bus;
 pub mod cartridge;
 pub mod cheat;

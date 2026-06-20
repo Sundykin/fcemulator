@@ -658,22 +658,31 @@ pub struct Apu {
     // resampling
     cpu_hz: f64,
     sample_rate: f64,
-    sample_acc: f64,
-    hp_prev_in: f32,
-    hp_prev_out: f32,
-    // Integrate-and-average decimation: sum the raw mix every CPU cycle and emit
-    // the window mean per output sample. Unlike point-sampling this captures the
-    // energy of short transients (a ball-bounce blip never falls "between" two
-    // sample points) and applies a sinc roll-off that tames aliasing — the cheap
-    // approximation of Mesen's band-limited (blip_buf) synthesis. Transient, so
-    // not serialized.
+    // Band-limited resampler (blip_buf, see [`crate::blip`]): a sinc step is added
+    // at each transition's exact sub-sample time, so the output has no aliasing
+    // yet keeps transients crisp to Nyquist — the same synthesis Mesen2 uses, and
+    // a real upgrade over point-sampling (aliases) or box-averaging (muffles).
+    // Transient: rebuilt lazily from cpu_hz/sample_rate so save/load needn't carry
+    // it. `last_amp` tracks the previous mixed level (for the delta); `frame_clock`
+    // counts CPU cycles into the current blip time frame.
     #[serde(skip)]
-    mix_sum: f64,
+    blip: Option<crate::blip::Blip>,
     #[serde(skip)]
-    mix_count: u32,
+    last_amp: i32,
+    #[serde(skip)]
+    frame_clock: u32,
     #[serde(skip)]
     pub samples: Vec<f32>,
 }
+
+/// Map the non-linear mix (~0.0..1.0) to integer amplitude for blip. Kept well
+/// below full `i16` so stacked high-frequency transitions can't overflow the
+/// integrator; the reciprocal scale is applied when reading samples back to f32.
+const AMP_SCALE: f32 = 8192.0;
+/// CPU cycles per blip time frame (flush cadence ≈ 2.3 ms at NTSC).
+const BLIP_FRAME: u32 = 4096;
+/// Output-sample capacity of the blip buffer (one BLIP_FRAME yields ~100).
+const BLIP_BUF: usize = 4096;
 
 impl Apu {
     pub fn new(region: Region) -> Self {
@@ -694,17 +703,19 @@ impl Apu {
             pending_length_write: None,
             cpu_hz: region.cpu_hz(),
             sample_rate: 44_100.0,
-            sample_acc: 0.0,
-            hp_prev_in: 0.0,
-            hp_prev_out: 0.0,
-            mix_sum: 0.0,
-            mix_count: 0,
+            blip: None,
+            last_amp: 0,
+            frame_clock: 0,
             samples: Vec::with_capacity(1024),
         }
     }
 
     pub fn set_sample_rate(&mut self, rate: f64) {
         self.sample_rate = rate;
+        // Drop the resampler so it is rebuilt at the new rate on the next tick.
+        self.blip = None;
+        self.last_amp = 0;
+        self.frame_clock = 0;
     }
 
     pub fn irq(&self) -> bool {
@@ -717,6 +728,12 @@ impl Apu {
         self.frame_irq = false;
         self.pending_length_write = None;
         self.apply_frame_reset(frame_value, RESET_FRAME_ADVANCE);
+        // Channels fall silent — clear the resampler so it doesn't emit a click.
+        self.last_amp = 0;
+        self.frame_clock = 0;
+        if let Some(b) = &mut self.blip {
+            b.clear();
+        }
     }
 
     /// PRG address the DMC wants to read this cycle (bus performs the DMA fetch).
@@ -749,14 +766,28 @@ impl Apu {
         self.clock_pending_frame_reset();
         self.apply_pending_length_write();
 
-        // Resample: integrate the raw mix every cycle, emit the window mean.
-        self.mix_sum += self.mix_raw() as f64;
-        self.mix_count += 1;
-        self.sample_acc += self.sample_rate / self.cpu_hz;
-        if self.sample_acc >= 1.0 {
-            self.sample_acc -= 1.0;
-            let s = self.emit_sample();
-            self.samples.push(s);
+        // Band-limited resample: register a sinc step whenever the mixed output
+        // changes, then flush fixed clock chunks into `samples`.
+        let amp = (self.mix_raw() * AMP_SCALE) as i32;
+        let (cpu_hz, sr) = (self.cpu_hz, self.sample_rate);
+        let blip = self.blip.get_or_insert_with(|| {
+            let mut b = crate::blip::Blip::new(BLIP_BUF);
+            b.set_rates(cpu_hz, sr);
+            b
+        });
+        if amp != self.last_amp {
+            blip.add_delta(self.frame_clock, amp - self.last_amp);
+            self.last_amp = amp;
+        }
+        self.frame_clock += 1;
+        if self.frame_clock >= BLIP_FRAME {
+            blip.end_frame(self.frame_clock);
+            let mut tmp = [0i16; BLIP_BUF];
+            let avail = blip.samples_avail();
+            let n = blip.read_samples(&mut tmp, avail);
+            self.frame_clock = 0;
+            self.samples
+                .extend(tmp[..n].iter().map(|&s| s as f32 / AMP_SCALE));
         }
     }
 
@@ -936,23 +967,6 @@ impl Apu {
             159.79 / (1.0 / tnd + 100.0)
         };
         pulse_out + tnd_out
-    }
-
-    /// Emit one output sample from the integrated window: take the mean of the
-    /// raw mix over the cycles since the last sample, then run the one-pole
-    /// DC-blocking high-pass at the output rate (so its cutoff stays fixed).
-    fn emit_sample(&mut self) -> f32 {
-        let raw = if self.mix_count > 0 {
-            (self.mix_sum / self.mix_count as f64) as f32
-        } else {
-            self.mix_raw()
-        };
-        self.mix_sum = 0.0;
-        self.mix_count = 0;
-        let out = raw - self.hp_prev_in + 0.995 * self.hp_prev_out;
-        self.hp_prev_in = raw;
-        self.hp_prev_out = out;
-        out
     }
 
     // ------------------------------------------------------------ registers
