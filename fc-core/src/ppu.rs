@@ -427,8 +427,9 @@ impl Ppu {
         // shifts every sprite — and sprite-0 hit — up by a scanline.)
         if self.scanline < 240 {
             let line = self.scanline;
+            let mut overflow_byte = 0usize;
             for i in 0..64 {
-                let y = self.oam[i * 4] as u16;
+                let y = self.oam[i * 4 + overflow_byte] as u16;
                 let row = line.wrapping_sub(y);
                 if row < height {
                     if found < 8 {
@@ -469,9 +470,15 @@ impl Ppu {
                         self.sprite_fetch_addr[found] = addr;
                         found += 1;
                     } else {
-                        self.status |= 0x20; // sprite overflow (simplified)
+                        self.status |= 0x20;
                         break;
                     }
+                } else if found >= 8 {
+                    // The hardware's overflow scan has a well-known bug: once
+                    // secondary OAM is full, misses advance the byte position,
+                    // so later sprites can have tile/attribute/X bytes tested
+                    // as if they were Y coordinates.
+                    overflow_byte = (overflow_byte + 1) & 0x03;
                 }
             }
         }
