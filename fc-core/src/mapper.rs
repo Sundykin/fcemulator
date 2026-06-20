@@ -23,6 +23,17 @@ pub trait MapperOps {
     fn prg_index(&self, addr: u16) -> usize;
     /// Translate a PPU access of `$0000..=$1FFF` to a CHR byte index.
     fn chr_index(&self, addr: u16) -> usize;
+    /// Mapper-owned CHR-RAM read. Returns `Some(byte)` when this CHR access maps
+    /// into a small CHR-RAM held by the mapper itself (e.g. mapper 74 routes CHR
+    /// bank numbers 8/9 to a 2KB CHR-RAM); `None` ⇒ use cartridge CHR-ROM/RAM.
+    fn chr_read(&self, _addr: u16, _access: ChrAccess) -> Option<u8> {
+        None
+    }
+    /// Mapper-owned CHR-RAM write. Returns `true` when the mapper consumed the
+    /// write into its own CHR-RAM; `false` ⇒ fall through to cartridge CHR.
+    fn chr_write(&mut self, _addr: u16, _value: u8) -> bool {
+        false
+    }
     /// Translate a PPU pattern access with fetch context. MMC5 has separate
     /// background/sprite CHR bank registers; most mappers ignore the context.
     fn chr_index_for(&self, addr: u16, _access: ChrAccess) -> usize {
@@ -125,6 +136,7 @@ impl Mapper {
             66 => Mapper::Gxrom(Gxrom::new(mirroring)),
             71 => Mapper::Codemasters(Codemasters::new(prg_16k, mirroring)),
             25 => Mapper::Vrc4(Vrc4::new(prg_16k, chr_8k)),
+            74 => Mapper::Mmc3(Mmc3::new_74(prg_16k, chr_8k)),
             other => return Err(other),
         })
     }
@@ -159,6 +171,12 @@ impl MapperOps for Mapper {
     }
     fn chr_index_for(&self, addr: u16, access: ChrAccess) -> usize {
         dispatch!(self, m => m.chr_index_for(addr, access))
+    }
+    fn chr_read(&self, addr: u16, access: ChrAccess) -> Option<u8> {
+        dispatch!(self, m => m.chr_read(addr, access))
+    }
+    fn chr_write(&mut self, addr: u16, value: u8) -> bool {
+        dispatch!(self, m => m.chr_write(addr, value))
     }
     fn write_register(&mut self, addr: u16, value: u8) {
         dispatch!(self, m => m.write_register(addr, value))

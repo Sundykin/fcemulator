@@ -184,6 +184,10 @@ impl Cartridge {
     }
 
     pub fn ppu_read_for(&self, addr: u16, access: ChrAccess) -> u8 {
+        // Mapper-owned CHR-RAM (e.g. mapper 74 banks 8/9) takes precedence.
+        if let Some(b) = self.mapper.chr_read(addr & 0x1FFF, access) {
+            return b;
+        }
         let i = self.mapper.chr_index_for(addr & 0x1FFF, access);
         if self.uses_chr_ram {
             self.chr_ram
@@ -199,6 +203,10 @@ impl Cartridge {
     }
 
     pub fn ppu_write(&mut self, addr: u16, value: u8) {
+        // Mapper-owned CHR-RAM (e.g. mapper 74 banks 8/9) takes precedence.
+        if self.mapper.chr_write(addr & 0x1FFF, value) {
+            return;
+        }
         if self.uses_chr_ram {
             let len = self.chr_ram.len().max(1);
             let i = self.mapper.chr_index(addr & 0x1FFF) % len;

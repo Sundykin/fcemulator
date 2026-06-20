@@ -10,6 +10,10 @@ use serde::{Deserialize, Serialize};
 pub struct Mmc3 {
     prg_8k: usize,
     chr_1k: usize,
+    // CHR-RAM boards (chr_8k == 0) wire the 8KB CHR-RAM flat, bypassing the CHR
+    // bank registers (used by the Chinese RPG translations).
+    #[serde(default)]
+    chr_is_ram: bool,
     bank_select: u8,
     banks: [u8; 8],
     prg_mode: bool, // bit6 of bank_select
@@ -26,6 +30,12 @@ pub struct Mmc3 {
     // A12 edge detection
     a12_prev: bool,
     a12_low_since: u64,
+    // Mapper 74: CHR bank numbers 8/9 address a 2KB CHR-RAM instead of CHR-ROM
+    // (used by the Chinese RPG carts for dynamic text tiles).
+    #[serde(default)]
+    chr_ram_8_9: bool,
+    #[serde(default)]
+    chr_ram: Vec<u8>,
 }
 
 impl Mmc3 {
@@ -33,6 +43,7 @@ impl Mmc3 {
         Mmc3 {
             prg_8k: (prg_16k * 2).max(1),
             chr_1k: (chr_8k * 8).max(8),
+            chr_is_ram: chr_8k == 0,
             bank_select: 0,
             banks: [0; 8],
             prg_mode: false,
@@ -46,6 +57,61 @@ impl Mmc3 {
             irq_suppress_zero_reload: false,
             a12_prev: false,
             a12_low_since: 0,
+            chr_ram_8_9: false,
+            chr_ram: Vec::new(),
+        }
+    }
+
+    /// Mapper 74 — MMC3 with a 2KB CHR-RAM addressed by CHR bank numbers 8/9.
+    pub(super) fn new_74(prg_16k: usize, chr_8k: usize) -> Self {
+        let mut m = Mmc3::new(prg_16k, chr_8k);
+        m.chr_ram_8_9 = true;
+        m.chr_ram = vec![0u8; 0x800]; // 2KB
+        m
+    }
+
+    /// Effective CHR bank number (1KB granularity) and the offset within that
+    /// 1KB for a PPU CHR address — mirrors `chr_index`'s bank selection so the
+    /// CHR-RAM (mapper 74, banks 8/9) routing stays consistent with CHR-ROM.
+    fn chr_1k_bank(&self, a: u16) -> (u16, u16) {
+        let off = a & 0x03FF;
+        let two = |b: u8, hi: bool| (b & 0xFE) as u16 | hi as u16; // 1KB half of a 2KB reg
+        let bank = if !self.chr_mode {
+            match a {
+                0x0000..=0x03FF => two(self.banks[0], false),
+                0x0400..=0x07FF => two(self.banks[0], true),
+                0x0800..=0x0BFF => two(self.banks[1], false),
+                0x0C00..=0x0FFF => two(self.banks[1], true),
+                0x1000..=0x13FF => self.banks[2] as u16,
+                0x1400..=0x17FF => self.banks[3] as u16,
+                0x1800..=0x1BFF => self.banks[4] as u16,
+                _ => self.banks[5] as u16,
+            }
+        } else {
+            match a {
+                0x0000..=0x03FF => self.banks[2] as u16,
+                0x0400..=0x07FF => self.banks[3] as u16,
+                0x0800..=0x0BFF => self.banks[4] as u16,
+                0x0C00..=0x0FFF => self.banks[5] as u16,
+                0x1000..=0x13FF => two(self.banks[0], false),
+                0x1400..=0x17FF => two(self.banks[0], true),
+                0x1800..=0x1BFF => two(self.banks[1], false),
+                _ => two(self.banks[1], true),
+            }
+        };
+        (bank, off)
+    }
+
+    /// Index into the mapper's 2KB CHR-RAM if this access targets bank 8 or 9.
+    fn chr_ram_index(&self, a: u16) -> Option<usize> {
+        if !self.chr_ram_8_9 {
+            return None;
+        }
+        let (bank, off) = self.chr_1k_bank(a);
+        if bank == 8 || bank == 9 {
+            Some((bank as usize & 1) * 0x400 + off as usize)
+        } else {
+            None
         }
     }
 
@@ -91,6 +157,11 @@ impl MapperOps for Mmc3 {
 
     fn chr_index(&self, addr: u16) -> usize {
         let a = addr & 0x1FFF;
+        // Flat 8KB CHR-RAM: the bank registers don't affect CHR (the RAM is wired
+        // straight through), so uploads land where the game expects.
+        if self.chr_is_ram {
+            return a as usize;
+        }
         // In chr_mode, the two 2KB banks and four 1KB banks swap halves.
         let (slot, off) = if !self.chr_mode {
             match a {
@@ -152,6 +223,19 @@ impl MapperOps for Mmc3 {
                     self.irq_enabled = true;
                 }
             }
+        }
+    }
+
+    fn chr_read(&self, addr: u16, _access: super::ChrAccess) -> Option<u8> {
+        self.chr_ram_index(addr).map(|i| self.chr_ram[i])
+    }
+
+    fn chr_write(&mut self, addr: u16, value: u8) -> bool {
+        if let Some(i) = self.chr_ram_index(addr) {
+            self.chr_ram[i] = value;
+            true
+        } else {
+            false
         }
     }
 
