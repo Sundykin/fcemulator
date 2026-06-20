@@ -52,11 +52,41 @@
 - [ ] 5.5 Archive this change once merged; fold the perf delta into
       `docs/模拟器优化计划.md` progress snapshot
 
+## 6. Handoff optional items — resolved
+
+- [x] 6.1 **PPU-core attribution** (handoff step 2). The suggested `bench --profile`
+      ablation that skips PPU fetch/shift/sprite-eval can't be behaviour-safe —
+      sprite-0/overflow/`v` all depend on that work, so the CPU stream would
+      diverge and the fps delta would be meaningless. Done the sound way instead:
+      `tools/ppu-self-time.sh` (macOS `sample`, non-perturbing) → **PPU dot
+      machine ≈ 50–55% of in-emulator self-time** (`Ppu::tick` + `run_render_pipeline`
+      + `ppu_read_for` + `mirror_nt`); APU ≈17%; CPU ≈25%.
+- [x] 6.2 **Cycle parity vs an authoritative external trace** (handoff "可选强守门").
+      Full Mesen2 GUI trace-logger isn't runnable headless here, but `nestest.log`
+      (Nintendulator/Mesen-class golden trace) is — `tools/nestest-parity.py`
+      shows the optimized PPU matches it **PC+A/X/Y/P/SP exact for 5003 instrs**
+      with a **constant** CYC offset (+7) and **constant** PPU dot offset (+362),
+      zero drift → cycle-exact parity modulo the reset zero-point convention.
+      (Any 1-dot bug would make the offset vary.)
+- [x] 6.3 **L1.3 frontend u32 direct-out** investigated → **no win in current arch**:
+      fc-gui (egui), fc-tauri (`poll_frame`), and fc-cli (PNG) already consume the
+      `Vec<u8>` RGBA framebuffer directly — there is no frontend RGBA *conversion*
+      to remove. A `Vec<u32>` framebuffer would only save the per-pixel
+      `copy_from_slice` vs an aligned `u32` store (sub-1%) at the cost of touching
+      6 consumer sites; not worth it.
+- [x] 6.4 **L1.4 debug-hook dual path** investigated → hooks are **already cheaply
+      gated**: `read_with_mode` short-circuits on `watch_read.is_empty()`, CPU
+      trace is a single predicted `if self.trace`. Removing them is sub-1% and
+      risks regression (cf. the rejected range-split); not pursued.
+
 ## Notes / deferred (separate changes)
 
-- L1.3 **frontend** u32 framebuffer direct-out (changes `frame_buffer` to
-  `Vec<u32>`, touches all four frontends) — the PPU-side LUT is done above.
-- L1.4 debug-hook dual path; PAL/Dendy true scanline count.
+- L1.3 **frontend** `Vec<u32>` framebuffer (sub-1%, 6 call-sites) — see 6.3.
+- L1.4 debug-hook dual path (already gated) — see 6.4.
+- PAL/Dendy true scanline count (pre-existing 262-line wrap preserved here).
+- Real **order-of-magnitude** perf needs a different lever than the PPU dot
+  machine (APU::tick ≈17%, mapper read path, or batching that the lock-step
+  invariant currently forbids) — out of scope for this PPU-restructure change.
 
 ## Rejected (measured, kept out)
 

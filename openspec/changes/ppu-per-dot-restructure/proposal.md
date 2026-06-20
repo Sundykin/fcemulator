@@ -60,8 +60,10 @@ are all preserved — proven by a self-vs-self trace 0-diff (below).
   (also-skip) palette, so no save-state hazard.
 - **Behavior**: none. `cargo test -p fc-core` 28/28, accuracy baseline 47/47,
   `fc trace` 0-diff vs the pre-change binary on SMB / 双截龙3 (MMC3) / 忍者神龟3
-  (heavy sprites) 250 000 instrs each, and **framebuffer pixel-identical** across
-  the three games at frames 240 & 900 (L1.3 verification).
+  (heavy sprites) 250 000 instrs each, **framebuffer pixel-identical** across the
+  three games at frames 240 & 900 (L1.3), and **cycle-exact vs the `nestest.log`
+  golden trace** — PC+regs exact for 5003 instrs with a constant CYC/PPU offset,
+  zero drift (`tools/nestest-parity.py`).
 - **Performance** (release headless, best-of-3 fps): SMB 426→466 (**+9.4%**),
   忍者神龟3 369→397 (**+7.7%**), 双截龙3 364→386 (**+5.8%**); `bench --profile`
   "remainder" per-frame drops accordingly (CPU/mapper unchanged, so attributable
