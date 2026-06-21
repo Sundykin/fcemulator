@@ -26,8 +26,26 @@ export interface FcRenderer {
 
 export async function createRenderer(container: HTMLElement): Promise<FcRenderer> {
   const app = new Application();
-  await app.init({ width: W, height: H, background: 0x000000, antialias: false, resolution: 1, autoDensity: false });
+  // autoStart:false — do NOT let Pixi run its own render loop. Pixi's auto-ticker
+  // renders every vsync for the app's whole lifetime; a renderer that survives an
+  // HMR reload / mode switch (its `destroy` never ran) would keep rendering
+  // forever, and a few stacked zombies blow the 16.6 ms vsync budget and halve
+  // the display to 30 fps. Here the single poll loop in useEmuLoop calls
+  // `render()` only when a new frame arrives, so a leaked renderer is inert.
+  await app.init({ width: W, height: H, background: 0x000000, antialias: false, resolution: 1, autoDensity: false, autoStart: false, sharedTicker: false });
+  // Pixi's TickerPlugin adds `app.render` to a Ticker whose `add()` lazily
+  // re-starts the rAF loop, so `autoStart:false`/`stop()` alone don't hold.
+  // Detach the render listener: with no listeners the ticker stops re-arming, so
+  // (a) we render strictly on demand below, and (b) a renderer that outlives its
+  // teardown becomes fully inert instead of pinning a 60 Hz render loop forever.
+  app.ticker.remove(app.render, app);
+  app.ticker.stop();
   container.appendChild(app.canvas);
+
+  let alive = true;
+  const render = () => {
+    if (alive) app.render();
+  };
 
   const pixels = new Uint8Array(W * H * 4);
   const source = new BufferImageSource({ resource: pixels, width: W, height: H, scaleMode: "nearest", format: "rgba8unorm" });
@@ -69,6 +87,7 @@ export async function createRenderer(container: HTMLElement): Promise<FcRenderer
     }
     app.canvas.style.width = dw + "px";
     app.canvas.style.height = dh + "px";
+    render(); // redraw layout changes (no auto-ticker to do it for us)
   }
   fit();
 
@@ -78,6 +97,7 @@ export async function createRenderer(container: HTMLElement): Promise<FcRenderer
       if (u8.length === pixels.length) {
         pixels.set(u8);
         source.update();
+        render();
       }
     },
     resize: fit,
@@ -92,6 +112,7 @@ export async function createRenderer(container: HTMLElement): Promise<FcRenderer
       fit();
     },
     destroy() {
+      alive = false;
       app.destroy(true, { children: true, texture: true });
     },
   };
