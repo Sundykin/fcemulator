@@ -258,14 +258,20 @@ impl App {
         if self.running && !self.paused {
             let mut ran = 0;
             if let Some(rate) = self.audio.as_ref().map(|a| a.sample_rate) {
-                // Sync to the audio clock: run frames to keep the output buffer
-                // near `target` (~50 ms). This makes the sound card's stable
-                // clock drive emulation — no underruns, no long-term A/V drift.
+                // Wall-clock frame pacing is the hard speed limit; the audio
+                // buffer is backpressure so we don't run far ahead of playback.
                 let target = (rate * 0.05) as usize;
-                while self.audio.as_ref().unwrap().buffered() < target && ran < 6 {
+                let frame_period = 1.0 / self.deck.region_frame_rate();
+                self.acc += dt.min(0.1);
+                while self.acc >= frame_period && ran < 6 {
+                    if self.audio.as_ref().unwrap().buffered() > target * 2 {
+                        self.acc = self.acc.min(frame_period);
+                        break;
+                    }
                     self.deck.run_frame();
                     let samples = self.deck.drain_audio();
                     self.audio.as_ref().unwrap().queue(&samples);
+                    self.acc -= frame_period;
                     ran += 1;
                     self.fps_count += 1;
                 }

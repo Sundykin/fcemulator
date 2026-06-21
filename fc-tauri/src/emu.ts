@@ -84,6 +84,7 @@ export interface PpuApuState {
   apu: { name: string; active: boolean; level: number }[];
 }
 export const ppuApuState = () => invoke<PpuApuState>("ppu_apu_state");
+export const runtimeStats = () => invoke<Record<string, unknown>>("runtime_stats");
 
 // debugger
 export const disassemble = (addr: number, count: number) => invoke<string[]>("disassemble", { addr, count });

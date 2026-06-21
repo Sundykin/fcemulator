@@ -58,11 +58,23 @@ struct FrameSlot {
     rgba: Vec<u8>,
 }
 
+#[derive(Default, Clone, Serialize)]
+pub struct RuntimeStats {
+    audio_open: bool,
+    audio_buffered: usize,
+    worker_frames: u64,
+    worker_audio_samples: u64,
+    last_loop_frames: u32,
+    last_frame_samples: usize,
+}
+
 struct Shared {
     deck: Mutex<ControlDeck>,
     input: Mutex<Inp>,
     frame: Mutex<FrameSlot>,
     ctrl: Mutex<Ctrl>,
+    stats: Mutex<RuntimeStats>,
+    started_at: Instant,
     rom_id: Mutex<String>,
     wake: Condvar,
     wake_flag: Mutex<bool>,
@@ -94,6 +106,8 @@ impl EmuState {
                 sample_rate: 44_100.0,
                 volume: 0.8,
             }),
+            stats: Mutex::new(RuntimeStats::default()),
+            started_at: Instant::now(),
             rom_id: Mutex::new(String::new()),
             wake: Condvar::new(),
             wake_flag: Mutex::new(false),
@@ -198,8 +212,12 @@ fn worker(shared: Arc<Shared>) {
     if let Some(a) = &audio {
         shared.ctrl.lock().unwrap().sample_rate = a.sample_rate;
         shared.deck.lock().unwrap().set_audio_sample_rate(a.sample_rate);
+        let mut stats = shared.stats.lock().unwrap();
+        stats.audio_open = true;
+        stats.audio_buffered = a.buffered();
     }
     let mut next = Instant::now() + Duration::from_secs_f64(1.0 / 60.0988); // wall-clock fallback schedule
+    let mut next_audio_frame = Instant::now();
 
     loop {
         let (running, paused, speed, do_step, volume) = {
@@ -213,12 +231,16 @@ fn worker(shared: Arc<Shared>) {
             let (fb, halted) = {
                 let mut deck = shared.deck.lock().unwrap();
                 let mut ran = 0u32;
+                let mut sample_count = 0usize;
+                let mut last_frame_samples = 0usize;
                 if do_step {
                     let inp = merged_input(&shared);
                     deck.set_controller_state(0, inp[0]);
                     deck.set_controller_state(1, inp[1]);
                     if deck.run_frame() {
                         let mut s = deck.drain_audio();
+                        last_frame_samples = s.len();
+                        sample_count += last_frame_samples;
                         apply_volume(&mut s, volume);
                         if let Some(a) = &audio {
                             a.queue(&s);
@@ -239,6 +261,12 @@ fn worker(shared: Arc<Shared>) {
                         AUDIO_CATCHUP_CAP_FRAMES
                     };
                     while ran < cap && (speed > 1 || a.buffered() < target) {
+                        if speed == 1 {
+                            let now = Instant::now();
+                            if now < next_audio_frame {
+                                break;
+                            }
+                        }
                         let inp = merged_input(&shared);
                         deck.set_controller_state(0, inp[0]);
                         deck.set_controller_state(1, inp[1]);
@@ -246,9 +274,21 @@ fn worker(shared: Arc<Shared>) {
                             break; // halted at a breakpoint
                         }
                         let mut s = deck.drain_audio();
+                        last_frame_samples = s.len();
+                        sample_count += last_frame_samples;
                         apply_volume(&mut s, volume);
                         a.queue(&s);
                         ran += 1;
+                        if speed == 1 {
+                            let frame_dur =
+                                Duration::from_secs_f64(1.0 / deck.region_frame_rate());
+                            next_audio_frame += frame_dur;
+                            let max_lag = frame_dur.mul_f64(AUDIO_CATCHUP_CAP_FRAMES as f64);
+                            let now = Instant::now();
+                            if next_audio_frame + max_lag < now {
+                                next_audio_frame = now;
+                            }
+                        }
                     }
                 } else {
                     // No audio device: wall-clock paced, `speed` frames per tick.
@@ -259,9 +299,22 @@ fn worker(shared: Arc<Shared>) {
                         if !deck.run_frame() {
                             break;
                         }
-                        let _ = deck.drain_audio();
+                        last_frame_samples = deck.drain_audio().len();
+                        sample_count += last_frame_samples;
                         ran += 1;
                     }
+                }
+                if ran > 0 {
+                    let mut stats = shared.stats.lock().unwrap();
+                    stats.worker_frames = stats.worker_frames.saturating_add(ran as u64);
+                    stats.worker_audio_samples = stats
+                        .worker_audio_samples
+                        .saturating_add(sample_count as u64);
+                    stats.last_loop_frames = ran;
+                    stats.last_frame_samples = last_frame_samples;
+                    stats.audio_buffered = audio.as_ref().map(|a| a.buffered()).unwrap_or(0);
+                } else if let Some(a) = &audio {
+                    shared.stats.lock().unwrap().audio_buffered = a.buffered();
                 }
                 let fb = if ran > 0 { Some(deck.frame_buffer().to_vec()) } else { None };
                 (fb, deck.is_halted().is_some())
@@ -272,6 +325,8 @@ fn worker(shared: Arc<Shared>) {
             if halted {
                 shared.ctrl.lock().unwrap().paused = true; // auto-pause on breakpoint
             }
+        } else if paused || !running {
+            next_audio_frame = Instant::now();
         }
 
         // With audio, buffer fill sets the cadence and this short sleep merely
@@ -412,6 +467,33 @@ pub fn set_remove_sprite_limit(enabled: bool, state: State<EmuState>) {
         .lock()
         .unwrap()
         .set_remove_sprite_limit(enabled);
+}
+
+#[tauri::command]
+pub fn runtime_stats(state: State<EmuState>) -> serde_json::Value {
+    let (running, paused, speed, sample_rate) = {
+        let ctrl = state.shared.ctrl.lock().unwrap();
+        (ctrl.running, ctrl.paused, ctrl.speed, ctrl.sample_rate)
+    };
+    let deck = state.shared.deck.lock().unwrap();
+    let stats = state.shared.stats.lock().unwrap().clone();
+    json!({
+        "running": running,
+        "paused": paused,
+        "speed": speed,
+        "sampleRate": sample_rate,
+        "region": deck.region().label(),
+        "regionFps": deck.region_frame_rate(),
+        "frame": deck.frame_count(),
+        "cpuCycles": deck.cpu.cycles,
+        "audioOpen": stats.audio_open,
+        "audioBuffered": stats.audio_buffered,
+        "workerFrames": stats.worker_frames,
+        "workerAudioSamples": stats.worker_audio_samples,
+        "lastLoopFrames": stats.last_loop_frames,
+        "lastFrameSamples": stats.last_frame_samples,
+        "uptimeSecs": state.shared.started_at.elapsed().as_secs_f64(),
+    })
 }
 
 /// Names of all built-in NES system palettes (Smooth (FBX) first = default).

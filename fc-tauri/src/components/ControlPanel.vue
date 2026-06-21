@@ -133,7 +133,7 @@ const zoomOpts = [
           <div class="irow"><span>CHR</span><b>{{ store.rom.chr_kb }} KB {{ store.rom.chr_ram ? "(RAM)" : "" }}</b></div>
           <div class="irow"><span>镜像</span><b>{{ store.rom.mirroring }}</b></div>
           <div class="irow"><span>电池</span><b>{{ store.rom.battery ? "有" : "无" }}</b></div>
-          <div class="irow"><span>区域</span><b>NTSC</b></div>
+          <div class="irow"><span>区域</span><b>{{ store.rom.region }}</b></div>
           <div class="irow"><span>FPS</span><b class="fps">{{ store.fps }}</b></div>
         </div>
       </template>

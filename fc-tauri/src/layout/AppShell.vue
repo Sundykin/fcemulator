@@ -7,6 +7,7 @@ import { useLibraryStore } from "../stores/library";
 import { useProjectStore } from "../stores/project";
 import { useKeyboard } from "../composables/useKeyboard";
 import { useHaltWatch } from "../composables/useHaltWatch";
+import * as emuApi from "../emu";
 import Icon from "../components/Icon.vue";
 import TitleBar from "./TitleBar.vue";
 import Toolbar from "./Toolbar.vue";
@@ -43,10 +44,12 @@ onMounted(() => {
       __emu: typeof store;
       __lib: typeof library;
       __project: typeof project;
+      __emuApi: typeof emuApi;
     };
     w.__emu = store;
     w.__lib = library;
     w.__project = project;
+    w.__emuApi = emuApi;
   }
 });
 onUnmounted(() => window.removeEventListener("keydown", onEsc));

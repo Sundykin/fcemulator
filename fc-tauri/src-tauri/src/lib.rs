@@ -49,6 +49,7 @@ pub fn run() {
             emu::set_speed,
             emu::set_volume,
             emu::set_remove_sprite_limit,
+            emu::runtime_stats,
             emu::list_palettes,
             emu::set_palette,
             emu::palette_preview,
