@@ -7,7 +7,7 @@
 //!   saves/<rom_id>/slot_<n>.png   — thumbnail at save time
 //!   saves/<rom_id>/slot_<n>.json  — slot metadata
 
-use fc_core::{ControlDeck, Region};
+use fc_core::{Cartridge, ControlDeck, Region};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
@@ -69,8 +69,9 @@ pub fn thumbnail_png(rgba: &[u8]) -> Vec<u8> {
 
 /// Render a ROM headless for `frames` and return its title-screen PNG.
 pub fn generate_cover(rom_bytes: &[u8], frames: u64) -> Option<Vec<u8>> {
-    let mut deck = ControlDeck::new(Region::Ntsc);
-    deck.load_rom(rom_bytes).ok()?;
+    let region = Cartridge::region_hint("", rom_bytes).unwrap_or(Region::Ntsc);
+    let mut deck = ControlDeck::new(region);
+    deck.load_rom_with_region(rom_bytes, region).ok()?;
     for _ in 0..frames {
         deck.run_frame();
     }

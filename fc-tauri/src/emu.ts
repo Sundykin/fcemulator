@@ -5,6 +5,7 @@ import { open, save } from "@tauri-apps/plugin-dialog";
 
 export interface RomInfo {
   name: string;
+  region: string;
   mapper: number;
   prg_kb: number;
   chr_kb: number;

@@ -121,7 +121,8 @@ struct ChState {
 fn cpu_hz_for(region: Region) -> f64 {
     match region {
         Region::Pal => 1_662_607.0,
-        _ => 1_789_773.0,
+        Region::Dendy => 1_773_448.0,
+        Region::Ntsc => 1_789_773.0,
     }
 }
 
@@ -170,7 +171,7 @@ pub fn song_frames(song: &Song, region: Region) -> Vec<Vec<(u16, u8)>> {
 
 /// 渲染整首乐曲为 PCM 样本(驱动 ApuPreview)。供离线试听与单元测试。
 pub fn render_song(song: &Song, region: Region, sample_rate: f64) -> Vec<f32> {
-    let cycles_per_frame = (cpu_hz_for(region) / 60.0) as u32;
+    let cycles_per_frame = (cpu_hz_for(region) / region.frame_rate()) as u32;
     let mut apu = ApuPreview::new(region, sample_rate);
     let mut out = Vec::new();
     for fw in song_frames(song, region) {

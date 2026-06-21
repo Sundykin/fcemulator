@@ -7,7 +7,7 @@ mod audio;
 
 use audio::Audio;
 use egui::{Color32, ColorImage, TextureHandle, TextureOptions};
-use fc_core::{Button, ControlDeck, Region};
+use fc_core::{Button, Cartridge, ControlDeck, Region};
 use std::sync::Arc;
 use std::time::Instant;
 use winit::application::ApplicationHandler;
@@ -174,7 +174,8 @@ impl App {
     fn load_rom_path(&mut self, path: String) {
         match std::fs::read(&path) {
             Ok(data) => {
-                if self.deck.load_rom(&data).is_ok() {
+                let region = Cartridge::region_hint(&path, &data).unwrap_or(Region::Ntsc);
+                if self.deck.load_rom_with_region(&data, region).is_ok() {
                     self.deck.set_remove_sprite_limit(self.remove_sprite_limit);
                     if let Some(a) = &self.audio {
                         self.deck.set_audio_sample_rate(a.sample_rate);

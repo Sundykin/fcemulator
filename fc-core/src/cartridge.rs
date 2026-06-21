@@ -1,7 +1,7 @@
 //! Cartridge loading (iNES / NES 2.0) and PRG/CHR/PRG-RAM resolution.
 
 use crate::mapper::{ChrAccess, Mapper, MapperOps};
-use crate::types::Mirroring;
+use crate::types::{Mirroring, Region};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -67,6 +67,10 @@ pub struct Cartridge {
     /// Header-declared (fixed) mirroring; live mirroring comes from the mapper.
     pub header_mirroring: Mirroring,
     pub is_nes20: bool,
+    /// Header-declared timing hint. NES 2.0 encodes NTSC/PAL/multi/Dendy in byte
+    /// 12; iNES 1.0 can only reliably hint PAL via byte 9.
+    #[serde(default)]
+    pub region_hint: Option<Region>,
     /// Game Genie ROM read patches: addr → (value, optional compare).
     #[serde(skip)]
     pub patches: HashMap<u16, (u8, Option<u8>)>,
@@ -85,6 +89,65 @@ pub enum CartridgeError {
 }
 
 impl Cartridge {
+    pub fn region_hint_from_header(data: &[u8]) -> Option<Region> {
+        if data.len() < 16 || data[0..4] != INES_MAGIC {
+            return None;
+        }
+        let flags7 = data[7];
+        let is_nes20 = (flags7 & 0x0C) == 0x08;
+        if is_nes20 {
+            match data[12] & 0x03 {
+                0 => Some(Region::Ntsc),
+                1 => Some(Region::Pal),
+                2 => Some(Region::Ntsc), // multi-region: Mesen defaults to NTSC
+                3 => Some(Region::Dendy),
+                _ => None,
+            }
+        } else if data[9] & 0x01 != 0 {
+            Some(Region::Pal)
+        } else {
+            None
+        }
+    }
+
+    pub fn region_hint_from_name(name: &str) -> Option<Region> {
+        let name = name.to_ascii_lowercase();
+        if name.contains("dendy") {
+            return Some(Region::Dendy);
+        }
+        if name.contains("(e)")
+            || name.contains("[e]")
+            || name.contains("(europe)")
+            || name.contains("[europe]")
+            || name.contains("(australia)")
+            || name.contains("(germany)")
+            || name.contains("(spain)")
+            || name.contains("(france)")
+            || name.contains("(italy)")
+            || name.contains("(f)")
+            || name.contains("(g)")
+            || name.contains("(i)")
+            || name.contains("(pal)")
+            || name.contains("[pal]")
+        {
+            return Some(Region::Pal);
+        }
+        if name.contains("(usa)")
+            || name.contains("[usa]")
+            || name.contains("(japan)")
+            || name.contains("[japan]")
+            || name.contains("(ntsc)")
+            || name.contains("[ntsc]")
+        {
+            return Some(Region::Ntsc);
+        }
+        None
+    }
+
+    pub fn region_hint(path_or_name: &str, data: &[u8]) -> Option<Region> {
+        Self::region_hint_from_header(data).or_else(|| Self::region_hint_from_name(path_or_name))
+    }
+
     /// Parse an iNES or NES 2.0 ROM image.
     pub fn from_bytes(data: &[u8]) -> Result<Cartridge, CartridgeError> {
         if data.len() < 16 {
@@ -97,6 +160,7 @@ impl Cartridge {
         let flags6 = data[6];
         let flags7 = data[7];
         let is_nes20 = (flags7 & 0x0C) == 0x08;
+        let region_hint = Self::region_hint_from_header(data);
 
         let prg_16k = data[4] as usize;
         let chr_8k = data[5] as usize;
@@ -171,6 +235,7 @@ impl Cartridge {
             prg_ram_mask,
             header_mirroring,
             is_nes20,
+            region_hint,
             patches: HashMap::new(),
         })
     }
@@ -305,6 +370,49 @@ impl Cartridge {
 
     pub fn mirroring(&self) -> Mirroring {
         self.mapper.mirroring()
+    }
+}
+
+#[cfg(test)]
+mod region_tests {
+    use super::*;
+
+    fn header(nes20: bool) -> [u8; 16] {
+        let mut h = [0u8; 16];
+        h[0..4].copy_from_slice(&INES_MAGIC);
+        h[4] = 1;
+        h[5] = 1;
+        if nes20 {
+            h[7] = 0x08;
+        }
+        h
+    }
+
+    #[test]
+    fn detects_nes20_region_hint() {
+        let mut h = header(true);
+        h[12] = 1;
+        assert_eq!(Cartridge::region_hint_from_header(&h), Some(Region::Pal));
+        h[12] = 3;
+        assert_eq!(Cartridge::region_hint_from_header(&h), Some(Region::Dendy));
+        h[12] = 2;
+        assert_eq!(Cartridge::region_hint_from_header(&h), Some(Region::Ntsc));
+    }
+
+    #[test]
+    fn detects_ines_pal_and_filename_hints() {
+        let mut h = header(false);
+        assert_eq!(Cartridge::region_hint_from_header(&h), None);
+        h[9] = 1;
+        assert_eq!(Cartridge::region_hint_from_header(&h), Some(Region::Pal));
+        assert_eq!(
+            Cartridge::region_hint_from_name("Game (Europe).nes"),
+            Some(Region::Pal)
+        );
+        assert_eq!(
+            Cartridge::region_hint_from_name("Game Dendy.nes"),
+            Some(Region::Dendy)
+        );
     }
 }
 

@@ -164,7 +164,7 @@ export const useEmuStore = defineStore("emu", {
         saveLastMode("player");
         this.view = "main";
       }
-      this.status = `${info.name} · mapper ${info.mapper} · ${info.mirroring}`;
+      this.status = `${info.name} · ${info.region} · mapper ${info.mapper} · ${info.mirroring}`;
     },
     async openDialog() {
       const info = await emu.openRomDialog();

@@ -83,6 +83,14 @@ impl Region {
             _ => Region::Ntsc,
         }
     }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Region::Ntsc => "NTSC",
+            Region::Pal => "PAL",
+            Region::Dendy => "Dendy",
+        }
+    }
 }
 
 /// Nametable mirroring arrangement.

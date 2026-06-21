@@ -199,8 +199,7 @@ fn worker(shared: Arc<Shared>) {
         shared.ctrl.lock().unwrap().sample_rate = a.sample_rate;
         shared.deck.lock().unwrap().set_audio_sample_rate(a.sample_rate);
     }
-    let frame_dur = Duration::from_secs_f64(1.0 / 60.0988);
-    let mut next = Instant::now() + frame_dur; // wall-clock fallback schedule
+    let mut next = Instant::now() + Duration::from_secs_f64(1.0 / 60.0988); // wall-clock fallback schedule
 
     loop {
         let (running, paused, speed, do_step, volume) = {
@@ -288,6 +287,10 @@ fn worker(shared: Arc<Shared>) {
                 },
             );
         } else {
+            let frame_dur = {
+                let deck = shared.deck.lock().unwrap();
+                Duration::from_secs_f64(1.0 / deck.region_frame_rate())
+            };
             let now = Instant::now();
             if next > now {
                 wait_worker(&shared, next - now);
@@ -302,6 +305,7 @@ fn worker(shared: Arc<Shared>) {
 #[derive(Serialize)]
 pub struct RomInfo {
     name: String,
+    region: String,
     mapper: u16,
     prg_kb: usize,
     chr_kb: usize,
@@ -314,9 +318,11 @@ pub struct RomInfo {
 
 fn apply_rom(shared: &Shared, path: &str, data: &[u8]) -> Result<RomInfo, String> {
     let rate = shared.ctrl.lock().unwrap().sample_rate;
+    let region = Cartridge::region_hint(path, data).unwrap_or(Region::Ntsc);
     let info = {
         let mut deck = shared.deck.lock().unwrap();
-        deck.load_rom(data).map_err(|e| e.to_string())?;
+        deck.load_rom_with_region(data, region)
+            .map_err(|e| e.to_string())?;
         deck.set_audio_sample_rate(rate);
         let c = &deck.bus.cartridge;
         RomInfo {
@@ -324,6 +330,7 @@ fn apply_rom(shared: &Shared, path: &str, data: &[u8]) -> Result<RomInfo, String
                 .file_name()
                 .map(|s| s.to_string_lossy().to_string())
                 .unwrap_or_default(),
+            region: region.label().to_string(),
             mapper: c.mapper_number,
             prg_kb: c.prg_rom.len() / 1024,
             chr_kb: if c.uses_chr_ram { c.chr_ram.len() } else { c.chr_rom.len() } / 1024,
@@ -356,6 +363,7 @@ pub fn open_rom_id(id: String, app: AppHandle, state: State<EmuState>) -> Result
     let info = apply_rom(&state.shared, &path, &data)?;
     if let Some(e) = lib.entries.iter_mut().find(|e| e.id == id) {
         e.last_played = now();
+        e.region = info.region.clone();
     }
     lib.save(&dir);
     Ok(info)
@@ -650,7 +658,10 @@ pub fn scan_library(dir: String, app: AppHandle) -> Result<usize, String> {
             title: path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default(),
             path: path.to_string_lossy().to_string(),
             mapper: cart.mapper_number,
-            region: "NTSC".into(),
+            region: Cartridge::region_hint(&path.to_string_lossy(), &bytes)
+                .unwrap_or(Region::Ntsc)
+                .label()
+                .into(),
             favorite: false,
             added: now(),
             last_played: 0,

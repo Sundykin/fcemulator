@@ -117,6 +117,8 @@ pub struct Ppu {
     pub frame: u64,
     pub odd_frame: bool,
     vblank_line: u16,
+    #[serde(default = "default_pre_render_line")]
+    pre_render_line: u16,
     /// Monotonic PPU dot counter (for the mapper A12 IRQ filter).
     master_cycle: u64,
     #[serde(default)]
@@ -167,6 +169,9 @@ fn default_sprite_cover() -> [bool; 256] {
 fn invalid_line() -> u16 {
     u16::MAX
 }
+fn default_pre_render_line() -> u16 {
+    261
+}
 fn default_palette_lut() -> [[u32; 64]; 8] {
     Ppu::build_palette_lut(&DEFAULT_PALETTE)
 }
@@ -212,6 +217,7 @@ impl std::fmt::Debug for Ppu {
 
 impl Ppu {
     pub fn new(region: Region) -> Self {
+        let pre_render_line = region.scanlines() - 1;
         Ppu {
             ctrl: 0,
             mask: 0,
@@ -248,11 +254,12 @@ impl Ppu {
             vram: [0; 0x1000],
             palette_ram: [0; 0x20],
             oam: [0; 0x100],
-            scanline: 261,
+            scanline: pre_render_line,
             dot: 0,
             frame: 0,
             odd_frame: false,
             vblank_line: region.vblank_scanline(),
+            pre_render_line,
             master_cycle: 0,
             skip_rendering: false,
             sprite_overflow_dot: 0,
@@ -265,6 +272,14 @@ impl Ppu {
             frame_buffer: default_frame(),
             palette: default_palette(),
             palette_lut: default_palette_lut(),
+        }
+    }
+
+    pub fn sync_region_timings(&mut self, region: Region) {
+        self.vblank_line = region.vblank_scanline();
+        self.pre_render_line = region.scanlines() - 1;
+        if self.scanline > self.pre_render_line {
+            self.scanline = 0;
         }
     }
 
@@ -398,8 +413,8 @@ impl Ppu {
     /// Advance the PPU by one dot. Dispatches by scanline phase
     /// (visible / pre-render / VBlank), mirroring Mesen's `ProcessScanline`
     /// segmentation. Per-dot timing and memory-access ordering are unchanged;
-    /// `vblank_line` (241 NTSC / 291 Dendy) never overlaps the visible (`<240`)
-    /// or pre-render (`261`) ranges, so this `if/else` chain reproduces the old
+    /// `vblank_line` (241 NTSC/PAL, 291 Dendy) never overlaps the visible
+    /// (`<240`) or pre-render ranges, so this `if/else` chain reproduces the old
     /// four independent `if`s exactly.
     pub fn tick(&mut self, cart: &mut Cartridge) {
         self.master_cycle += 1;
@@ -407,7 +422,7 @@ impl Ppu {
 
         if self.scanline < 240 {
             self.tick_visible(cart);
-        } else if self.scanline == 261 {
+        } else if self.scanline == self.pre_render_line {
             self.tick_prerender(cart);
         } else if self.scanline == self.vblank_line && self.dot == 1 {
             self.enter_vblank();
@@ -436,9 +451,10 @@ impl Ppu {
         }
     }
 
-    /// Pre-render scanline (261): clears VBL/sprite0/overflow at dot 1, runs the
-    /// same fetch pipeline as a visible line to prime the shifters for scanline
-    /// 0, and reloads vertical scroll from `t` at dots 280–304.
+    /// Pre-render scanline (261 NTSC, 311 PAL/Dendy): clears VBL/sprite0/overflow
+    /// at dot 1, runs the same fetch pipeline as a visible line to prime the
+    /// shifters for scanline 0, and reloads vertical scroll from `t` at dots
+    /// 280–304.
     fn tick_prerender(&mut self, cart: &mut Cartridge) {
         if self.dot == 1 {
             self.status &= !0xE0; // clear vblank, sprite0, overflow
@@ -523,15 +539,19 @@ impl Ppu {
     }
 
     /// Advance dot / scanline / frame. On odd frames with rendering enabled,
-    /// the last dot of the pre-render line (261,339) is skipped: jump
-    /// straight to (0,0). The hardware samples rendering just before the
+    /// the last dot of the pre-render line is skipped: jump straight to (0,0).
+    /// The hardware samples rendering just before the
     /// decision point, so PPUMASK writes on dot 339 are too late to affect it.
     fn advance_clock(&mut self) {
-        if self.scanline == 261 && self.dot == 338 {
+        if self.scanline == self.pre_render_line && self.dot == 338 {
             self.skip_rendering = self.rendering();
         }
 
-        if self.scanline == 261 && self.dot == 339 && self.odd_frame && self.skip_rendering {
+        if self.scanline == self.pre_render_line
+            && self.dot == 339
+            && self.odd_frame
+            && self.skip_rendering
+        {
             self.dot = 0;
             self.scanline = 0;
             self.frame += 1;
@@ -541,7 +561,7 @@ impl Ppu {
             if self.dot > 340 {
                 self.dot = 0;
                 self.scanline += 1;
-                if self.scanline > 261 {
+                if self.scanline > self.pre_render_line {
                     self.scanline = 0;
                     self.frame += 1;
                     self.odd_frame = !self.odd_frame;

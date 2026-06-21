@@ -38,6 +38,23 @@ impl ControlDeck {
     /// Load an iNES/NES 2.0 ROM image and power-cycle.
     pub fn load_rom(&mut self, data: &[u8]) -> Result<(), CartridgeError> {
         let cart = Cartridge::from_bytes(data)?;
+        self.load_cartridge(cart);
+        Ok(())
+    }
+
+    /// Load a ROM using an explicit timing region and power-cycle.
+    pub fn load_rom_with_region(
+        &mut self,
+        data: &[u8],
+        region: Region,
+    ) -> Result<(), CartridgeError> {
+        let cart = Cartridge::from_bytes(data)?;
+        self.region = region;
+        self.load_cartridge(cart);
+        Ok(())
+    }
+
+    fn load_cartridge(&mut self, cart: Cartridge) {
         let render_options = self.bus.ppu.render_options();
         let palette = self.bus.ppu.palette.clone();
         self.bus = Bus::new(cart, self.region);
@@ -48,7 +65,6 @@ impl ControlDeck {
         self.running = true;
         self.cheats.clear();
         self.debugger = Debugger::default();
-        Ok(())
     }
 
     /// Soft reset (reset button).
@@ -232,6 +248,10 @@ impl ControlDeck {
         self.region.frame_rate()
     }
 
+    pub fn region(&self) -> Region {
+        self.region
+    }
+
     /// 256×240 RGBA8 frame buffer.
     pub fn frame_buffer(&self) -> &[u8] {
         &self.bus.ppu.frame_buffer
@@ -313,6 +333,7 @@ impl ControlDeck {
                 // the freshly-deserialized mapper so the PPU's notify_a12 fast
                 // path stays correct after a load (esp. for MMC3/MMC2/4/5 saves).
                 self.bus.cartridge.refresh_mapper_caps();
+                self.bus.ppu.sync_region_timings(self.bus.region);
                 self.bus.ppu.palette = palette;
                 self.bus.ppu.set_render_options(render_options);
                 self.bus.ppu.frame_buffer = vec![0; 256 * 240 * 4];
@@ -412,6 +433,20 @@ mod tests {
     use super::*;
     use crate::debug::BpKind;
 
+    fn minimal_rom() -> Vec<u8> {
+        let mut rom = vec![0u8; 16 + 0x4000 + 0x2000];
+        rom[0..4].copy_from_slice(b"NES\x1A");
+        rom[4] = 1;
+        rom[5] = 1;
+        for b in rom.iter_mut().skip(16).take(0x4000) {
+            *b = 0xEA;
+        }
+        let base = 16 + 0x4000;
+        rom[base - 2] = 0x00;
+        rom[base - 1] = 0x80;
+        rom
+    }
+
     // The empty cartridge executes NOPs from $8000, so we can drive the
     // conditional-breakpoint logic without a real ROM.
     #[test]
@@ -446,5 +481,29 @@ mod tests {
         deck.add_breakpoint(BpKind::Exec, 0x8000);
         deck.run_frame();
         assert_eq!(deck.is_halted(), Some(0x8000));
+    }
+
+    #[test]
+    fn load_rom_with_region_uses_requested_timing() {
+        let mut deck = ControlDeck::new(Region::Ntsc);
+        deck.load_rom_with_region(&minimal_rom(), Region::Pal)
+            .unwrap();
+        assert_eq!(deck.region(), Region::Pal);
+        assert!((deck.region_frame_rate() - 50.0070).abs() < 0.001);
+    }
+
+    #[test]
+    fn pal_frames_have_pal_cpu_cycle_budget() {
+        let mut deck = ControlDeck::new(Region::Ntsc);
+        deck.load_rom_with_region(&minimal_rom(), Region::Pal)
+            .unwrap();
+        deck.run_frame(); // start-up partial frame: pre-render -> first vblank
+        let c0 = deck.cpu.cycles;
+        deck.run_frame();
+        let delta = deck.cpu.cycles - c0;
+        assert!(
+            (33_200..=33_300).contains(&delta),
+            "PAL frame should be ~33248 CPU cycles, got {delta}"
+        );
     }
 }
