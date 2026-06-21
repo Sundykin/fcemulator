@@ -200,8 +200,8 @@ pub fn event_dump(emu: &Shared, args: &Value) -> Value {
     })
 }
 
-/// Access heatmap: per-address read/write/exec counts + code/data classification
-/// + a recently-hot (decaying) value, over the CPU bus. `enable=true` turns it on
+/// Access heatmap: per-address read/write/exec counts, a code/data flag, and a
+/// recently-hot (decaying) value over the CPU bus. `enable=true` turns it on
 /// (then `emu_step_frame`, then `emu_heatmap`); `reset=true` zeroes counts;
 /// `top` = how many hottest addresses to return (default 32). Also returns
 /// per-256-byte-page totals for an overview strip.
