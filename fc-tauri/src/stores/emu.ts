@@ -92,7 +92,14 @@ export const useEmuStore = defineStore("emu", {
     status: "还没有打开游戏",
     held: new Set<string>(),
     pad: 0, // virtual-gamepad bits (OR'd with keyboard)
-    seq: 0,
+    // Monotonic input sequence, seeded from wall-clock ms. The backend keeps the
+    // highest seq it has seen and drops anything lower (newer-wins, for unordered
+    // IPC). A plain 0 base breaks after a Vite full reload: the webview resets seq
+    // to 0 while the persistent backend still holds a high kb_seq, so every key is
+    // rejected → "controls dead after hot-reload". Seeding from Date.now() means a
+    // fresh frontend always outranks the old session's max (key events are far
+    // slower than 1/ms, so base+count can never catch the next reload's base).
+    seq: Date.now(),
     lastSentInput: -1,
   }),
   getters: {
