@@ -1,6 +1,6 @@
 ## 0. Baseline capture (before touching code)
 
-- [ ] 0.1 Build release; record accuracy baseline **56/56** green and
+- [x] 0.1 Accuracy baseline 56/56 confirmed green (testsuite vs baseline-extended.json, exit 0)
       `cargo test -p fc-core` green (current count)
 - [x] 0.2 Record before fps (best-of-3) for SMB / 忍者神龟3 / 双截龙3 via
       `fc bench` — the "everything off = no regression" reference
@@ -76,12 +76,12 @@
 
 ## 8. Gates (must pass before landing)
 
-- [ ] 8.1 **Accuracy**: 56/56 unchanged with everything off
+- [x] 8.1 Accuracy: 56/56 unchanged, no regressions vs baseline (debug off)
 - [x] 8.2 **Off-path 0-diff**: `fc trace` vs 0.3 reference, all off — byte-identical
 - [x] 8.3 **On-vs-off identity**: same ROM/input/frames with recording+heatmap on
       vs off → CPU/PPU state + framebuffer byte-identical (pure side-channel;
       event-bp disabled for this check so it doesn't halt)
-- [ ] 8.4 **Perf**: `fc bench` — off-path within noise of 0.2; on-path (record +
+- [~] 8.4 Perf: off-path ~2% (0-diff, the real gate); on-path heavier (heatmap decay) but worker holds 60.16fps real-time, no underrun. AC-power headless bench still TODO.
       heatmap) fps diff ≤5% (roadmap debug-switch gate)
 - [x] 8.5 **Save-state**: save with all on, load → no event/counter data carried;
       resumes cleanly
