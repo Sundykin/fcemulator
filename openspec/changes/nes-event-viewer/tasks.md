@@ -89,6 +89,6 @@
 ## 9. Landing
 
 - [x] 9.1 `cargo clippy -p fc-core -p fc-mcp` — zero new warnings
-- [ ] 9.2 Fold into `docs/模拟器优化计划.md` snapshot (M2 L4.3 ✅, L4.4 heatmap ✅)
+- [x] 9.2 Fold into `docs/模拟器优化计划.md` snapshot (M2 L4.3 ✅, L4.4 heatmap ✅)
       + §4 milestone table
 - [ ] 9.3 Commit on a branch, small steps; archive this change once merged
