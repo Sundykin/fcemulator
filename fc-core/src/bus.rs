@@ -201,12 +201,17 @@ impl Bus {
                 nmi
             }
         };
-        self.apu.tick();
         // Clock CPU-cycle-driven mapper IRQs (Konami VRC). A12-edge mappers
         // (MMC3) ignore this and are driven from the PPU instead.
         if self.cartridge.mapper_clocks_cpu {
             self.cartridge.mapper.cpu_clock();
         }
+        let expansion_audio = if self.cartridge.mapper_has_expansion_audio {
+            self.cartridge.mapper.expansion_audio()
+        } else {
+            0.0
+        };
+        self.apu.tick(expansion_audio);
         // DMC sample DMA is now a *request*: the arbiter performs the PRG read on
         // a `get` cycle (see `dma_clock`), so the DMC dummy/repeated-read side
         // effects on $4016/$2007 are modelled instead of an instant fetch.
@@ -233,7 +238,8 @@ impl Bus {
                 self.events.on_event(EventKind::Nmi, sl, dot, 0, 0, 0);
             }
             if self.events.sprite0_edge(self.ppu.status & 0x40 != 0) {
-                self.events.on_event(EventKind::Sprite0Hit, sl, dot, 0, 0, 0);
+                self.events
+                    .on_event(EventKind::Sprite0Hit, sl, dot, 0, 0, 0);
             }
             let asserted = self.irq_line();
             if self.events.irq_edge(asserted) {
@@ -335,8 +341,14 @@ impl Bus {
                 let addr = req.addr;
                 let byte = self.read(addr);
                 if self.observing {
-                    self.events
-                        .on_event(EventKind::DmcDma, self.ppu.scanline, self.ppu.dot, addr, byte, 0);
+                    self.events.on_event(
+                        EventKind::DmcDma,
+                        self.ppu.scanline,
+                        self.ppu.dot,
+                        addr,
+                        byte,
+                        0,
+                    );
                 }
                 self.apu.dmc_supply(req, byte);
                 self.clear_dmc_dma();
@@ -498,41 +510,51 @@ impl Bus {
             self.watch_hit = Some(addr);
         }
         self.open_bus = value;
-        match addr {
-            0x0000..=0x1FFF => self.ram[(addr & 0x07FF) as usize] = value,
+        let mapper_register_write = match addr {
+            0x0000..=0x1FFF => {
+                self.ram[(addr & 0x07FF) as usize] = value;
+                false
+            }
             0x2000..=0x3FFF => {
                 self.ppu
                     .write_register(addr & 0x2007, value, &mut self.cartridge);
                 self.nmi_latch |= self.ppu.take_nmi();
+                false
             }
             0x4014 => {
                 // Register an OAM DMA request; the per-cycle arbiter halts the
                 // CPU and runs the 256 get/put pairs starting next read cycle.
                 self.dma.oam_req = true;
                 self.dma.oam_page = value;
+                false
             }
-            0x4016 => self.controllers.write_strobe(value),
+            0x4016 => {
+                self.controllers.write_strobe(value);
+                false
+            }
             0x4000..=0x4013 | 0x4015 | 0x4017 => {
                 self.apu.write(addr, value);
                 self.cancel_stale_dmc();
+                false
             }
-            0x4018..=0x5FFF => self.cartridge.mapper.write_expansion(addr, value),
-            0x6000..=0xFFFF => self.cartridge.cpu_write(addr, value),
-        }
-        // Event Viewer: record register *writes* + the OAM-DMA trigger. $8000+
-        // writes are recorded as mapper register writes (where bank/IRQ registers
-        // live for register-based boards); RAM and PRG-RAM ($6000–$7FFF) and the
-        // $4016 strobe are not register events.
+            0x4018..=0xFFFF => self.cartridge.cpu_write(addr, value),
+        };
+        // Event Viewer: record register *writes* + the OAM-DMA trigger. Mapper
+        // writes include register-based boards at $8000+ plus boards with low
+        // register windows such as NINA-001's $7FFD-$7FFF.
         if self.observing {
             if let Some(hm) = &mut self.heatmap {
                 hm.tap_write(addr);
             }
-            let ev = match addr {
-                0x2000..=0x3FFF => Some((EventKind::PpuRegWrite, addr & 0x2007)),
-                0x4014 => Some((EventKind::OamDma, addr)),
-                0x4000..=0x4013 | 0x4015 | 0x4017 => Some((EventKind::ApuRegWrite, addr)),
-                0x4018..=0x5FFF | 0x8000..=0xFFFF => Some((EventKind::MapperRegWrite, addr)),
-                _ => None,
+            let ev = if mapper_register_write {
+                Some((EventKind::MapperRegWrite, addr))
+            } else {
+                match addr {
+                    0x2000..=0x3FFF => Some((EventKind::PpuRegWrite, addr & 0x2007)),
+                    0x4014 => Some((EventKind::OamDma, addr)),
+                    0x4000..=0x4013 | 0x4015 | 0x4017 => Some((EventKind::ApuRegWrite, addr)),
+                    _ => None,
+                }
             };
             if let Some((kind, eff)) = ev {
                 self.events
@@ -606,12 +628,43 @@ mod tests {
         let _ = bus.read(0x4016); // controller read
         bus.events.end_frame();
         let evs = bus.events.events();
-        assert!(evs.iter().any(|e| e.kind == EventKind::PpuRegWrite && e.addr == 0x2000));
-        assert!(evs.iter().any(|e| e.kind == EventKind::PpuRegWrite && e.addr == 0x2006));
-        assert!(evs.iter().any(|e| e.kind == EventKind::ApuRegWrite && e.addr == 0x4015));
-        assert!(evs.iter().any(|e| e.kind == EventKind::MapperRegWrite && e.addr == 0x8000));
-        assert!(evs.iter().any(|e| e.kind == EventKind::PpuRegRead && e.addr == 0x2002));
+        assert!(evs
+            .iter()
+            .any(|e| e.kind == EventKind::PpuRegWrite && e.addr == 0x2000));
+        assert!(evs
+            .iter()
+            .any(|e| e.kind == EventKind::PpuRegWrite && e.addr == 0x2006));
+        assert!(evs
+            .iter()
+            .any(|e| e.kind == EventKind::ApuRegWrite && e.addr == 0x4015));
+        assert!(evs
+            .iter()
+            .any(|e| e.kind == EventKind::MapperRegWrite && e.addr == 0x8000));
+        assert!(evs
+            .iter()
+            .any(|e| e.kind == EventKind::PpuRegRead && e.addr == 0x2002));
         assert!(evs.iter().any(|e| e.kind == EventKind::CtrlRead));
+    }
+
+    #[test]
+    fn event_recording_captures_low_mapper_register_access() {
+        let mut rom = vec![0u8; 16 + 4 * 0x4000 + 2 * 0x2000];
+        rom[0..4].copy_from_slice(b"NES\x1A");
+        rom[4] = 4; // 4x16KB PRG
+        rom[5] = 2; // CHR-ROM selects NINA-001 for mapper 34/submapper 0
+        rom[6] = 0x20;
+        rom[7] = 0x20;
+        let cart = Cartridge::from_bytes(&rom).expect("mapper 34 nina rom");
+        let mut bus = Bus::new(cart, Region::Ntsc);
+        bus.set_event_recording(true);
+
+        bus.write(0x7FFE, 0x04);
+        bus.events.end_frame();
+
+        assert_eq!(bus.cartridge.cpu_peek(0x7FFE), 0x04);
+        assert!(bus.events.events().iter().any(|e| {
+            e.kind == EventKind::MapperRegWrite && e.addr == 0x7FFE && e.value == 0x04
+        }));
     }
 
     #[test]
@@ -630,7 +683,10 @@ mod tests {
         // Break on write to $2006 — note recording stays OFF; the bp alone arms
         // the observing gate.
         bus.add_event_bp(EventKind::PpuRegWrite.bit(), Some(0x2006), None);
-        assert!(bus.observing, "an event-bp enables observing without recording");
+        assert!(
+            bus.observing,
+            "an event-bp enables observing without recording"
+        );
         bus.write(0x2000, 0x80); // different reg → no trip
         assert!(bus.take_event_hit().is_none());
         bus.write(0x2006, 0x21); // matches → trip
@@ -644,9 +700,16 @@ mod tests {
     fn event_breakpoint_window_excludes_out_of_range() {
         let mut bus = Bus::new(Cartridge::empty(), Region::Ntsc);
         // Window scanline 30..=32; a bare bus.write occurs at scanline 0 → excluded.
-        bus.add_event_bp(EventKind::PpuRegWrite.bit(), None, Some((30, 32, 0, u16::MAX)));
+        bus.add_event_bp(
+            EventKind::PpuRegWrite.bit(),
+            None,
+            Some((30, 32, 0, u16::MAX)),
+        );
         bus.write(0x2005, 0x10);
-        assert!(bus.take_event_hit().is_none(), "write at scanline 0 is outside 30-32");
+        assert!(
+            bus.take_event_hit().is_none(),
+            "write at scanline 0 is outside 30-32"
+        );
         bus.clear_event_bps();
         assert!(!bus.observing, "clearing the only bp disarms observing");
     }

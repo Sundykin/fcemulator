@@ -50,7 +50,7 @@ pub const TOOLS: &[ToolDef] = &[
     },
     ToolDef {
         name: "emu_get_state",
-        description: "Get CPU registers, PPU scanline/dot, and frame number.",
+        description: "Get CPU registers, PPU scanline/dot, frame number, and cartridge mapper/header metadata.",
         schema: r#"{"type":"object","properties":{}}"#,
     },
     ToolDef {

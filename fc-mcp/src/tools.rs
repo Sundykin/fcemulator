@@ -83,10 +83,25 @@ pub fn get_state(emu: &Shared, _args: &Value) -> Value {
     let deck = emu.lock().unwrap();
     let c = &deck.cpu;
     let p = &deck.bus.ppu;
+    let cart = &deck.bus.cartridge;
     json!({
         "success": true,
         "cpu": {"a": c.a, "x": c.x, "y": c.y, "sp": c.sp, "pc": c.pc, "p": c.p, "cycles": c.cycles, "nmi_count": c.nmi_count},
         "ppu": {"scanline": p.scanline, "dot": p.dot, "frame": p.frame, "ctrl": p.ctrl, "mask": p.mask, "status": p.status},
+        "cartridge": {
+            "mapper": cart.mapper_number,
+            "submapper": cart.submapper,
+            "format": if cart.is_nes20 { "NES 2.0" } else { "iNES" },
+            "prg_rom_bytes": cart.prg_rom.len(),
+            "chr_rom_bytes": cart.chr_rom.len(),
+            "uses_chr_ram": cart.uses_chr_ram,
+            "prg_ram_bytes": cart.prg_ram_size,
+            "prg_nvram_bytes": cart.prg_nvram_size,
+            "chr_ram_bytes": cart.chr_ram_size,
+            "chr_nvram_bytes": cart.chr_nvram_size,
+            "mirroring": format!("{:?}", cart.mirroring()),
+            "battery": cart.has_battery,
+        },
         "running": deck.running,
     })
 }
@@ -151,7 +166,12 @@ pub fn set_event_breakpoint(emu: &Shared, args: &Value) -> Value {
         .iter()
         .any(|k| args.get(*k).is_some());
     let window = if has_window {
-        let g = |k: &str, d: u16| args.get(k).and_then(|v| v.as_u64()).map(|x| x as u16).unwrap_or(d);
+        let g = |k: &str, d: u16| {
+            args.get(k)
+                .and_then(|v| v.as_u64())
+                .map(|x| x as u16)
+                .unwrap_or(d)
+        };
         Some((
             g("scanline_min", 0),
             g("scanline_max", u16::MAX),

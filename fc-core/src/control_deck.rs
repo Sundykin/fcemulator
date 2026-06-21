@@ -75,6 +75,7 @@ impl ControlDeck {
     pub fn reset(&mut self) {
         self.bus.apu.reset();
         self.bus.cancel_dmc_dma();
+        self.bus.cartridge.reset_mapper(true);
         self.cpu.reset(&mut self.bus);
     }
 

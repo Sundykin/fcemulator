@@ -394,7 +394,7 @@ mod tests {
 
     #[test]
     fn mmc5_expansion_ram_and_multiplier() {
-        let mut mapper = Mapper::new(5, 2, 1, Mirroring::FourScreen).unwrap();
+        let mut mapper = Mapper::new(5, 2, 1, Mirroring::FourScreen, 0).unwrap();
 
         mapper.write_expansion(0x5C00, 0x66);
         assert_eq!(mapper.read_expansion(0x5C00), None);
@@ -411,7 +411,7 @@ mod tests {
 
     #[test]
     fn mmc5_chr_mode_applies_to_background_registers() {
-        let mut mapper = Mapper::new(5, 2, 4, Mirroring::FourScreen).unwrap();
+        let mut mapper = Mapper::new(5, 2, 4, Mirroring::FourScreen, 0).unwrap();
 
         mapper.write_expansion(0x5101, 0x00);
         mapper.write_expansion(0x5127, 0x08);
@@ -425,7 +425,7 @@ mod tests {
 
     #[test]
     fn mmc5_irq_status_read_clears_pending() {
-        let mut mapper = Mapper::new(5, 2, 1, Mirroring::FourScreen).unwrap();
+        let mut mapper = Mapper::new(5, 2, 1, Mirroring::FourScreen, 0).unwrap();
 
         mapper.write_expansion(0x5200, 0x80);
         mapper.write_expansion(0x5203, 1);

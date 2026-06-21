@@ -211,6 +211,18 @@ fn scripted_buttons(frame: u64, autostart: bool, presses: &[InputPress]) -> u8 {
     buttons
 }
 
+fn format_mem_size(bytes: usize) -> String {
+    if bytes == 0 {
+        "0".to_string()
+    } else if bytes % (1024 * 1024) == 0 {
+        format!("{} MB", bytes / (1024 * 1024))
+    } else if bytes % 1024 == 0 {
+        format!("{} KB", bytes / 1024)
+    } else {
+        format!("{bytes} bytes")
+    }
+}
+
 /// Run a blargg-style self-checking ROM until it reports a result via $6000.
 fn run_blargg(deck: &mut ControlDeck, max_frames: u64) -> TestOutcome {
     let mut f = 0;
@@ -608,8 +620,16 @@ fn main() -> Result<()> {
             deck.load_rom(&data)?;
             let c = &deck.bus.cartridge;
             println!("mapper:   {}", c.mapper_number);
+            if c.is_nes20 {
+                println!("submap:   {}", c.submapper);
+            }
             println!("format:   {}", if c.is_nes20 { "NES 2.0" } else { "iNES" });
             println!("PRG-ROM:  {} KB", c.prg_rom.len() / 1024);
+            println!(
+                "PRG-RAM:  {} work + {} save",
+                format_mem_size(c.prg_ram_size),
+                format_mem_size(c.prg_nvram_size)
+            );
             println!(
                 "CHR:      {} KB ({})",
                 if c.uses_chr_ram {
@@ -618,6 +638,11 @@ fn main() -> Result<()> {
                     c.chr_rom.len()
                 } / 1024,
                 if c.uses_chr_ram { "CHR-RAM" } else { "CHR-ROM" }
+            );
+            println!(
+                "CHR-RAM:  {} work + {} save",
+                format_mem_size(c.chr_ram_size),
+                format_mem_size(c.chr_nvram_size)
             );
             println!("mirroring:{:?}", c.mirroring());
             println!("battery:  {}", c.has_battery);

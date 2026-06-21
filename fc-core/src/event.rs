@@ -174,7 +174,15 @@ impl EventLog {
     /// it bumps `dropped` instead of growing unbounded. Callers gate on
     /// `recording` first, so this is only reached while recording.
     #[inline]
-    pub fn record(&mut self, kind: EventKind, scanline: u16, dot: u16, addr: u16, value: u8, source: u8) {
+    pub fn record(
+        &mut self,
+        kind: EventKind,
+        scanline: u16,
+        dot: u16,
+        addr: u16,
+        value: u8,
+        source: u8,
+    ) {
         if self.type_mask & kind.bit() == 0 {
             return;
         }
@@ -182,19 +190,41 @@ impl EventLog {
             self.back_dropped += 1;
             return;
         }
-        self.back.push(Event { kind, scanline, dot, addr, value, source });
+        self.back.push(Event {
+            kind,
+            scanline,
+            dot,
+            addr,
+            value,
+            source,
+        });
     }
 
     /// Hook entry point: record the event (if recording) and check it against the
     /// break-on-event rules (first match wins, polled by `run_frame`). Building the
     /// `Event` once serves both. Callers gate on `Bus::observing` first.
     #[inline]
-    pub fn on_event(&mut self, kind: EventKind, scanline: u16, dot: u16, addr: u16, value: u8, source: u8) {
+    pub fn on_event(
+        &mut self,
+        kind: EventKind,
+        scanline: u16,
+        dot: u16,
+        addr: u16,
+        value: u8,
+        source: u8,
+    ) {
         if self.recording {
             self.record(kind, scanline, dot, addr, value, source);
         }
         if self.hit.is_none() && !self.event_bps.is_empty() {
-            let ev = Event { kind, scanline, dot, addr, value, source };
+            let ev = Event {
+                kind,
+                scanline,
+                dot,
+                addr,
+                value,
+                source,
+            };
             if self.event_bps.iter().any(|bp| bp.matches(&ev)) {
                 self.hit = Some(ev);
             }
@@ -203,7 +233,12 @@ impl EventLog {
 
     /// Add a break-on-event rule. `window` = `(scan_lo, scan_hi, dot_lo, dot_hi)`;
     /// `None` = the whole frame. `kinds` = 0 matches any kind.
-    pub fn add_event_bp(&mut self, kinds: u16, addr: Option<u16>, window: Option<(u16, u16, u16, u16)>) -> u32 {
+    pub fn add_event_bp(
+        &mut self,
+        kinds: u16,
+        addr: Option<u16>,
+        window: Option<(u16, u16, u16, u16)>,
+    ) -> u32 {
         self.next_bp_id += 1;
         let id = self.next_bp_id;
         let (scan_lo, scan_hi, dot_lo, dot_hi) = window.unwrap_or((0, u16::MAX, 0, u16::MAX));

@@ -137,7 +137,7 @@ mod tests {
         }
         hm.tap_write(0x0300); // RAM write → data
         hm.tap_exec(0x8000); // single fetch → code (read==exec not reached here)
-        // emulate a code byte: read once (bus.read) + exec once (fetch tap)
+                             // emulate a code byte: read once (bus.read) + exec once (fetch tap)
         hm.tap_read(0x8001);
         hm.tap_exec(0x8001);
 
@@ -151,8 +151,19 @@ mod tests {
 
         let before = hm.page_totals().iter().sum::<u64>();
         hm.decay();
-        assert!(hm.hottest(16).iter().find(|h| h.addr == 0x2002).unwrap().recency < u16::MAX);
-        assert_eq!(hm.page_totals().iter().sum::<u64>(), before, "decay leaves totals");
+        assert!(
+            hm.hottest(16)
+                .iter()
+                .find(|h| h.addr == 0x2002)
+                .unwrap()
+                .recency
+                < u16::MAX
+        );
+        assert_eq!(
+            hm.page_totals().iter().sum::<u64>(),
+            before,
+            "decay leaves totals"
+        );
         hm.reset();
         assert!(hm.hottest(16).is_empty());
     }
