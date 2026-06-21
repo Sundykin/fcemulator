@@ -6,6 +6,19 @@ import { createRenderer, type FcRenderer } from "../render";
 import * as emu from "../emu";
 import { useEmuStore } from "../stores/emu";
 
+type LoopStats = {
+  activeLoops: number;
+  starts: number;
+  stops: number;
+  hmrDisposes: number;
+};
+
+declare global {
+  interface Window {
+    __fcEmuLoopStats?: LoopStats;
+  }
+}
+
 // Every live loop registers its teardown here. On a Vite HMR replace of this
 // module we tear them all down before the new module takes over — otherwise the
 // old rAF poll loops + Pixi renderers survive the reload and pile up, and the
@@ -13,6 +26,21 @@ import { useEmuStore } from "../stores/emu";
 // now it's 30 again after a few edits"). Each instance still owns its own loop;
 // this set is purely the HMR safety net.
 const liveLoops = new Set<() => void>();
+
+function loopStats() {
+  if (!import.meta.env.DEV || typeof window === "undefined") return null;
+  return (window.__fcEmuLoopStats ??= {
+    activeLoops: 0,
+    starts: 0,
+    stops: 0,
+    hmrDisposes: 0,
+  });
+}
+
+function publishLoopStats() {
+  const stats = loopStats();
+  if (stats) stats.activeLoops = liveLoops.size;
+}
 
 export function useEmuLoop(stage: Ref<HTMLElement | null>) {
   const store = useEmuStore();
@@ -88,6 +116,9 @@ export function useEmuLoop(stage: Ref<HTMLElement | null>) {
     if (running) return;
     running = true;
     liveLoops.add(stop);
+    const stats = loopStats();
+    if (stats) stats.starts++;
+    publishLoopStats();
     ensureRenderer();
     raf = requestAnimationFrame(loop);
     fpsTimer = window.setInterval(() => {
@@ -99,6 +130,9 @@ export function useEmuLoop(stage: Ref<HTMLElement | null>) {
     if (!running) return;
     running = false;
     liveLoops.delete(stop);
+    const stats = loopStats();
+    if (stats) stats.stops++;
+    publishLoopStats();
     cancelAnimationFrame(raf);
     raf = 0;
     clearInterval(fpsTimer);
@@ -128,7 +162,10 @@ export function useEmuLoop(stage: Ref<HTMLElement | null>) {
 // module starts clean (otherwise old rAF + Pixi renderers leak → 30 fps).
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
+    const stats = loopStats();
+    if (stats) stats.hmrDisposes++;
     for (const stop of liveLoops) stop();
     liveLoops.clear();
+    publishLoopStats();
   });
 }
