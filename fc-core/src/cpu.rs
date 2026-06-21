@@ -224,8 +224,14 @@ impl Cpu {
     }
 
     fn fetch(&mut self, bus: &mut Bus) -> u8 {
-        let v = self.rd(bus, self.pc);
+        let pc = self.pc;
+        let v = self.rd(bus, pc);
         self.pc = self.pc.wrapping_add(1);
+        // Heatmap: opcode/operand fetches are exec accesses (no-op unless the
+        // heatmap is on). `observing` gates it cheaply on the off path.
+        if bus.observing {
+            bus.heatmap_exec(pc);
+        }
         v
     }
     fn dummy_fetch(&mut self, bus: &mut Bus) {

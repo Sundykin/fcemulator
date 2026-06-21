@@ -4,6 +4,7 @@
 use crate::apu::Apu;
 use crate::apu::{DmcDmaKind, DmcDmaRequest};
 use crate::cartridge::Cartridge;
+use crate::event::{EventKind, IrqSource};
 use crate::input::Controllers;
 use crate::mapper::MapperOps;
 use crate::ppu::Ppu;
@@ -73,6 +74,18 @@ pub struct Bus {
     /// Set to the address that tripped a watchpoint since last cleared.
     #[serde(skip)]
     pub watch_hit: Option<u16>,
+    /// Debug event log (Event Viewer). Boxed + transient — never serialized, and
+    /// kept off the hot `Bus` cache lines so the off path costs nothing.
+    #[serde(skip)]
+    pub events: Box<crate::event::EventLog>,
+    /// Hot-path gate: true iff any debug observer is active (event log /
+    /// break-on-event / heatmap). Every hook is `if self.observing` — one bool
+    /// load — so the default (off) path pays ~nothing.
+    #[serde(skip)]
+    pub observing: bool,
+    /// Access heatmap (L4.4). `None` = off (no allocation, no taps). Transient.
+    #[serde(skip)]
+    pub heatmap: Option<crate::heatmap::Heatmap>,
 }
 
 impl Bus {
@@ -91,6 +104,78 @@ impl Bus {
             watch_read: HashSet::new(),
             watch_write: HashSet::new(),
             watch_hit: None,
+            events: Box::new(crate::event::EventLog::default()),
+            observing: false,
+            heatmap: None,
+        }
+    }
+
+    /// Recompute the hot-path `observing` gate from all active observers
+    /// (event recording or any enabled break-on-event rule; heatmap later).
+    fn update_observing(&mut self) {
+        let was = self.observing;
+        self.observing =
+            self.events.recording || self.events.has_event_bp() || self.heatmap.is_some();
+        if self.observing && !was {
+            // Arming: baseline the level-signal edge detectors so an already-high
+            // sprite-0 / IRQ doesn't fire a spurious edge on the first cycle.
+            let sprite0 = self.ppu.status & 0x40 != 0;
+            let irq = self.irq_line();
+            self.events.arm_edges(sprite0, irq);
+        }
+    }
+
+    /// Enable/disable event recording (keeps `observing` in sync).
+    pub fn set_event_recording(&mut self, on: bool) {
+        self.events.set_recording(on);
+        self.update_observing();
+    }
+
+    /// Add a break-on-event rule; returns its id. Enables the `observing` gate.
+    pub fn add_event_bp(
+        &mut self,
+        kinds: u16,
+        addr: Option<u16>,
+        window: Option<(u16, u16, u16, u16)>,
+    ) -> u32 {
+        let id = self.events.add_event_bp(kinds, addr, window);
+        self.update_observing();
+        id
+    }
+    pub fn remove_event_bp(&mut self, id: u32) {
+        self.events.remove_event_bp(id);
+        self.update_observing();
+    }
+    pub fn clear_event_bps(&mut self) {
+        self.events.clear_event_bps();
+        self.update_observing();
+    }
+    /// Take the event that tripped a break-on-event rule (polled by `run_frame`).
+    pub fn take_event_hit(&mut self) -> Option<crate::event::Event> {
+        self.events.take_hit()
+    }
+
+    /// Enable/disable the access heatmap (allocates / frees the counters).
+    pub fn set_heatmap(&mut self, on: bool) {
+        match (on, self.heatmap.is_some()) {
+            (true, false) => self.heatmap = Some(crate::heatmap::Heatmap::new()),
+            (false, true) => self.heatmap = None,
+            _ => {}
+        }
+        self.update_observing();
+    }
+
+    /// Recompute the `observing` gate (public wrapper for use after a state load
+    /// re-applies the debug observers).
+    pub fn resync_observing(&mut self) {
+        self.update_observing();
+    }
+
+    /// Count an opcode/operand fetch as an exec access (called from `Cpu::fetch`).
+    #[inline]
+    pub fn heatmap_exec(&mut self, addr: u16) {
+        if let Some(hm) = &mut self.heatmap {
+            hm.tap_exec(addr);
         }
     }
 
@@ -98,21 +183,24 @@ impl Bus {
     pub fn tick(&mut self) {
         // The get/put cadence advances every physical CPU cycle.
         self.dma.get_cycle = !self.dma.get_cycle;
-        match self.region {
+        let nmi_fired = match self.region {
             Region::Ntsc => {
-                self.clock_ppu_dot();
-                self.clock_ppu_dot();
-                self.clock_ppu_dot();
+                let mut nmi = self.clock_ppu_dot();
+                nmi |= self.clock_ppu_dot();
+                nmi |= self.clock_ppu_dot();
+                nmi
             }
             Region::Pal | Region::Dendy => {
                 let (dots_num, dots_den) = self.region.ppu_dots_per_cpu_cycle();
                 self.ppu_phase += dots_num;
+                let mut nmi = false;
                 while self.ppu_phase >= dots_den {
                     self.ppu_phase -= dots_den;
-                    self.clock_ppu_dot();
+                    nmi |= self.clock_ppu_dot();
                 }
+                nmi
             }
-        }
+        };
         self.apu.tick();
         // Clock CPU-cycle-driven mapper IRQs (Konami VRC). A12-edge mappers
         // (MMC3) ignore this and are driven from the PPU instead.
@@ -135,14 +223,43 @@ impl Bus {
                 }
             }
         }
+        // Event Viewer: one debug-observer check per CPU cycle (off path = a
+        // single predicted-not-taken branch). Records NMI assertion, sprite-0 hit,
+        // and the IRQ rising edge; positions are this cycle's PPU dot (±2 dots,
+        // ample for a frame-grid viewer).
+        if self.observing {
+            let (sl, dot) = (self.ppu.scanline, self.ppu.dot);
+            if nmi_fired {
+                self.events.on_event(EventKind::Nmi, sl, dot, 0, 0, 0);
+            }
+            if self.events.sprite0_edge(self.ppu.status & 0x40 != 0) {
+                self.events.on_event(EventKind::Sprite0Hit, sl, dot, 0, 0, 0);
+            }
+            let asserted = self.irq_line();
+            if self.events.irq_edge(asserted) {
+                let source = if self.cartridge.mapper.irq() {
+                    IrqSource::Mapper as u8
+                } else if self.apu.dmc_irq() {
+                    IrqSource::Dmc as u8
+                } else {
+                    IrqSource::ApuFrame as u8
+                };
+                self.events.on_event(EventKind::Irq, sl, dot, 0, 0, source);
+            }
+        }
     }
 
+    /// Advance the PPU one dot; returns whether an NMI edge fired this dot (used
+    /// only by the Event Viewer — the bool is computed anyway, so the off path is
+    /// free of any per-dot debug branch).
     #[inline]
-    fn clock_ppu_dot(&mut self) {
+    fn clock_ppu_dot(&mut self) -> bool {
         self.ppu.tick(&mut self.cartridge);
-        if self.ppu.take_nmi() {
+        let nmi = self.ppu.take_nmi();
+        if nmi {
             self.nmi_latch = true;
         }
+        nmi
     }
 
     /// Whether the DMA arbiter is holding (or about to hold) the CPU. Halt-able
@@ -217,6 +334,10 @@ impl Bus {
                 let req = self.dma.dmc_request;
                 let addr = req.addr;
                 let byte = self.read(addr);
+                if self.observing {
+                    self.events
+                        .on_event(EventKind::DmcDma, self.ppu.scanline, self.ppu.dot, addr, byte, 0);
+                }
                 self.apu.dmc_supply(req, byte);
                 self.clear_dmc_dma();
                 self.maybe_release_dma();
@@ -349,6 +470,25 @@ impl Bus {
                 .unwrap_or(self.open_bus),
             0x6000..=0xFFFF => self.cartridge.cpu_read(addr),
         };
+        // Event Viewer: record register *reads* (skip the DMC alignment dummy read
+        // so the conflict access doesn't masquerade as a program read).
+        if self.observing {
+            if let Some(hm) = &mut self.heatmap {
+                hm.tap_read(addr);
+            }
+            if mode == ReadMode::Normal {
+                let ev = match addr {
+                    0x2000..=0x3FFF => Some((EventKind::PpuRegRead, addr & 0x2007)),
+                    0x4015 => Some((EventKind::ApuRegRead, addr)),
+                    0x4016 | 0x4017 => Some((EventKind::CtrlRead, addr)),
+                    _ => None,
+                };
+                if let Some((kind, eff)) = ev {
+                    self.events
+                        .on_event(kind, self.ppu.scanline, self.ppu.dot, eff, v, 0);
+                }
+            }
+        }
         self.open_bus = v;
         v
     }
@@ -378,6 +518,26 @@ impl Bus {
             }
             0x4018..=0x5FFF => self.cartridge.mapper.write_expansion(addr, value),
             0x6000..=0xFFFF => self.cartridge.cpu_write(addr, value),
+        }
+        // Event Viewer: record register *writes* + the OAM-DMA trigger. $8000+
+        // writes are recorded as mapper register writes (where bank/IRQ registers
+        // live for register-based boards); RAM and PRG-RAM ($6000–$7FFF) and the
+        // $4016 strobe are not register events.
+        if self.observing {
+            if let Some(hm) = &mut self.heatmap {
+                hm.tap_write(addr);
+            }
+            let ev = match addr {
+                0x2000..=0x3FFF => Some((EventKind::PpuRegWrite, addr & 0x2007)),
+                0x4014 => Some((EventKind::OamDma, addr)),
+                0x4000..=0x4013 | 0x4015 | 0x4017 => Some((EventKind::ApuRegWrite, addr)),
+                0x4018..=0x5FFF | 0x8000..=0xFFFF => Some((EventKind::MapperRegWrite, addr)),
+                _ => None,
+            };
+            if let Some((kind, eff)) = ev {
+                self.events
+                    .on_event(kind, self.ppu.scanline, self.ppu.dot, eff, value, 0);
+            }
         }
     }
 
@@ -431,6 +591,64 @@ mod tests {
         bus.dmc_conflict_read(0x4016, DmcConflictRead::Dummy);
 
         assert_eq!(bus.read(0x4016) & 1, 0);
+    }
+
+    #[test]
+    fn event_recording_captures_register_access() {
+        let mut bus = Bus::new(Cartridge::empty(), Region::Ntsc);
+        bus.set_event_recording(true);
+        assert!(bus.observing, "observing gate follows recording");
+        bus.write(0x2000, 0x80); // PPU reg write (mirrors mask to $2000)
+        bus.write(0x3456, 0x01); // PPU reg write via mirror → recorded as $2006
+        bus.write(0x4015, 0x0F); // APU reg write
+        bus.write(0x8000, 0x01); // mapper register write
+        let _ = bus.read(0x2002); // PPU reg read
+        let _ = bus.read(0x4016); // controller read
+        bus.events.end_frame();
+        let evs = bus.events.events();
+        assert!(evs.iter().any(|e| e.kind == EventKind::PpuRegWrite && e.addr == 0x2000));
+        assert!(evs.iter().any(|e| e.kind == EventKind::PpuRegWrite && e.addr == 0x2006));
+        assert!(evs.iter().any(|e| e.kind == EventKind::ApuRegWrite && e.addr == 0x4015));
+        assert!(evs.iter().any(|e| e.kind == EventKind::MapperRegWrite && e.addr == 0x8000));
+        assert!(evs.iter().any(|e| e.kind == EventKind::PpuRegRead && e.addr == 0x2002));
+        assert!(evs.iter().any(|e| e.kind == EventKind::CtrlRead));
+    }
+
+    #[test]
+    fn off_path_records_nothing() {
+        let mut bus = Bus::new(Cartridge::empty(), Region::Ntsc);
+        assert!(!bus.observing);
+        bus.write(0x2000, 0x80);
+        let _ = bus.read(0x2002);
+        bus.events.end_frame();
+        assert!(bus.events.events().is_empty());
+    }
+
+    #[test]
+    fn event_breakpoint_trips_on_matching_write() {
+        let mut bus = Bus::new(Cartridge::empty(), Region::Ntsc);
+        // Break on write to $2006 — note recording stays OFF; the bp alone arms
+        // the observing gate.
+        bus.add_event_bp(EventKind::PpuRegWrite.bit(), Some(0x2006), None);
+        assert!(bus.observing, "an event-bp enables observing without recording");
+        bus.write(0x2000, 0x80); // different reg → no trip
+        assert!(bus.take_event_hit().is_none());
+        bus.write(0x2006, 0x21); // matches → trip
+        let hit = bus.take_event_hit().expect("should trip on $2006 write");
+        assert_eq!(hit.kind, EventKind::PpuRegWrite);
+        assert_eq!(hit.addr, 0x2006);
+        assert!(bus.take_event_hit().is_none(), "taken hit is cleared");
+    }
+
+    #[test]
+    fn event_breakpoint_window_excludes_out_of_range() {
+        let mut bus = Bus::new(Cartridge::empty(), Region::Ntsc);
+        // Window scanline 30..=32; a bare bus.write occurs at scanline 0 → excluded.
+        bus.add_event_bp(EventKind::PpuRegWrite.bit(), None, Some((30, 32, 0, u16::MAX)));
+        bus.write(0x2005, 0x10);
+        assert!(bus.take_event_hit().is_none(), "write at scanline 0 is outside 30-32");
+        bus.clear_event_bps();
+        assert!(!bus.observing, "clearing the only bp disarms observing");
     }
 
     #[test]

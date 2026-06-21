@@ -834,6 +834,12 @@ impl Apu {
         self.frame_irq || self.dmc.irq_flag
     }
 
+    /// Whether the pending IRQ (if any) is from the DMC (vs the frame counter) —
+    /// used by the Event Viewer to tag IRQ source.
+    pub fn dmc_irq(&self) -> bool {
+        self.dmc.irq_flag
+    }
+
     pub fn reset(&mut self) {
         let frame_value = self.frame_reset_value;
         self.write_status(0);

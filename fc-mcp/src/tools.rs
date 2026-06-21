@@ -2,7 +2,7 @@
 //! a `serde_json::Value` result.
 
 use crate::Shared;
-use fc_core::{BpKind, Button};
+use fc_core::{BpKind, Button, EventKind};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
@@ -89,6 +89,150 @@ pub fn get_state(emu: &Shared, _args: &Value) -> Value {
         "ppu": {"scanline": p.scanline, "dot": p.dot, "frame": p.frame, "ctrl": p.ctrl, "mask": p.mask, "status": p.status},
         "running": deck.running,
     })
+}
+
+/// Read/write tag for an event kind (None for signal events: NMI/IRQ/sprite0).
+fn event_rw(kind: EventKind) -> Option<&'static str> {
+    match kind {
+        EventKind::PpuRegRead | EventKind::ApuRegRead | EventKind::CtrlRead | EventKind::DmcDma => {
+            Some("r")
+        }
+        EventKind::PpuRegWrite
+        | EventKind::ApuRegWrite
+        | EventKind::MapperRegWrite
+        | EventKind::OamDma => Some("w"),
+        EventKind::Nmi | EventKind::Irq | EventKind::Sprite0Hit => None,
+    }
+}
+
+fn irq_source_label(s: u8) -> Option<&'static str> {
+    match s {
+        1 => Some("apu_frame"),
+        2 => Some("dmc"),
+        3 => Some("mapper"),
+        _ => None,
+    }
+}
+
+fn event_json(e: &fc_core::Event) -> Value {
+    json!({
+        "type": e.kind.label(),
+        "scanline": e.scanline,
+        "dot": e.dot,
+        "addr": e.addr,
+        "value": e.value,
+        "rw": event_rw(e.kind),
+        "source": irq_source_label(e.source),
+    })
+}
+
+/// Set a break-on-event rule: halt the instant a matching event fires. `kind` is
+/// an event label (e.g. "sprite0", "nmi", "ppu_write"; omit = any kind). `addr`
+/// restricts to a register address; `scanline_min/max` + `dot_min/max` restrict to
+/// a raster window. `clear=true` removes all event breakpoints. Then drive with
+/// `emu_run_until_break`.
+pub fn set_event_breakpoint(emu: &Shared, args: &Value) -> Value {
+    let mut deck = emu.lock().unwrap();
+    if args.get("clear").and_then(|v| v.as_bool()).unwrap_or(false) {
+        deck.clear_event_breakpoints();
+        return json!({"success": true, "message": "event breakpoints cleared"});
+    }
+    let kinds = match args.get("kind").and_then(|v| v.as_str()) {
+        Some(label) => match EventKind::from_label(label) {
+            Some(k) => k.bit(),
+            None => {
+                return json!({"success": false, "error": format!("unknown event kind '{}'", label)})
+            }
+        },
+        None => 0, // any kind
+    };
+    let addr = args.get("addr").and_then(|v| v.as_u64()).map(|a| a as u16);
+    let has_window = ["scanline_min", "scanline_max", "dot_min", "dot_max"]
+        .iter()
+        .any(|k| args.get(*k).is_some());
+    let window = if has_window {
+        let g = |k: &str, d: u16| args.get(k).and_then(|v| v.as_u64()).map(|x| x as u16).unwrap_or(d);
+        Some((
+            g("scanline_min", 0),
+            g("scanline_max", u16::MAX),
+            g("dot_min", 0),
+            g("dot_max", u16::MAX),
+        ))
+    } else {
+        None
+    };
+    let id = deck.add_event_breakpoint(kinds, addr, window);
+    json!({"success": true, "id": id, "kinds": kinds, "addr": addr, "window": window,
+           "message": "event breakpoint set — run emu_run_until_break"})
+}
+
+/// Dump the Event Viewer's most recent complete frame: PPU `(scanline,dot)`-tagged
+/// register R/W, NMI, IRQ (by source), sprite-0 hit, and OAM/DMC DMA. Pass
+/// `enable=true` to turn recording on (then `emu_step_frame`, then dump again);
+/// `filter` is a bitmask over event-kind ordinals (omit = all).
+pub fn event_dump(emu: &Shared, args: &Value) -> Value {
+    let mut deck = emu.lock().unwrap();
+    if let Some(enable) = args.get("enable").and_then(|v| v.as_bool()) {
+        deck.set_event_recording(enable);
+    }
+    if let Some(filter) = args.get("filter").and_then(|v| v.as_u64()) {
+        deck.set_event_filter(filter as u16);
+    }
+    let (scanlines, dots) = deck.event_grid();
+    let recording = deck.event_recording();
+    let dropped = deck.event_dropped();
+    let events: Vec<Value> = deck.event_log().iter().map(event_json).collect();
+    let note = if !recording {
+        "recording off — call with enable=true, then emu_step_frame, then emu_event_dump"
+    } else if events.is_empty() {
+        "no events in the last complete frame — step a frame after enabling"
+    } else {
+        ""
+    };
+    json!({
+        "success": true,
+        "recording": recording,
+        "region": {"scanlines": scanlines, "dots": dots},
+        "count": events.len(),
+        "dropped": dropped,
+        "events": events,
+        "note": note,
+    })
+}
+
+/// Access heatmap: per-address read/write/exec counts + code/data classification
+/// + a recently-hot (decaying) value, over the CPU bus. `enable=true` turns it on
+/// (then `emu_step_frame`, then `emu_heatmap`); `reset=true` zeroes counts;
+/// `top` = how many hottest addresses to return (default 32). Also returns
+/// per-256-byte-page totals for an overview strip.
+pub fn heatmap(emu: &Shared, args: &Value) -> Value {
+    let mut deck = emu.lock().unwrap();
+    if let Some(enable) = args.get("enable").and_then(|v| v.as_bool()) {
+        deck.set_heatmap(enable);
+    }
+    if args.get("reset").and_then(|v| v.as_bool()).unwrap_or(false) {
+        deck.reset_heatmap();
+    }
+    let top = arg_u32(args, "top", 32) as usize;
+    match deck.heatmap() {
+        Some(hm) => {
+            let hot: Vec<Value> = hm
+                .hottest(top)
+                .iter()
+                .map(|h| {
+                    json!({
+                        "addr": h.addr, "read": h.read, "write": h.write, "exec": h.exec,
+                        "code": h.code, "data": h.data, "recency": h.recency,
+                    })
+                })
+                .collect();
+            json!({"success": true, "enabled": true, "top": hot, "pages": hm.page_totals()})
+        }
+        None => json!({
+            "success": true, "enabled": false,
+            "note": "heatmap off — call with enable=true, then emu_step_frame, then emu_heatmap",
+        }),
+    }
 }
 
 pub fn step_frame(emu: &Shared, args: &Value) -> Value {
@@ -196,12 +340,14 @@ pub fn run_until_break(emu: &Shared, args: &Value) -> Value {
         }
     }
     let c = &deck.cpu;
+    let event_hit = deck.event_hit().as_ref().map(event_json);
     json!({
         "success": true,
         "halted": deck.is_halted(),
         "frames_run": frames,
         "pc": c.pc, "a": c.a, "x": c.x, "y": c.y, "p": c.p, "sp": c.sp,
         "scanline": deck.bus.ppu.scanline, "dot": deck.bus.ppu.dot,
+        "event_hit": event_hit,
     })
 }
 

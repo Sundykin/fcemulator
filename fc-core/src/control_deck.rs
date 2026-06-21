@@ -18,6 +18,9 @@ pub struct ControlDeck {
     pub debugger: Debugger,
     pub cheats: Vec<Cheat>,
     region: Region,
+    /// The event that tripped a break-on-event rule (set when `run_frame` halts
+    /// on it; cleared when a new run starts).
+    event_hit: Option<crate::event::Event>,
 }
 
 impl ControlDeck {
@@ -32,6 +35,7 @@ impl ControlDeck {
             debugger: Debugger::default(),
             cheats: Vec::new(),
             region,
+            event_hit: None,
         }
     }
 
@@ -82,7 +86,9 @@ impl ControlDeck {
         }
         self.bus.ppu.frame_complete = false;
         self.bus.watch_hit = None;
+        self.event_hit = None;
         let dbg = self.debugger.has_any();
+        let event_bp = self.bus.events.has_event_bp();
         let mut guard = 0u32;
         while !self.bus.ppu.frame_complete {
             if dbg && !self.debugger.skip_once && self.debugger.exec_bp_at(self.cpu.pc) {
@@ -99,12 +105,28 @@ impl ControlDeck {
                 self.debugger.halted = Some(self.cpu.pc);
                 return false;
             }
+            // Break-on-event: an event matched a rule during this instruction.
+            if event_bp {
+                if let Some(hit) = self.bus.take_event_hit() {
+                    self.event_hit = Some(hit);
+                    self.debugger.halted = Some(self.cpu.pc);
+                    return false;
+                }
+            }
             guard += 1;
             if guard > 200_000 {
                 break; // safety against a wedged CPU
             }
         }
         self.apply_cheats();
+        // Close the Event Viewer frame: the events just recorded become the
+        // readable frame (no-op / cheap swap when recording is off).
+        if self.bus.events.recording {
+            self.bus.events.end_frame();
+        }
+        if let Some(hm) = &mut self.bus.heatmap {
+            hm.decay();
+        }
         true
     }
 
@@ -252,6 +274,80 @@ impl ControlDeck {
         self.region
     }
 
+    // ---- Event Viewer (debug events; off by default, pure side-channel) ----
+
+    /// Enable/disable per-frame debug-event recording. Off → zero overhead.
+    pub fn set_event_recording(&mut self, on: bool) {
+        self.bus.set_event_recording(on);
+    }
+
+    /// Per-kind filter mask (see [`crate::event::EventKind::bit`]).
+    pub fn set_event_filter(&mut self, mask: u16) {
+        self.bus.events.set_filter(mask);
+    }
+
+    pub fn event_recording(&self) -> bool {
+        self.bus.events.recording
+    }
+
+    /// Events of the most recent complete frame.
+    pub fn event_log(&self) -> &[crate::event::Event] {
+        self.bus.events.events()
+    }
+
+    /// Count of events dropped (over the per-frame cap) in that frame.
+    pub fn event_dropped(&self) -> u32 {
+        self.bus.events.dropped()
+    }
+
+    /// Grid dimensions for the scanline×dot canvas: (scanlines, dots-per-line).
+    pub fn event_grid(&self) -> (u16, u16) {
+        (self.region.scanlines(), 341)
+    }
+
+    /// Add a break-on-event rule. `kinds` = bitmask over [`crate::event::EventKind`]
+    /// ordinals (0 = any). `addr` restricts to a register address. `window` =
+    /// `(scan_lo, scan_hi, dot_lo, dot_hi)` (None = whole frame). Returns its id.
+    pub fn add_event_breakpoint(
+        &mut self,
+        kinds: u16,
+        addr: Option<u16>,
+        window: Option<(u16, u16, u16, u16)>,
+    ) -> u32 {
+        self.bus.add_event_bp(kinds, addr, window)
+    }
+    pub fn remove_event_breakpoint(&mut self, id: u32) {
+        self.bus.remove_event_bp(id);
+    }
+    pub fn clear_event_breakpoints(&mut self) {
+        self.bus.clear_event_bps();
+        self.event_hit = None;
+    }
+    /// The event that tripped the current halt (if `run_frame` stopped on a
+    /// break-on-event rule).
+    pub fn event_hit(&self) -> Option<crate::event::Event> {
+        self.event_hit
+    }
+
+    // ---- Access heatmap (L4.4; off by default) ----
+
+    /// Enable/disable the per-address read/write/exec heatmap.
+    pub fn set_heatmap(&mut self, on: bool) {
+        self.bus.set_heatmap(on);
+    }
+    pub fn heatmap_enabled(&self) -> bool {
+        self.bus.heatmap.is_some()
+    }
+    /// The heatmap (for summaries), if enabled.
+    pub fn heatmap(&self) -> Option<&crate::heatmap::Heatmap> {
+        self.bus.heatmap.as_ref()
+    }
+    pub fn reset_heatmap(&mut self) {
+        if let Some(hm) = &mut self.bus.heatmap {
+            hm.reset();
+        }
+    }
+
     /// 256×240 RGBA8 frame buffer.
     pub fn frame_buffer(&self) -> &[u8] {
         &self.bus.ppu.frame_buffer
@@ -327,8 +423,21 @@ impl ControlDeck {
             Ok(s) => {
                 let palette = self.bus.ppu.palette.clone();
                 let render_options = self.bus.ppu.render_options();
+                // Debug observers are transient (`#[serde(skip)]`), so a load would
+                // otherwise drop them. Carry the *config* across (recording on/off,
+                // filter, break-on-event rules, heatmap enabled) and reset only the
+                // per-frame data, so counts/events re-accumulate from zero.
+                let mut events = std::mem::take(&mut self.bus.events);
+                events.reset_data();
+                let heatmap = self.bus.heatmap.take().map(|mut h| {
+                    h.reset();
+                    h
+                });
                 self.cpu = s.cpu;
                 self.bus = s.bus;
+                self.bus.events = events;
+                self.bus.heatmap = heatmap;
+                self.bus.resync_observing();
                 // `mapper_watches_ppu_bus` is #[serde(skip)] — re-derive it from
                 // the freshly-deserialized mapper so the PPU's notify_a12 fast
                 // path stays correct after a load (esp. for MMC3/MMC2/4/5 saves).

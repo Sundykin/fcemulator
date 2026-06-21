@@ -103,4 +103,19 @@ pub const TOOLS: &[ToolDef] = &[
         description: "Trace up to instrs executed instructions in nestest/Nintendulator layout (stops early at a breakpoint).",
         schema: r#"{"type":"object","properties":{"instrs":{"type":"integer","default":200}}}"#,
     },
+    ToolDef {
+        name: "emu_event_dump",
+        description: "Dump the Event Viewer's most recent complete frame: PPU (scanline,dot)-tagged register reads/writes ($2000-$2007 PPU, $4000-$4017 APU, controller, mapper), NMI, IRQ (source: apu_frame|dmc|mapper), sprite-0 hit, and OAM/DMC DMA. Use to localize raster/timing bugs (where in the frame a write/IRQ lands). Pass enable=true to start recording, then emu_step_frame, then dump. filter = bitmask over event-kind ordinals (omit = all kinds).",
+        schema: r#"{"type":"object","properties":{"enable":{"type":"boolean"},"filter":{"type":"integer"}}}"#,
+    },
+    ToolDef {
+        name: "emu_heatmap",
+        description: "Access heatmap: per-address read/write/exec counts + code/data classification + a recently-hot (decaying) value over the CPU bus. Use to find hot registers (e.g. a runaway $2002 poll), code vs data regions, or what a routine touches. enable=true turns it on (then emu_step_frame, then emu_heatmap); reset=true zeroes counts; top = N hottest addresses (default 32). Also returns per-256-byte-page totals.",
+        schema: r#"{"type":"object","properties":{"enable":{"type":"boolean"},"reset":{"type":"boolean"},"top":{"type":"integer","default":32}}}"#,
+    },
+    ToolDef {
+        name: "emu_set_event_breakpoint",
+        description: "Break-on-event: halt the instant a debug event fires. kind = event label (ppu_read|ppu_write|apu_read|apu_write|ctrl_read|mapper_write|nmi|irq|sprite0|oam_dma|dmc_dma; omit = any). addr restricts to a register address. scanline_min/max + dot_min/max restrict to a raster window (e.g. catch a $2005 scroll write only on scanlines 30-32). clear=true removes all event breakpoints. Then call emu_run_until_break (its event_hit field reports what tripped).",
+        schema: r#"{"type":"object","properties":{"kind":{"type":"string"},"addr":{"type":"integer"},"scanline_min":{"type":"integer"},"scanline_max":{"type":"integer"},"dot_min":{"type":"integer"},"dot_max":{"type":"integer"},"clear":{"type":"boolean"}}}"#,
+    },
 ];
