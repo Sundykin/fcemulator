@@ -86,6 +86,34 @@ export interface PpuApuState {
 export const ppuApuState = () => invoke<PpuApuState>("ppu_apu_state");
 export const runtimeStats = () => invoke<Record<string, unknown>>("runtime_stats");
 
+// ---- Event Viewer / break-on-event / access heatmap (debugger L4.3/L4.4) ----
+export interface DebugEvent {
+  type: string; scanline: number; dot: number; addr: number; value: number;
+  rw: "r" | "w" | null; source: "apu_frame" | "dmc" | "mapper" | null;
+}
+export interface EventDump {
+  recording: boolean; region: { scanlines: number; dots: number };
+  count: number; dropped: number; events: DebugEvent[];
+}
+export const eventDump = (enable?: boolean, filter?: number) =>
+  invoke<EventDump>("event_dump", { enable, filter });
+export interface EventBpSpec {
+  kind?: string; addr?: number;
+  scanlineMin?: number; scanlineMax?: number; dotMin?: number; dotMax?: number; clear?: boolean;
+}
+export const setEventBreakpoint = (s: EventBpSpec) =>
+  invoke<number>("set_event_breakpoint", {
+    kind: s.kind, addr: s.addr,
+    scanlineMin: s.scanlineMin, scanlineMax: s.scanlineMax,
+    dotMin: s.dotMin, dotMax: s.dotMax, clear: s.clear,
+  });
+export interface HotAddr {
+  addr: number; read: number; write: number; exec: number; code: boolean; data: boolean; recency: number;
+}
+export interface HeatmapData { enabled: boolean; top?: HotAddr[]; pages?: number[] }
+export const heatmap = (enable?: boolean, reset?: boolean, top?: number) =>
+  invoke<HeatmapData>("heatmap", { enable, reset, top });
+
 // debugger
 export const disassemble = (addr: number, count: number) => invoke<string[]>("disassemble", { addr, count });
 export const readMemory = (addr: number, len: number) => invoke<number[]>("read_memory", { addr, len });

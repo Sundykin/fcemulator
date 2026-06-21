@@ -6,7 +6,7 @@
 
 use crate::audio::Audio;
 use crate::storage::{self, Library, RomEntry, SlotMeta};
-use fc_core::{BpKind, Cartridge, ControlDeck, Region};
+use fc_core::{BpKind, Cartridge, ControlDeck, EventKind, Region};
 use serde::Serialize;
 use serde_json::json;
 use std::path::PathBuf;
@@ -905,6 +905,111 @@ pub fn ppu_apu_state(state: State<EmuState>) -> serde_json::Value {
         },
         "apu": channels,
     })
+}
+
+// ------------------------------------------------------ Event Viewer / heatmap
+
+fn event_rw(kind: EventKind) -> Option<&'static str> {
+    match kind {
+        EventKind::PpuRegRead | EventKind::ApuRegRead | EventKind::CtrlRead | EventKind::DmcDma => {
+            Some("r")
+        }
+        EventKind::PpuRegWrite
+        | EventKind::ApuRegWrite
+        | EventKind::MapperRegWrite
+        | EventKind::OamDma => Some("w"),
+        _ => None,
+    }
+}
+fn irq_source_label(s: u8) -> Option<&'static str> {
+    match s {
+        1 => Some("apu_frame"),
+        2 => Some("dmc"),
+        3 => Some("mapper"),
+        _ => None,
+    }
+}
+fn event_json(e: &fc_core::Event) -> serde_json::Value {
+    json!({"type": e.kind.label(), "scanline": e.scanline, "dot": e.dot,
+           "addr": e.addr, "value": e.value, "rw": event_rw(e.kind), "source": irq_source_label(e.source)})
+}
+
+/// Dump the latest complete frame's events (scanline×dot canvas). `enable`
+/// toggles recording, `filter` is the per-kind bitmask.
+#[tauri::command]
+pub fn event_dump(enable: Option<bool>, filter: Option<u16>, state: State<EmuState>) -> serde_json::Value {
+    let mut deck = state.shared.deck.lock().unwrap();
+    if let Some(e) = enable {
+        deck.set_event_recording(e);
+    }
+    if let Some(f) = filter {
+        deck.set_event_filter(f);
+    }
+    let (scanlines, dots) = deck.event_grid();
+    let events: Vec<_> = deck.event_log().iter().map(event_json).collect();
+    json!({"recording": deck.event_recording(), "region": {"scanlines": scanlines, "dots": dots},
+           "count": events.len(), "dropped": deck.event_dropped(), "events": events})
+}
+
+/// Set or clear a break-on-event rule. `kind` = event label (omit = any).
+#[tauri::command]
+pub fn set_event_breakpoint(
+    kind: Option<String>,
+    addr: Option<u16>,
+    scanline_min: Option<u16>,
+    scanline_max: Option<u16>,
+    dot_min: Option<u16>,
+    dot_max: Option<u16>,
+    clear: Option<bool>,
+    state: State<EmuState>,
+) -> Result<u32, String> {
+    let mut deck = state.shared.deck.lock().unwrap();
+    if clear.unwrap_or(false) {
+        deck.clear_event_breakpoints();
+        return Ok(0);
+    }
+    let kinds = match kind.as_deref() {
+        Some(label) => EventKind::from_label(label)
+            .ok_or_else(|| format!("unknown event kind '{label}'"))?
+            .bit(),
+        None => 0,
+    };
+    let window = if scanline_min.is_some() || scanline_max.is_some() || dot_min.is_some() || dot_max.is_some() {
+        Some((
+            scanline_min.unwrap_or(0),
+            scanline_max.unwrap_or(u16::MAX),
+            dot_min.unwrap_or(0),
+            dot_max.unwrap_or(u16::MAX),
+        ))
+    } else {
+        None
+    };
+    Ok(deck.add_event_breakpoint(kinds, addr, window))
+}
+
+/// Access heatmap: top-N hottest addresses + per-page totals. `enable`/`reset`
+/// toggle/clear; `top` bounds the list (default 32).
+#[tauri::command]
+pub fn heatmap(enable: Option<bool>, reset: Option<bool>, top: Option<usize>, state: State<EmuState>) -> serde_json::Value {
+    let mut deck = state.shared.deck.lock().unwrap();
+    if let Some(e) = enable {
+        deck.set_heatmap(e);
+    }
+    if reset.unwrap_or(false) {
+        deck.reset_heatmap();
+    }
+    match deck.heatmap() {
+        Some(hm) => {
+            let hot: Vec<_> = hm
+                .hottest(top.unwrap_or(32))
+                .iter()
+                .map(|h| json!({"addr": h.addr, "read": h.read, "write": h.write, "exec": h.exec,
+                                "code": h.code, "data": h.data, "recency": h.recency}))
+                .collect();
+            json!({"enabled": true, "top": hot, "pages": hm.page_totals()})
+        }
+        None => json!({"enabled": false}),
+    }
 }
 
 #[tauri::command]

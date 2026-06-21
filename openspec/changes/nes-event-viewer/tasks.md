@@ -69,9 +69,9 @@
 
 ## 7. fc-tauri views
 
-- [ ] 7.1 Tauri commands: `event_dump`, `set_event_breakpoint`, `heatmap`
-- [ ] 7.2 `scanline × dot` canvas (per-kind colors + legend), frame-stepped
-- [ ] 7.3 Memory heatmap overlay (rwx coloring) + event-breakpoint controls;
+- [x] 7.1 Tauri commands: `event_dump`, `set_event_breakpoint`, `heatmap`
+- [x] 7.2 `scanline × dot` canvas (per-kind colors + legend), frame-stepped
+- [x] 7.3 Memory heatmap overlay (rwx coloring) + event-breakpoint controls;
       follow `ui设计` debug mockups if present, else minimal; `vue-tsc` clean
 
 ## 8. Gates (must pass before landing)
@@ -88,7 +88,7 @@
 
 ## 9. Landing
 
-- [ ] 9.1 `cargo clippy -p fc-core -p fc-mcp` — zero new warnings
+- [x] 9.1 `cargo clippy -p fc-core -p fc-mcp` — zero new warnings
 - [ ] 9.2 Fold into `docs/模拟器优化计划.md` snapshot (M2 L4.3 ✅, L4.4 heatmap ✅)
       + §4 milestone table
 - [ ] 9.3 Commit on a branch, small steps; archive this change once merged
