@@ -98,19 +98,27 @@ impl Bus {
     pub fn tick(&mut self) {
         // The get/put cadence advances every physical CPU cycle.
         self.dma.get_cycle = !self.dma.get_cycle;
-        let (dots_num, dots_den) = self.region.ppu_dots_per_cpu_cycle();
-        self.ppu_phase += dots_num;
-        while self.ppu_phase >= dots_den {
-            self.ppu_phase -= dots_den;
-            self.ppu.tick(&mut self.cartridge);
-            if self.ppu.take_nmi() {
-                self.nmi_latch = true;
+        match self.region {
+            Region::Ntsc => {
+                self.clock_ppu_dot();
+                self.clock_ppu_dot();
+                self.clock_ppu_dot();
+            }
+            Region::Pal | Region::Dendy => {
+                let (dots_num, dots_den) = self.region.ppu_dots_per_cpu_cycle();
+                self.ppu_phase += dots_num;
+                while self.ppu_phase >= dots_den {
+                    self.ppu_phase -= dots_den;
+                    self.clock_ppu_dot();
+                }
             }
         }
         self.apu.tick();
         // Clock CPU-cycle-driven mapper IRQs (Konami VRC). A12-edge mappers
         // (MMC3) ignore this and are driven from the PPU instead.
-        self.cartridge.mapper.cpu_clock();
+        if self.cartridge.mapper_clocks_cpu {
+            self.cartridge.mapper.cpu_clock();
+        }
         // DMC sample DMA is now a *request*: the arbiter performs the PRG read on
         // a `get` cycle (see `dma_clock`), so the DMC dummy/repeated-read side
         // effects on $4016/$2007 are modelled instead of an instant fetch.
@@ -126,6 +134,14 @@ impl Bus {
                     self.dma.dmc_request = req;
                 }
             }
+        }
+    }
+
+    #[inline]
+    fn clock_ppu_dot(&mut self) {
+        self.ppu.tick(&mut self.cartridge);
+        if self.ppu.take_nmi() {
+            self.nmi_latch = true;
         }
     }
 

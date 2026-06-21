@@ -29,6 +29,11 @@ pub trait MapperOps {
     fn chr_read(&self, _addr: u16, _access: ChrAccess) -> Option<u8> {
         None
     }
+    /// Whether [`MapperOps::chr_read`] can ever return `Some`. The cartridge
+    /// caches this to avoid an extra enum dispatch on every ordinary CHR fetch.
+    fn has_chr_read(&self) -> bool {
+        false
+    }
     /// Mapper-owned CHR-RAM write. Returns `true` when the mapper consumed the
     /// write into its own CHR-RAM; `false` ⇒ fall through to cartridge CHR.
     fn chr_write(&mut self, _addr: u16, _value: u8) -> bool {
@@ -82,6 +87,11 @@ pub trait MapperOps {
     /// scanlines via a CPU-cycle prescaler) rather than A12 edges; most mappers
     /// ignore it.
     fn cpu_clock(&mut self) {}
+    /// Whether [`MapperOps::cpu_clock`] has work to do. Cached by the cartridge
+    /// so the bus can skip an empty mapper dispatch on every CPU cycle.
+    fn clocks_cpu(&self) -> bool {
+        false
+    }
     /// Whether a mapper IRQ is currently asserted.
     fn irq(&self) -> bool {
         false
@@ -191,6 +201,9 @@ impl MapperOps for Mapper {
     fn chr_read(&self, addr: u16, access: ChrAccess) -> Option<u8> {
         dispatch!(self, m => m.chr_read(addr, access))
     }
+    fn has_chr_read(&self) -> bool {
+        dispatch!(self, m => m.has_chr_read())
+    }
     fn chr_write(&mut self, addr: u16, value: u8) -> bool {
         dispatch!(self, m => m.chr_write(addr, value))
     }
@@ -227,6 +240,9 @@ impl MapperOps for Mapper {
     fn cpu_clock(&mut self) {
         dispatch!(self, m => m.cpu_clock())
     }
+    fn clocks_cpu(&self) -> bool {
+        dispatch!(self, m => m.clocks_cpu())
+    }
     fn irq(&self) -> bool {
         dispatch!(self, m => m.irq())
     }
@@ -252,6 +268,7 @@ mod tests {
             (3, false),    // CNROM
             (7, false),    // AxROM
             (11, false),   // ColorDreams
+            (25, false),   // VRC4 IRQ is CPU-clocked, not PPU-bus-clocked
             (66, false),   // GxROM
             (71, false),   // Codemasters
             (4, true),     // MMC3
@@ -262,6 +279,30 @@ mod tests {
         for (num, expected) in cases {
             let m = Mapper::new(num, 2, 1, mir).expect("construct mapper");
             assert_eq!(m.watches_ppu_bus(), expected, "mapper {num}");
+        }
+    }
+
+    #[test]
+    fn clocks_cpu_matches_cpu_clock_overrides() {
+        let mir = Mirroring::Horizontal;
+        let cases = [
+            (0u16, false), // NROM
+            (1, false),    // MMC1
+            (2, false),    // UNROM
+            (3, false),    // CNROM
+            (4, false),    // MMC3 uses PPU A12 edges
+            (5, false),    // MMC5 currently clocks from PPU nametable fetches
+            (7, false),    // AxROM
+            (9, false),    // MMC2 CHR latch watches PPU bus
+            (10, false),   // MMC4 CHR latch watches PPU bus
+            (11, false),   // ColorDreams
+            (25, true),    // VRC4 IRQ counter clocks per CPU cycle
+            (66, false),   // GxROM
+            (71, false),   // Codemasters
+        ];
+        for (num, expected) in cases {
+            let m = Mapper::new(num, 2, 1, mir).expect("construct mapper");
+            assert_eq!(m.clocks_cpu(), expected, "mapper {num}");
         }
     }
 }

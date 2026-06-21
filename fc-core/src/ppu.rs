@@ -913,8 +913,7 @@ impl Ppu {
                 // Rebuild the X-coverage mask once per line (the tag also forces
                 // a rebuild after a load-state). Uncovered pixels can't yield a
                 // sprite pixel or sprite-0 hit, so the per-sprite scan is skipped.
-                if self.sprite_cover_line != self.scanline
-                    || self.sprite_cover_frame != self.frame
+                if self.sprite_cover_line != self.scanline || self.sprite_cover_frame != self.frame
                 {
                     self.rebuild_sprite_cover();
                 }

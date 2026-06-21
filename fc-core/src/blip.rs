@@ -107,7 +107,9 @@ impl Blip {
         let remain = self.avail as usize + BUF_EXTRA - count;
         self.avail -= count as i32;
         self.buf.copy_within(count..count + remain, 0);
-        self.buf[remain..remain + count].iter_mut().for_each(|x| *x = 0);
+        self.buf[remain..remain + count]
+            .iter_mut()
+            .for_each(|x| *x = 0);
     }
 
     /// Read and remove up to `count` samples (mono) into `out`. Returns the
@@ -221,7 +223,10 @@ mod tests {
         assert!(n > 40, "should produce ~one frame of samples, got {n}");
         // The step settles to a positive plateau before the DC high-pass bleeds it.
         let peak = out[..n].iter().copied().max().unwrap();
-        assert!(peak > 1000, "rising edge should reach a positive level, got {peak}");
+        assert!(
+            peak > 1000,
+            "rising edge should reach a positive level, got {peak}"
+        );
     }
 
     // A steady DC offset must be removed by the built-in high-pass: after enough
@@ -241,7 +246,11 @@ mod tests {
         b.end_frame(8000);
         let mut out = [0i16; 8192];
         let n = b.read_samples(&mut out, 8192);
-        let tail = out[..n].iter().map(|&s| (s as i32).abs()).max().unwrap_or(0);
+        let tail = out[..n]
+            .iter()
+            .map(|&s| (s as i32).abs())
+            .max()
+            .unwrap_or(0);
         assert!(tail < 200, "DC should be high-passed away, residual {tail}");
     }
 }

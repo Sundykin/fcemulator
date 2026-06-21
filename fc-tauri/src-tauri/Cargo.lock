@@ -1050,6 +1050,7 @@ version = "0.2.0"
 dependencies = [
  "bincode",
  "bitflags 2.13.0",
+ "crc32fast",
  "log",
  "serde",
  "thiserror 2.0.18",

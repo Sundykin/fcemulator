@@ -336,7 +336,11 @@ fn compact_console_text(text: &str) -> String {
 fn suite_name(path: &str) -> String {
     let p = std::path::Path::new(path);
     let mut dir = p.parent();
-    if dir.and_then(|d| d.file_name()).map(|s| s == "rom_singles").unwrap_or(false) {
+    if dir
+        .and_then(|d| d.file_name())
+        .map(|s| s == "rom_singles")
+        .unwrap_or(false)
+    {
         dir = dir.and_then(|d| d.parent());
     }
     dir.and_then(|d| d.file_name())
@@ -469,7 +473,13 @@ fn main() -> Result<()> {
                 if code == 0 { "PASS" } else { "see code" }
             );
         }
-        Commands::Trace { rom, region, instrs, frames, entry } => {
+        Commands::Trace {
+            rom,
+            region,
+            instrs,
+            frames,
+            entry,
+        } => {
             use std::io::Write as _;
             let data = std::fs::read(&rom)?;
             let mut deck = ControlDeck::new(Region::from_str(&region));
@@ -483,7 +493,11 @@ fn main() -> Result<()> {
             let mut emitted: u64 = 0;
             let mut done_frames: u64 = 0;
             // Default (no bounds): trace one frame.
-            let frame_cap = if instrs == 0 && frames == 0 { 1 } else { frames };
+            let frame_cap = if instrs == 0 && frames == 0 {
+                1
+            } else {
+                frames
+            };
             'trace: loop {
                 deck.run_frame();
                 done_frames += 1;
@@ -510,7 +524,13 @@ fn main() -> Result<()> {
             }
             w.flush()?;
         }
-        Commands::Bench { rom, region, frames, warmup, profile } => {
+        Commands::Bench {
+            rom,
+            region,
+            frames,
+            warmup,
+            profile,
+        } => {
             let data = std::fs::read(&rom)?;
             let region = Region::from_str(&region);
 
@@ -552,10 +572,25 @@ fn main() -> Result<()> {
                 let rest = (t_full - render - apu).max(0.0);
                 let us = |t: f64| t * 1e6;
                 let pct = |t: f64| t / t_full * 100.0;
-                println!("  per-frame {:.0}µs — subsystem attribution (ablation):", us(t_full));
-                println!("    PPU render-output : {:6.0}µs  {:4.1}%", us(render), pct(render));
-                println!("    APU resample      : {:6.0}µs  {:4.1}%", us(apu), pct(apu));
-                println!("    CPU + PPU-core + mapper (remainder): {:6.0}µs  {:4.1}%", us(rest), pct(rest));
+                println!(
+                    "  per-frame {:.0}µs — subsystem attribution (ablation):",
+                    us(t_full)
+                );
+                println!(
+                    "    PPU render-output : {:6.0}µs  {:4.1}%",
+                    us(render),
+                    pct(render)
+                );
+                println!(
+                    "    APU resample      : {:6.0}µs  {:4.1}%",
+                    us(apu),
+                    pct(apu)
+                );
+                println!(
+                    "    CPU + PPU-core + mapper (remainder): {:6.0}µs  {:4.1}%",
+                    us(rest),
+                    pct(rest)
+                );
             }
         }
         Commands::Disasm { rom, addr, count } => {
@@ -664,8 +699,10 @@ fn main() -> Result<()> {
             if let Some(path) = &baseline {
                 let base: serde_json::Value = serde_json::from_slice(&std::fs::read(path)?)?;
                 let mut regressed = Vec::new();
-                let now: std::collections::HashMap<&str, &str> =
-                    results.iter().map(|(p, _, s, _)| (p.as_str(), *s)).collect();
+                let now: std::collections::HashMap<&str, &str> = results
+                    .iter()
+                    .map(|(p, _, s, _)| (p.as_str(), *s))
+                    .collect();
                 for entry in base.as_array().into_iter().flatten() {
                     let p = entry["path"].as_str().unwrap_or("");
                     // Only ROMs run THIS session can regress; a baseline ROM that

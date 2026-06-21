@@ -30,7 +30,11 @@ pub struct Ctx {
 /// Evaluate `expr` against `ctx`. Returns true when the expression is non-zero
 /// (or on parse error — fail-open, see module docs).
 pub fn eval_cond(expr: &str, ctx: &Ctx) -> bool {
-    let mut p = Parser { s: expr.as_bytes(), i: 0, ctx };
+    let mut p = Parser {
+        s: expr.as_bytes(),
+        i: 0,
+        ctx,
+    };
     match p.parse() {
         Some(v) => {
             p.skip_ws();
@@ -220,7 +224,10 @@ impl Parser<'_> {
             while self.i < self.s.len() && self.s[self.i].is_ascii_digit() {
                 self.i += 1;
             }
-            return std::str::from_utf8(&self.s[start..self.i]).ok()?.parse().ok();
+            return std::str::from_utf8(&self.s[start..self.i])
+                .ok()?
+                .parse()
+                .ok();
         }
         // Identifier (operand).
         while self.i < self.s.len()
@@ -231,7 +238,9 @@ impl Parser<'_> {
         if self.i == start {
             return None;
         }
-        let id = std::str::from_utf8(&self.s[start..self.i]).ok()?.to_ascii_lowercase();
+        let id = std::str::from_utf8(&self.s[start..self.i])
+            .ok()?
+            .to_ascii_lowercase();
         let c = self.ctx;
         Some(match id.as_str() {
             "a" => c.a as i64,
@@ -261,7 +270,19 @@ impl Parser<'_> {
 mod tests {
     use super::*;
     fn ctx() -> Ctx {
-        Ctx { a: 0xFF, x: 0x10, y: 0, p: 0xA5, sp: 0xFD, pc: 0x8000, cycles: 100, scanline: 30, dot: 5, value: -1, addr: -1 }
+        Ctx {
+            a: 0xFF,
+            x: 0x10,
+            y: 0,
+            p: 0xA5,
+            sp: 0xFD,
+            pc: 0x8000,
+            cycles: 100,
+            scanline: 30,
+            dot: 5,
+            value: -1,
+            addr: -1,
+        }
     }
     #[test]
     fn basics() {

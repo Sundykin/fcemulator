@@ -271,6 +271,10 @@ impl MapperOps for Mmc3 {
         self.chr_ram_read_index(addr).map(|i| self.chr_ram[i])
     }
 
+    fn has_chr_read(&self) -> bool {
+        !self.chr_ram.is_empty()
+    }
+
     fn chr_write(&mut self, addr: u16, value: u8) -> bool {
         if let Some(i) = self.chr_ram_read_index(addr) {
             self.chr_ram[i] = value;

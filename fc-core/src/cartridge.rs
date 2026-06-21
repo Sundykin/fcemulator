@@ -46,6 +46,24 @@ pub struct Cartridge {
     /// state, re-set on load via `refresh_mapper_caps`.
     #[serde(skip)]
     pub mapper_watches_ppu_bus: bool,
+    /// Cached `mapper.clocks_cpu()` — most mappers have no per-CPU-cycle IRQ
+    /// counter, so `Bus::tick` can skip an empty dispatch.
+    #[serde(skip)]
+    pub mapper_clocks_cpu: bool,
+    /// Cached `mapper.has_chr_read()` — most mappers do not own CHR RAM, so the
+    /// PPU hot path can skip probing `chr_read` on every pattern fetch.
+    #[serde(skip)]
+    mapper_has_chr_read: bool,
+    /// Power-of-two wrap masks for the backing memories. `None` keeps the
+    /// generic modulo path for odd-sized dumps.
+    #[serde(skip)]
+    prg_rom_mask: Option<usize>,
+    #[serde(skip)]
+    chr_rom_mask: Option<usize>,
+    #[serde(skip)]
+    chr_ram_mask: Option<usize>,
+    #[serde(skip)]
+    prg_ram_mask: Option<usize>,
     /// Header-declared (fixed) mirroring; live mirroring comes from the mapper.
     pub header_mirroring: Mirroring,
     pub is_nes20: bool,
@@ -128,6 +146,12 @@ impl Cartridge {
         let mapper = Mapper::new(mapper_number, prg_16k, chr_8k, header_mirroring)
             .map_err(CartridgeError::UnsupportedMapper)?;
         let mapper_watches_ppu_bus = mapper.watches_ppu_bus();
+        let mapper_clocks_cpu = mapper.clocks_cpu();
+        let mapper_has_chr_read = mapper.has_chr_read();
+        let prg_rom_mask = pow2_mask(prg_rom.len());
+        let chr_rom_mask = pow2_mask(chr_rom.len());
+        let chr_ram_mask = pow2_mask(chr_ram.len());
+        let prg_ram_mask = pow2_mask(prg_ram.len());
 
         Ok(Cartridge {
             prg_rom,
@@ -139,6 +163,12 @@ impl Cartridge {
             mapper_number,
             mapper,
             mapper_watches_ppu_bus,
+            mapper_clocks_cpu,
+            mapper_has_chr_read,
+            prg_rom_mask,
+            chr_rom_mask,
+            chr_ram_mask,
+            prg_ram_mask,
             header_mirroring,
             is_nes20,
             patches: HashMap::new(),
@@ -149,6 +179,12 @@ impl Cartridge {
     /// replaces `mapper` wholesale (the cache is `#[serde(skip)]`).
     pub fn refresh_mapper_caps(&mut self) {
         self.mapper_watches_ppu_bus = self.mapper.watches_ppu_bus();
+        self.mapper_clocks_cpu = self.mapper.clocks_cpu();
+        self.mapper_has_chr_read = self.mapper.has_chr_read();
+        self.prg_rom_mask = pow2_mask(self.prg_rom.len());
+        self.chr_rom_mask = pow2_mask(self.chr_rom.len());
+        self.chr_ram_mask = pow2_mask(self.chr_ram.len());
+        self.prg_ram_mask = pow2_mask(self.prg_ram.len());
     }
 
     /// A minimal valid NROM ROM (used as a placeholder before a game loads).
@@ -183,15 +219,17 @@ impl Cartridge {
             0x4018..=0x5FFF => self.mapper.peek_expansion(addr).unwrap_or(0),
             0x6000..=0x7FFF => {
                 let i = (addr - 0x6000) as usize;
-                self.prg_ram.get(i).copied().unwrap_or(0)
+                read_wrapped(&self.prg_ram, i, self.prg_ram_mask)
             }
             0x8000..=0xFFFF => {
-                let i = self.mapper.prg_index(addr) % self.prg_rom.len().max(1);
-                let v = self.prg_rom.get(i).copied().unwrap_or(0);
+                let i = self.mapper.prg_index(addr);
+                let v = read_wrapped(&self.prg_rom, i, self.prg_rom_mask);
                 // Game Genie ROM read substitution.
-                if let Some(&(patch, compare)) = self.patches.get(&addr) {
-                    if compare.map_or(true, |c| c == v) {
-                        return patch;
+                if !self.patches.is_empty() {
+                    if let Some(&(patch, compare)) = self.patches.get(&addr) {
+                        if compare.map_or(true, |c| c == v) {
+                            return patch;
+                        }
                     }
                 }
                 v
@@ -221,21 +259,18 @@ impl Cartridge {
     }
 
     pub fn ppu_read_for(&self, addr: u16, access: ChrAccess) -> u8 {
+        let addr = addr & 0x1FFF;
         // Mapper-owned CHR-RAM (e.g. mapper 74 banks 8/9) takes precedence.
-        if let Some(b) = self.mapper.chr_read(addr & 0x1FFF, access) {
-            return b;
+        if self.mapper_has_chr_read {
+            if let Some(b) = self.mapper.chr_read(addr, access) {
+                return b;
+            }
         }
-        let i = self.mapper.chr_index_for(addr & 0x1FFF, access);
+        let i = self.mapper.chr_index_for(addr, access);
         if self.uses_chr_ram {
-            self.chr_ram
-                .get(i % self.chr_ram.len().max(1))
-                .copied()
-                .unwrap_or(0)
+            read_wrapped(&self.chr_ram, i, self.chr_ram_mask)
         } else {
-            self.chr_rom
-                .get(i % self.chr_rom.len().max(1))
-                .copied()
-                .unwrap_or(0)
+            read_wrapped(&self.chr_rom, i, self.chr_rom_mask)
         }
     }
 
@@ -245,9 +280,14 @@ impl Cartridge {
             return;
         }
         if self.uses_chr_ram {
-            let len = self.chr_ram.len().max(1);
-            let i = self.mapper.chr_index(addr & 0x1FFF) % len;
-            self.chr_ram[i] = value;
+            if !self.chr_ram.is_empty() {
+                let i = wrap_index(
+                    self.mapper.chr_index(addr & 0x1FFF),
+                    self.chr_ram.len(),
+                    self.chr_ram_mask,
+                );
+                self.chr_ram[i] = value;
+            }
         }
     }
 
@@ -266,6 +306,30 @@ impl Cartridge {
     pub fn mirroring(&self) -> Mirroring {
         self.mapper.mirroring()
     }
+}
+
+fn pow2_mask(len: usize) -> Option<usize> {
+    if len != 0 && len.is_power_of_two() {
+        Some(len - 1)
+    } else {
+        None
+    }
+}
+
+#[inline]
+fn wrap_index(index: usize, len: usize, mask: Option<usize>) -> usize {
+    match mask {
+        Some(mask) => index & mask,
+        None => index % len,
+    }
+}
+
+#[inline]
+fn read_wrapped(bytes: &[u8], index: usize, mask: Option<usize>) -> u8 {
+    if bytes.is_empty() {
+        return 0;
+    }
+    bytes[wrap_index(index, bytes.len(), mask)]
 }
 
 #[cfg(test)]
@@ -303,16 +367,25 @@ mod tests {
         let cart = Cartridge::from_bytes(&mmc3_rom()).expect("mmc3 rom");
         // MMC3 hooks the PPU bus → cache must be set at construction.
         assert!(cart.mapper_watches_ppu_bus);
+        assert!(!cart.mapper_clocks_cpu);
+        assert!(!cart.mapper_has_chr_read);
 
         // Simulate a load-state: the #[serde(skip)] cache deserializes to false;
         // refresh_mapper_caps must restore it from the (correct) mapper so the
         // PPU's notify_a12 fast path keeps clocking the MMC3 IRQ.
         let mut loaded = cart;
         loaded.mapper_watches_ppu_bus = false;
+        loaded.mapper_clocks_cpu = false;
+        loaded.mapper_has_chr_read = false;
         loaded.refresh_mapper_caps();
         assert!(loaded.mapper_watches_ppu_bus);
+        assert!(!loaded.mapper_clocks_cpu);
+        assert!(!loaded.mapper_has_chr_read);
 
         // NROM does not hook the bus.
-        assert!(!Cartridge::empty().mapper_watches_ppu_bus);
+        let empty = Cartridge::empty();
+        assert!(!empty.mapper_watches_ppu_bus);
+        assert!(!empty.mapper_clocks_cpu);
+        assert!(!empty.mapper_has_chr_read);
     }
 }

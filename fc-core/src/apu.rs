@@ -920,8 +920,11 @@ impl Apu {
             let n = blip.read_samples(&mut tmp, avail);
             self.frame_clock = 0;
             let filter = self.filter.as_mut().unwrap();
-            self.samples
-                .extend(tmp[..n].iter().map(|&s| filter.process(s as f32 / AMP_SCALE)));
+            self.samples.extend(
+                tmp[..n]
+                    .iter()
+                    .map(|&s| filter.process(s as f32 / AMP_SCALE)),
+            );
         }
     }
 

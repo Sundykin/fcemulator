@@ -152,7 +152,12 @@ impl ControlDeck {
 
     /// Add a breakpoint with an optional condition expression (see [`crate::expr`]),
     /// e.g. `a == 0xff && scanline >= 30`. Empty/whitespace condition = none.
-    pub fn add_breakpoint_cond(&mut self, kind: BpKind, addr: u16, condition: Option<String>) -> u32 {
+    pub fn add_breakpoint_cond(
+        &mut self,
+        kind: BpKind,
+        addr: u16,
+        condition: Option<String>,
+    ) -> u32 {
         let condition = condition.filter(|c| !c.trim().is_empty());
         let id = self.debugger.add_cond(kind, addr, condition);
         self.sync_watch();
@@ -428,7 +433,11 @@ mod tests {
         deck.add_breakpoint_cond(BpKind::Exec, 0x8000, Some("x == 5".into()));
         let ran = deck.run_frame();
         assert!(!ran, "true condition must stop the frame");
-        assert_eq!(deck.is_halted(), Some(0x8000), "must halt at the breakpoint");
+        assert_eq!(
+            deck.is_halted(),
+            Some(0x8000),
+            "must halt at the breakpoint"
+        );
 
         // An unconditional breakpoint always halts.
         deck.debugger.halted = None;

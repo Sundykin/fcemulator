@@ -165,6 +165,10 @@ impl MapperOps for Vrc4 {
         }
     }
 
+    fn clocks_cpu(&self) -> bool {
+        true
+    }
+
     fn irq(&self) -> bool {
         self.irq_pending
     }

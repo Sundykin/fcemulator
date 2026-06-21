@@ -357,7 +357,11 @@ impl Cpu {
         let pc = self.pc;
         let (full, len) = crate::disasm::disassemble_at(bus, pc);
         // `disassemble_at` returns "$ADDR: MNEMONIC OPERAND" — drop the prefix.
-        let op_text = full.split_once(": ").map(|(_, s)| s).unwrap_or(&full).to_string();
+        let op_text = full
+            .split_once(": ")
+            .map(|(_, s)| s)
+            .unwrap_or(&full)
+            .to_string();
         let n = (len as usize).min(3);
         let mut bytes = [0u8; 3];
         for (i, b) in bytes.iter_mut().enumerate().take(n) {
