@@ -430,6 +430,325 @@ pub struct Vrc7Audio {
     chip: oxideav_nsf::expansion::Vrc7,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+enum OpllEnvPhaseState {
+    Idle,
+    Attack,
+    Decay,
+    Sustain,
+    Release,
+}
+
+impl From<oxideav_nsf::opll::EnvPhase> for OpllEnvPhaseState {
+    fn from(value: oxideav_nsf::opll::EnvPhase) -> Self {
+        match value {
+            oxideav_nsf::opll::EnvPhase::Idle => Self::Idle,
+            oxideav_nsf::opll::EnvPhase::Attack => Self::Attack,
+            oxideav_nsf::opll::EnvPhase::Decay => Self::Decay,
+            oxideav_nsf::opll::EnvPhase::Sustain => Self::Sustain,
+            oxideav_nsf::opll::EnvPhase::Release => Self::Release,
+        }
+    }
+}
+
+impl From<OpllEnvPhaseState> for oxideav_nsf::opll::EnvPhase {
+    fn from(value: OpllEnvPhaseState) -> Self {
+        match value {
+            OpllEnvPhaseState::Idle => Self::Idle,
+            OpllEnvPhaseState::Attack => Self::Attack,
+            OpllEnvPhaseState::Decay => Self::Decay,
+            OpllEnvPhaseState::Sustain => Self::Sustain,
+            OpllEnvPhaseState::Release => Self::Release,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct OpllEnvelopeState {
+    phase: OpllEnvPhaseState,
+    level_q16: u32,
+    attack_rate: u8,
+    decay_rate: u8,
+    release_rate: u8,
+    sustain_level: u8,
+    egt_sustain: bool,
+    release_disabled: bool,
+    ksr: bool,
+    rks: u8,
+}
+
+impl From<&oxideav_nsf::opll::Envelope> for OpllEnvelopeState {
+    fn from(value: &oxideav_nsf::opll::Envelope) -> Self {
+        Self {
+            phase: value.phase.into(),
+            level_q16: value.level_q16,
+            attack_rate: value.attack_rate,
+            decay_rate: value.decay_rate,
+            release_rate: value.release_rate,
+            sustain_level: value.sustain_level,
+            egt_sustain: value.egt_sustain,
+            release_disabled: value.release_disabled,
+            ksr: value.ksr,
+            rks: value.rks,
+        }
+    }
+}
+
+impl From<OpllEnvelopeState> for oxideav_nsf::opll::Envelope {
+    fn from(value: OpllEnvelopeState) -> Self {
+        oxideav_nsf::opll::Envelope {
+            phase: value.phase.into(),
+            level_q16: value.level_q16,
+            attack_rate: value.attack_rate,
+            decay_rate: value.decay_rate,
+            release_rate: value.release_rate,
+            sustain_level: value.sustain_level,
+            egt_sustain: value.egt_sustain,
+            release_disabled: value.release_disabled,
+            ksr: value.ksr,
+            rks: value.rks,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct OpllOperatorState {
+    phase_acc: u32,
+    env: OpllEnvelopeState,
+    mul: u8,
+    tl: u8,
+    half_rect: bool,
+}
+
+impl From<&oxideav_nsf::opll::Operator> for OpllOperatorState {
+    fn from(value: &oxideav_nsf::opll::Operator) -> Self {
+        Self {
+            phase_acc: value.phase_acc,
+            env: (&value.env).into(),
+            mul: value.mul,
+            tl: value.tl,
+            half_rect: value.half_rect,
+        }
+    }
+}
+
+impl From<OpllOperatorState> for oxideav_nsf::opll::Operator {
+    fn from(value: OpllOperatorState) -> Self {
+        oxideav_nsf::opll::Operator {
+            phase_acc: value.phase_acc,
+            env: value.env.into(),
+            mul: value.mul,
+            tl: value.tl,
+            half_rect: value.half_rect,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct OpllLfoState {
+    tremolo_divider: u32,
+    tremolo_phase: u32,
+    vibrato_divider: u32,
+    vibrato_phase: u32,
+}
+
+impl From<&oxideav_nsf::opll::Lfo> for OpllLfoState {
+    fn from(value: &oxideav_nsf::opll::Lfo) -> Self {
+        Self {
+            tremolo_divider: value.tremolo_divider,
+            tremolo_phase: value.tremolo_phase,
+            vibrato_divider: value.vibrato_divider,
+            vibrato_phase: value.vibrato_phase,
+        }
+    }
+}
+
+impl From<OpllLfoState> for oxideav_nsf::opll::Lfo {
+    fn from(value: OpllLfoState) -> Self {
+        oxideav_nsf::opll::Lfo {
+            tremolo_divider: value.tremolo_divider,
+            tremolo_phase: value.tremolo_phase,
+            vibrato_divider: value.vibrato_divider,
+            vibrato_phase: value.vibrato_phase,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct OpllTestRegisterState {
+    envs_zero: bool,
+    hold_lfo: bool,
+    hold_phase: bool,
+    fast_lfo: bool,
+}
+
+impl From<&oxideav_nsf::opll::TestRegister> for OpllTestRegisterState {
+    fn from(value: &oxideav_nsf::opll::TestRegister) -> Self {
+        Self {
+            envs_zero: value.envs_zero,
+            hold_lfo: value.hold_lfo,
+            hold_phase: value.hold_phase,
+            fast_lfo: value.fast_lfo,
+        }
+    }
+}
+
+impl From<OpllTestRegisterState> for oxideav_nsf::opll::TestRegister {
+    fn from(value: OpllTestRegisterState) -> Self {
+        oxideav_nsf::opll::TestRegister {
+            envs_zero: value.envs_zero,
+            hold_lfo: value.hold_lfo,
+            hold_phase: value.hold_phase,
+            fast_lfo: value.fast_lfo,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct OpllChannelState {
+    modulator: OpllOperatorState,
+    carrier: OpllOperatorState,
+    fnum: u16,
+    block: u8,
+    volume: u8,
+    fb: u8,
+    mod_ksl: u8,
+    car_ksl: u8,
+    fb_prev: [i32; 2],
+    key_on: bool,
+}
+
+impl From<&oxideav_nsf::opll::OpllChannel> for OpllChannelState {
+    fn from(value: &oxideav_nsf::opll::OpllChannel) -> Self {
+        Self {
+            modulator: (&value.modulator).into(),
+            carrier: (&value.carrier).into(),
+            fnum: value.fnum,
+            block: value.block,
+            volume: value.volume,
+            fb: value.fb,
+            mod_ksl: value.mod_ksl,
+            car_ksl: value.car_ksl,
+            fb_prev: value.fb_prev,
+            key_on: value.key_on,
+        }
+    }
+}
+
+impl From<OpllChannelState> for oxideav_nsf::opll::OpllChannel {
+    fn from(value: OpllChannelState) -> Self {
+        oxideav_nsf::opll::OpllChannel {
+            modulator: value.modulator.into(),
+            carrier: value.carrier.into(),
+            fnum: value.fnum,
+            block: value.block,
+            volume: value.volume,
+            fb: value.fb,
+            mod_ksl: value.mod_ksl,
+            car_ksl: value.car_ksl,
+            fb_prev: value.fb_prev,
+            key_on: value.key_on,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct Vrc7RegisterChannelState {
+    fnum: u16,
+    block: u8,
+    key_on: bool,
+    volume: u8,
+    phase: f32,
+    sustain: bool,
+    patch_index: u8,
+}
+
+impl From<&oxideav_nsf::expansion::Vrc7Chan> for Vrc7RegisterChannelState {
+    fn from(value: &oxideav_nsf::expansion::Vrc7Chan) -> Self {
+        Self {
+            fnum: value.fnum,
+            block: value.block,
+            key_on: value.key_on,
+            volume: value.volume,
+            phase: value.phase,
+            sustain: value.sustain,
+            patch_index: value.patch_index,
+        }
+    }
+}
+
+impl From<Vrc7RegisterChannelState> for oxideav_nsf::expansion::Vrc7Chan {
+    fn from(value: Vrc7RegisterChannelState) -> Self {
+        oxideav_nsf::expansion::Vrc7Chan {
+            fnum: value.fnum,
+            block: value.block,
+            key_on: value.key_on,
+            volume: value.volume,
+            phase: value.phase,
+            sustain: value.sustain,
+            patch_index: value.patch_index,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct Vrc7ChipState {
+    enabled: bool,
+    addr: u8,
+    #[serde(with = "serde_array_64")]
+    regs: [u8; 0x40],
+    channels: [Vrc7RegisterChannelState; 6],
+    opll_channels: [OpllChannelState; 6],
+    op_cycles_q8: u32,
+    latched_output: i32,
+    test_register: OpllTestRegisterState,
+    audio_reset_held: bool,
+    lfo: OpllLfoState,
+}
+
+impl From<&oxideav_nsf::expansion::Vrc7> for Vrc7ChipState {
+    fn from(value: &oxideav_nsf::expansion::Vrc7) -> Self {
+        Self {
+            enabled: value.enabled,
+            addr: value.addr,
+            regs: value.regs,
+            channels: std::array::from_fn(|i| (&value.channels[i]).into()),
+            opll_channels: std::array::from_fn(|i| (&value.opll_channels[i]).into()),
+            op_cycles_q8: value.op_cycles_q8,
+            latched_output: value.latched_output,
+            test_register: (&value.test_register).into(),
+            audio_reset_held: value.audio_reset_held,
+            lfo: (&value.lfo).into(),
+        }
+    }
+}
+
+impl From<Vrc7ChipState> for oxideav_nsf::expansion::Vrc7 {
+    fn from(value: Vrc7ChipState) -> Self {
+        oxideav_nsf::expansion::Vrc7 {
+            enabled: value.enabled,
+            addr: value.addr,
+            regs: value.regs,
+            channels: value.channels.map(Into::into),
+            opll_channels: value.opll_channels.map(Into::into),
+            op_cycles_q8: value.op_cycles_q8,
+            latched_output: value.latched_output,
+            test_register: value.test_register.into(),
+            audio_reset_held: value.audio_reset_held,
+            lfo: value.lfo.into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct Vrc7AudioState {
+    addr: u8,
+    #[serde(with = "serde_array_64")]
+    regs: [u8; 0x40],
+    muted: bool,
+    chip: Vrc7ChipState,
+}
+
 impl std::fmt::Debug for Vrc7Audio {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Vrc7Audio")
@@ -442,36 +761,22 @@ impl std::fmt::Debug for Vrc7Audio {
 
 impl Clone for Vrc7Audio {
     fn clone(&self) -> Self {
-        let mut chip = oxideav_nsf::expansion::Vrc7::new();
-        chip.enabled = true;
-        let mut out = Vrc7Audio {
+        Self::from_state(Vrc7AudioState {
             addr: self.addr,
             regs: self.regs,
             muted: self.muted,
-            chip,
-        };
-        if out.muted {
-            out.chip.write(0xE000, 0x40);
-        } else {
-            out.replay_registers();
-        }
-        out
+            chip: (&self.chip).into(),
+        })
     }
 }
 
 impl Serialize for Vrc7Audio {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        #[derive(Serialize)]
-        struct State<'a> {
-            addr: u8,
-            #[serde(with = "serde_array_64")]
-            regs: &'a [u8; 0x40],
-            muted: bool,
-        }
-        State {
+        Vrc7AudioState {
             addr: self.addr,
-            regs: &self.regs,
+            regs: self.regs,
             muted: self.muted,
+            chip: (&self.chip).into(),
         }
         .serialize(serializer)
     }
@@ -479,28 +784,8 @@ impl Serialize for Vrc7Audio {
 
 impl<'de> Deserialize<'de> for Vrc7Audio {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        #[derive(Deserialize)]
-        struct State {
-            addr: u8,
-            #[serde(with = "serde_array_64")]
-            regs: [u8; 0x40],
-            muted: bool,
-        }
-        let state = State::deserialize(deserializer)?;
-        let mut chip = oxideav_nsf::expansion::Vrc7::new();
-        chip.enabled = true;
-        let mut out = Vrc7Audio {
-            addr: state.addr,
-            regs: state.regs,
-            muted: state.muted,
-            chip,
-        };
-        if out.muted {
-            out.chip.write(0xE000, 0x40);
-        } else {
-            out.replay_registers();
-        }
-        Ok(out)
+        let state = Vrc7AudioState::deserialize(deserializer)?;
+        Ok(Self::from_state(state))
     }
 }
 
@@ -579,6 +864,15 @@ impl Vrc7Audio {
             self.chip.write(0x9030, *value);
         }
         self.chip.write(0x9010, self.addr);
+    }
+
+    fn from_state(state: Vrc7AudioState) -> Self {
+        Self {
+            addr: state.addr,
+            regs: state.regs,
+            muted: state.muted,
+            chip: state.chip.into(),
+        }
     }
 }
 
@@ -679,5 +973,30 @@ mod tests {
             peak = peak.max(audio.output().abs());
         }
         assert!(peak > 0.0, "peak={peak}");
+    }
+
+    #[test]
+    fn vrc7_audio_roundtrips_full_internal_state() {
+        let mut audio = Vrc7Audio::new();
+        for (reg, value) in [
+            (0x00, 0x21),
+            (0x01, 0x21),
+            (0x04, 0xF7),
+            (0x05, 0xF7),
+            (0x06, 0x10),
+            (0x07, 0x10),
+            (0x30, 0x00),
+            (0x10, 0x00),
+            (0x20, 0x19),
+        ] {
+            write_vrc7(&mut audio, reg, value);
+        }
+        for _ in 0..12_000 {
+            audio.clock();
+        }
+        let before = audio.output();
+        let encoded = bincode::serialize(&audio).expect("serialize Vrc7Audio");
+        let restored: Vrc7Audio = bincode::deserialize(&encoded).expect("deserialize Vrc7Audio");
+        assert_eq!(before.to_bits(), restored.output().to_bits());
     }
 }
