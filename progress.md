@@ -50,12 +50,14 @@
 | Final PPU VBL/NMI suite | `target/debug/fc testsuite nes-test-roms/ppu_vbl_nmi/rom_singles/*.nes --frames 3000` | Improve | 4/10 passed; `01`, `03`, `04`, `09` pass | PARTIAL |
 | Final MMC3 suite | `target/debug/fc testsuite nes-test-roms/mmc3_test/*.nes --frames 3000` | No regression | 3/6 passed | PARTIAL |
 | Final CPU misc/timing suite | `target/debug/fc testsuite nes-test-roms/instr_misc/rom_singles/*.nes nes-test-roms/instr_timing/rom_singles/*.nes --frames 12000` | Improve/no regression | 4/6 passed; remaining failures noted above | PARTIAL |
+| Mapper first compatibility batch | `cargo test -p fc-core mapper::tests -- --nocapture` | Pass | 34/34 mapper tests passed after adding 72/79/80/82 | PASS |
 
 ## Error Log
 | Timestamp | Error | Attempt | Resolution |
 |-----------|-------|---------|------------|
 | 2026-06-19 | `blargg_apu_2005.07.30` all timed out | 1 | Treat as lower-priority until confirming protocol/region expectations; `apu_test/rom_singles` gives actionable APU failures |
 | 2026-06-19 | `mmc3_irq_tests` all timed out | 1 | Treat as possible protocol/runtime mismatch or mapper issue; use README-mentioned `mmc3_test` suite as alternate baseline next |
+| 2026-06-22 | `cargo test -p fc-core` failed because `[u8; 256]` does not derive serde traits with this dependency set | 1 | Changed mapper 80 WRAM storage to `Vec<u8>` |
 
 ### Phase 3: Failure Analysis
 - **Status:** complete
@@ -151,6 +153,15 @@
   - `mmc3_test`: 5/6 PASS (`4-scanline_timing` remains)
   - `cargo test -p fc-core`: PASS, 6 tests
 - No uncommitted code changes remain; only planning notes are untracked.
+
+## Continued Session: 2026-06-22 Mapper Compatibility
+- User asked to first count mapper gaps against FCEUX, FCEUmm, Mesen2, and Nestopia, then start implementing from the checklist.
+- Added `/Users/sunmeng/workspace/fc/docs/Mapper-适配差距清单.md`.
+- Updated `/Users/sunmeng/workspace/fc/docs/Mapper-适配引用记录.md` with references for mapper 72/79/80/82.
+- Implemented mapper 72 and 79 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/latch/discrete.rs`.
+- Implemented mapper 80 and 82 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/taito.rs`.
+- Wired the new mappers through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs` and added mapper behavior tests.
+- Narrow verification: `cargo test -p fc-core mapper::tests -- --nocapture` passed, 34/34.
 
 ### Continued Phase: PPU open-bus decay
 - Started: 2026-06-19 14:51:32 CST

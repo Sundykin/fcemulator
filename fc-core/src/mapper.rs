@@ -200,8 +200,9 @@ pub use basic::{
     Mapper15, Mapper151, Mapper170, Mapper18, Mapper183, Mapper203, Mapper212, Mapper222,
     Mapper226, Mapper230, Mapper233, Mapper234, Mapper235, Mapper240, Mapper241, Mapper244,
     Mapper246, Mapper36, Mapper40, Mapper42, Mapper43, Mapper50, Mapper57, Mapper60, Mapper63,
-    Mapper65, Mapper67, Mapper73, Mapper83, Mapper92, Namco118, Nina01, Nina03_06, Nrom, Ntdec112,
-    Sunsoft184, Sunsoft89, TaitoTc0190, UnlPci556, Unrom, UnromVariant, UnromVariantMapper,
+    Mapper65, Mapper67, Mapper72, Mapper73, Mapper79, Mapper83, Mapper92, Namco118, Nina01,
+    Nina03_06, Nrom, Ntdec112, Sunsoft184, Sunsoft89, TaitoTc0190, TaitoX1005, TaitoX1017,
+    UnlPci556, Unrom, UnromVariant, UnromVariantMapper,
 };
 pub use expansion_mappers::{Fme7, Namco163, Vrc6, Vrc6Variant, Vrc7};
 pub use mmc1::Mmc1;
@@ -245,7 +246,11 @@ pub enum Mapper {
     Mapper63(Mapper63),
     Mapper65(Mapper65),
     Mapper67(Mapper67),
+    Mapper72(Mapper72),
     Mapper73(Mapper73),
+    Mapper79(Mapper79),
+    TaitoX1005(TaitoX1005),
+    TaitoX1017(TaitoX1017),
     Mapper83(Mapper83),
     Mapper92(Mapper92),
     AddrLatch16k(AddrLatch16k),
@@ -350,9 +355,13 @@ impl Mapper {
             69 => Mapper::Fme7(Fme7::new(prg_16k, chr_8k)),
             70 => Mapper::Bandai74161(Bandai74161::new(prg_16k, false)),
             71 => Mapper::Codemasters(Codemasters::new(prg_16k, mirroring)),
+            72 => Mapper::Mapper72(Mapper72::new(prg_16k, mirroring)),
             73 => Mapper::Mapper73(Mapper73::new(prg_16k, mirroring)),
             77 => Mapper::IremLrog017(IremLrog017::new(mirroring)),
             78 => Mapper::JalecoJf16(JalecoJf16::new(prg_16k, submapper)),
+            79 => Mapper::Mapper79(Mapper79::new(mirroring)),
+            80 => Mapper::TaitoX1005(TaitoX1005::new(prg_16k)),
+            82 => Mapper::TaitoX1017(TaitoX1017::new(prg_16k)),
             83 => Mapper::Mapper83(Mapper83::new(prg_16k, chr_8k)),
             85 => Mapper::Vrc7(Vrc7::new(prg_16k, chr_8k)),
             86 => Mapper::JalecoJf13(JalecoJf13::new(mirroring)),
@@ -473,7 +482,11 @@ macro_rules! dispatch {
             Mapper::Mapper63($m) => $body,
             Mapper::Mapper65($m) => $body,
             Mapper::Mapper67($m) => $body,
+            Mapper::Mapper72($m) => $body,
             Mapper::Mapper73($m) => $body,
+            Mapper::Mapper79($m) => $body,
+            Mapper::TaitoX1005($m) => $body,
+            Mapper::TaitoX1017($m) => $body,
             Mapper::Mapper83($m) => $body,
             Mapper::Mapper92($m) => $body,
             Mapper::AddrLatch16k($m) => $body,
@@ -684,9 +697,13 @@ mod tests {
             (65, false),   // Irem H3001
             (70, false),   // Bandai 74161/7432
             (71, false),   // Codemasters
+            (72, false),   // Mapper 72
             (73, false),   // VRC3
             (77, false),   // Irem LROG017
             (78, false),   // Jaleco JF-16
+            (79, false),   // Mapper 79
+            (80, false),   // Taito X1-005
+            (82, false),   // Taito X1-017
             (83, false),   // Mapper 83 IRQ is CPU-clocked, not PPU-bus-clocked
             (85, false),   // VRC7
             (87, false),   // Jaleco JF-xx
@@ -784,9 +801,13 @@ mod tests {
             (65, true),    // Irem H3001 IRQ counter clocks per CPU cycle
             (70, false),   // Bandai 74161/7432
             (71, false),   // Codemasters
+            (72, false),   // Mapper 72
             (73, true),    // VRC3 IRQ counter clocks per CPU cycle
             (77, false),   // Irem LROG017
             (78, false),   // Jaleco JF-16
+            (79, false),   // Mapper 79
+            (80, false),   // Taito X1-005
+            (82, false),   // Taito X1-017
             (83, true),    // Mapper 83 IRQ counter clocks per CPU cycle
             (85, true),    // VRC7 IRQ + expansion audio clock per CPU cycle
             (87, false),   // Jaleco JF-xx
@@ -1390,6 +1411,14 @@ mod tests {
         assert_eq!(m92.prg_index(0xC004), 5 * 0x4000 + 4);
         assert_eq!(m92.chr_index(0x0004), 3 * 0x2000 + 4);
         assert_eq!(m92.mirroring(), Mirroring::Horizontal);
+
+        let mut m72 = Mapper::new(72, 16, 16, Mirroring::Vertical, 0).expect("mapper 72");
+        m72.write_low_register(0x6000, 0x83);
+        m72.write_register(0x8000, 0x45);
+        assert_eq!(m72.prg_index(0x8004), 3 * 0x4000 + 4);
+        assert_eq!(m72.prg_index(0xC004), 15 * 0x4000 + 4);
+        assert_eq!(m72.chr_index(0x0004), 5 * 0x2000 + 4);
+        assert_eq!(m72.mirroring(), Mirroring::Vertical);
     }
 
     #[test]
@@ -1685,6 +1714,17 @@ mod tests {
         assert_eq!(m38.prg_index(0x8000), 3 * 0x8000);
         assert_eq!(m38.chr_index(0x0010), 2 * 0x2000 + 0x10);
 
+        let mut m79 = Mapper::new(79, 2, 8, Mirroring::Horizontal, 0).expect("mapper 79");
+        m79.write_expansion(0x4000, 0x0F);
+        assert_eq!(m79.prg_index(0x8000), 0);
+        assert_eq!(m79.chr_index(0x0010), 0x10);
+        m79.write_expansion(0x4100, 0x0F);
+        assert_eq!(m79.prg_index(0x8000), 0x8000);
+        assert_eq!(m79.chr_index(0x0010), 7 * 0x2000 + 0x10);
+        m79.write_register(0x8000, 0x02);
+        assert_eq!(m79.prg_index(0x8000), 0);
+        assert_eq!(m79.chr_index(0x0010), 2 * 0x2000 + 0x10);
+
         let mut m89 = Mapper::new(89, 8, 16, Mirroring::Horizontal, 0).expect("mapper 89");
         m89.write_register(0x8000, 0x98);
         assert_eq!(m89.prg_index(0x8000), 0x4000);
@@ -1701,6 +1741,46 @@ mod tests {
         assert_eq!(m203.prg_index(0x8000), 3 * 0x4000);
         assert_eq!(m203.prg_index(0xC000), 3 * 0x4000);
         assert_eq!(m203.chr_index(0x0010), 0x2000 + 0x10);
+    }
+
+    #[test]
+    fn taito_x1_mappers_follow_low_register_banking() {
+        let mut m80 = Mapper::new(80, 16, 16, Mirroring::Vertical, 0).expect("mapper 80");
+        assert!(m80.write_low_register(0x7EFA, 3));
+        assert!(m80.write_low_register(0x7EFC, 4));
+        assert!(m80.write_low_register(0x7EFE, 5));
+        assert_eq!(m80.prg_index(0x8004), 3 * 0x2000 + 4);
+        assert_eq!(m80.prg_index(0xA004), 4 * 0x2000 + 4);
+        assert_eq!(m80.prg_index(0xC004), 5 * 0x2000 + 4);
+        assert_eq!(m80.prg_index(0xE004), 31 * 0x2000 + 4);
+        assert!(m80.write_low_register(0x7EF0, 0x07));
+        assert!(m80.write_low_register(0x7EF2, 0x22));
+        assert_eq!(m80.chr_index(0x0004), 6 * 0x0400 + 4);
+        assert_eq!(m80.chr_index(0x0404), 7 * 0x0400 + 4);
+        assert_eq!(m80.chr_index(0x1004), 0x22 * 0x0400 + 4);
+        assert!(m80.write_low_register(0x7EF6, 1));
+        assert_eq!(m80.mirroring(), Mirroring::Horizontal);
+        assert_eq!(m80.read_low_register(0x7F42), Some(0xFF));
+        assert!(m80.write_low_register(0x7EF8, 0xA3));
+        assert!(m80.write_low_register(0x7F42, 0x5A));
+        assert_eq!(m80.peek_low_register(0x7F42), Some(0x5A));
+
+        let mut m82 = Mapper::new(82, 16, 16, Mirroring::Vertical, 0).expect("mapper 82");
+        assert!(m82.write_low_register(0x7EFA, 0x0C));
+        assert!(m82.write_low_register(0x7EFB, 0x10));
+        assert!(m82.write_low_register(0x7EFC, 0x14));
+        assert_eq!(m82.prg_index(0x8004), 3 * 0x2000 + 4);
+        assert_eq!(m82.prg_index(0xA004), 4 * 0x2000 + 4);
+        assert_eq!(m82.prg_index(0xC004), 5 * 0x2000 + 4);
+        assert_eq!(m82.prg_index(0xE004), 31 * 0x2000 + 4);
+        assert!(m82.write_low_register(0x7EF0, 0x06));
+        assert!(m82.write_low_register(0x7EF2, 0x22));
+        assert_eq!(m82.chr_index(0x0004), 6 * 0x0400 + 4);
+        assert_eq!(m82.chr_index(0x0404), 7 * 0x0400 + 4);
+        assert_eq!(m82.chr_index(0x1004), 0x22 * 0x0400 + 4);
+        assert!(m82.write_low_register(0x7EF6, 0x03));
+        assert_eq!(m82.mirroring(), Mirroring::Horizontal);
+        assert_eq!(m82.chr_index(0x1004), 6 * 0x0400 + 4);
     }
 
     #[test]

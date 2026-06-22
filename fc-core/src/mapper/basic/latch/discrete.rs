@@ -199,6 +199,113 @@ impl MapperOps for UnlPci556 {
 }
 
 // ============================================================================
+// Mapper 72 — Jaleco JF-17/JF-19 style two-register latch
+//
+// References:
+// - FCEUX/FCEUmm `src/boards/72.cpp` / `72.c`
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Mapper72 {
+    prg_16k: usize,
+    prg_bank: usize,
+    chr_bank: usize,
+    mirroring: Mirroring,
+}
+
+impl Mapper72 {
+    pub(in crate::mapper) fn new(prg_16k: usize, mirroring: Mirroring) -> Self {
+        Mapper72 {
+            prg_16k: prg_16k.max(1),
+            prg_bank: 0,
+            chr_bank: 0,
+            mirroring,
+        }
+    }
+}
+
+impl MapperOps for Mapper72 {
+    fn prg_index(&self, addr: u16) -> usize {
+        if addr < 0xC000 {
+            self.prg_bank * 0x4000 + (addr - 0x8000) as usize
+        } else {
+            (self.prg_16k - 1) * 0x4000 + (addr - 0xC000) as usize
+        }
+    }
+    fn chr_index(&self, addr: u16) -> usize {
+        self.chr_bank * 0x2000 + (addr & 0x1FFF) as usize
+    }
+    fn write_register(&mut self, _addr: u16, value: u8) {
+        if value & 0x80 != 0 {
+            self.prg_bank = (value & 0x0F) as usize;
+        }
+        if value & 0x40 != 0 {
+            self.chr_bank = (value & 0x0F) as usize;
+        }
+    }
+    fn write_low_register(&mut self, addr: u16, value: u8) -> bool {
+        if (0x6000..=0x7FFF).contains(&addr) {
+            self.write_register(addr, value);
+            true
+        } else {
+            false
+        }
+    }
+    fn mirroring(&self) -> Mirroring {
+        self.mirroring
+    }
+}
+
+// ============================================================================
+// Mapper 79 — NINA-003/NINA-006 compatible latch
+//
+// References:
+// - FCEUX/FCEUmm `src/boards/79.cpp` / `79.c`
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Mapper79 {
+    prg_bank: usize,
+    chr_bank: usize,
+    mirroring: Mirroring,
+}
+
+impl Mapper79 {
+    pub(in crate::mapper) fn new(mirroring: Mirroring) -> Self {
+        Mapper79 {
+            prg_bank: 0,
+            chr_bank: 0,
+            mirroring,
+        }
+    }
+
+    fn set_bank(&mut self, value: u8) {
+        self.prg_bank = ((value >> 3) & 0x01) as usize;
+        self.chr_bank = (value & 0x07) as usize;
+    }
+}
+
+impl MapperOps for Mapper79 {
+    fn prg_index(&self, addr: u16) -> usize {
+        self.prg_bank * 0x8000 + (addr - 0x8000) as usize
+    }
+    fn chr_index(&self, addr: u16) -> usize {
+        self.chr_bank * 0x2000 + (addr & 0x1FFF) as usize
+    }
+    fn write_register(&mut self, _addr: u16, value: u8) {
+        self.set_bank(value);
+    }
+    fn write_expansion(&mut self, addr: u16, value: u8) {
+        if (0x4100..=0x5FFF).contains(&addr) && addr & 0x0100 != 0 {
+            self.set_bank(value);
+        }
+    }
+    fn mirroring(&self) -> Mirroring {
+        self.mirroring
+    }
+}
+
+// ============================================================================
 // Mapper 107/113/140/203 — simple PRG/CHR latch variants
 // ============================================================================
 

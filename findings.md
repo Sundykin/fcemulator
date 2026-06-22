@@ -207,3 +207,11 @@
 - FCEUX/libretro and Nestopia identify `Dai-2-Ji - Super Robot Taisen (Chinese)` as TW MMC3+VRAM Rev. C / mapper 194. Mapper 194 is the same MMC3 family but routes CHR bank values `0/1` to a 2KB CHR-RAM window. Adding mapper 194 support and a CRC32 mapper correction for this dump changes `fc info` to mapper 194 and restores the dynamic Chinese status/window text in debug nametable output.
 - MMC3's power/reset bank registers should start as `[0,2,4,5,6,7,0,1]` (matching mature emulator implementations), not all zero. Updating this default also made the local `mmc3_test` suite pass 6/6, including the previously failing `4-scanline_timing`.
 - Remaining 10306 observation after mapper194: the actual framebuffer at the scripted 7200-frame map scene still shows repeated background square tiles. A temporary render-start trace showed realtime rendering starts with `t=0000`, so the visible screen is drawing nametable 0's repeated `C4/C5/...` tile region, while the debug nametable view shows readable status/window text in another nametable region. This is now a separate scroll/scene/IRQ-timing investigation rather than a simple CHR-RAM upload failure.
+
+## Mapper Gap Closure Findings
+- Current mapper support before this pass was 98 mapper numbers. Comparing against FCEUX, FCEUmm, Mesen2, and Nestopia produced a union of 493 mapper numbers, with 395 missing before the first batch.
+- FCEUmm dominates the long tail with NES 2.0 and unlicensed board variants, so raw union count is not a good implementation order by itself.
+- Mapper 72, 79, 80, and 82 were present in FCEUX, FCEUmm, and Nestopia and had small, localized latch/Taito register behavior, making them a good first batch.
+- Mapper 72 is a Jaleco PRG16 fixed-high + CHR8 latch. FCEUmm accepts `$6000-$FFFF` writes, while FCEUX wires high writes; the implementation supports both low and high paths.
+- Mapper 79 is a NINA-style PRG32/CHR8 latch. FCEUmm gates expansion writes by `addr & 0x100`; FCEUX also wires high writes, so the implementation supports both.
+- Mapper 80 and 82 use Taito low registers around `$7EF0`. Mapper 80 owns a gated 256-byte WRAM window at `$7F00-$7FFF`; mapper 82 swaps pattern halves when `ctrl&2` is set.

@@ -4,7 +4,7 @@
 Improve emulator precision for APU, PPU, and related NES hardware by using the repository's accuracy test ROMs to identify and fix high-value issues without breaking timing invariants.
 
 ## Current Phase
-Phase 16: Chinese RPG mapper compatibility and accuracy
+Phase 17: Mapper compatibility gap closure
 
 ## Phases
 
@@ -107,6 +107,14 @@ Phase 16: Chinese RPG mapper compatibility and accuracy
 - [x] Verify both ROMs visually plus mapper/core regression suites
 - **Status:** in_progress
 
+### Phase 17: Mapper compatibility gap closure
+- [x] Compare current mapper support against FCEUX, FCEUmm, Mesen2, and Nestopia
+- [x] Write a prioritized mapper gap checklist
+- [x] Implement first low-risk common mapper batch: 72, 79, 80, 82
+- [x] Record reference source locations for the new mapper batch
+- [ ] Continue with P0/P1 missing mapper families: 91, 116, 253, then VRC/MMC3/Taito variants
+- **Status:** in_progress
+
 ## Key Questions
 1. Which repository test ROMs currently fail deterministically?
 2. Are failures concentrated in APU frame/DMC timing, PPU NMI/scroll/sprite timing, mapper IRQs, or CPU/bus behavior?
@@ -126,6 +134,7 @@ Phase 16: Chinese RPG mapper compatibility and accuracy
 | Keep MMC5 audio and split-screen out of the initial MMC5 patch | Local ROM evidence exercised ExRAM/CHR/nametable/multiply/IRQ status; audio and split-screen need dedicated ROM evidence before adding more timing surface |
 | Split mapper implementations by chip/family behind the existing `Mapper` enum | `mapper.rs` has grown to ~1300 lines; keeping the public facade stable while moving implementations to submodules makes future mapper additions localized |
 | Treat sprite flicker reduction as an optional video enhancement, not a core accuracy change | NES hardware selects only the first 8 sprites per scanline and games/tests can rely on this; enhanced display must default off and avoid changing CPU-visible PPU status/timing |
+| Prioritize mapper gaps by reference-project overlap before numeric order | FCEUmm/FCEUX include a huge NES 2.0 long tail; implementing common <=255 and Mesen2-covered gaps gives better compatibility per change |
 
 ## Errors Encountered
 | Error | Attempt | Resolution |
