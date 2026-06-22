@@ -270,3 +270,90 @@ impl MapperOps for Codemasters {
         self.mirroring
     }
 }
+
+// ============================================================================
+// Mapper 232 — Codemasters BF9096 / Quattro multicart
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Bf9096 {
+    prg_16k: usize,
+    prg_block: usize,
+    prg_page: usize,
+    submapper: u8,
+    mirroring: Mirroring,
+}
+
+impl Bf9096 {
+    pub(in crate::mapper) fn new(prg_16k: usize, submapper: u8, mirroring: Mirroring) -> Self {
+        Bf9096 {
+            prg_16k: prg_16k.max(1),
+            prg_block: 0,
+            prg_page: 0,
+            submapper,
+            mirroring,
+        }
+    }
+
+    fn prg_bank(&self, fixed: bool) -> usize {
+        (self.prg_block << 2) | if fixed { 3 } else { self.prg_page }
+    }
+}
+
+impl MapperOps for Bf9096 {
+    fn prg_index(&self, addr: u16) -> usize {
+        let fixed = addr >= 0xC000;
+        (self.prg_bank(fixed) % self.prg_16k) * 0x4000 + (addr as usize & 0x3FFF)
+    }
+
+    fn chr_index(&self, addr: u16) -> usize {
+        (addr & 0x1FFF) as usize
+    }
+
+    fn write_register(&mut self, addr: u16, value: u8) {
+        if addr >= 0xC000 {
+            self.prg_page = (value & 0x03) as usize;
+        } else {
+            self.prg_block = if self.submapper == 1 {
+                (((value >> 4) & 0x01) | ((value >> 2) & 0x02)) as usize
+            } else {
+                ((value >> 3) & 0x03) as usize
+            };
+        }
+    }
+
+    fn mirroring(&self) -> Mirroring {
+        self.mirroring
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mapper232_selects_codemasters_block_and_page() {
+        let mut mapper = Bf9096::new(16, 0, Mirroring::Vertical);
+
+        assert_eq!(mapper.prg_index(0x8004), 0x00004);
+        assert_eq!(mapper.prg_index(0xC004), 3 * 0x4000 + 4);
+
+        mapper.write_register(0x8000, 0x18);
+        mapper.write_register(0xC000, 0x02);
+        assert_eq!(mapper.prg_index(0x8004), 14 * 0x4000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 15 * 0x4000 + 4);
+        assert_eq!(mapper.chr_index(0x1004), 0x1004);
+        assert_eq!(mapper.mirroring(), Mirroring::Vertical);
+    }
+
+    #[test]
+    fn mapper232_submapper1_swaps_outer_bank_bits() {
+        let mut mapper = Bf9096::new(16, 1, Mirroring::Horizontal);
+        mapper.write_register(0x8000, 0x10);
+        mapper.write_register(0xC000, 0x01);
+
+        assert_eq!(mapper.prg_index(0x8004), 5 * 0x4000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 7 * 0x4000 + 4);
+        assert_eq!(mapper.mirroring(), Mirroring::Horizontal);
+    }
+}

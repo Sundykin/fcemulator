@@ -21,7 +21,7 @@ mod unlicensed;
 mod waixing;
 
 pub use ave::{Bnrom, Nina01};
-pub use core::{Axrom, Cnrom, Codemasters, ColorDreams, Gxrom, Nrom, Unrom};
+pub use core::{Axrom, Bf9096, Cnrom, Codemasters, ColorDreams, Gxrom, Nrom, Unrom};
 pub use irem::{IremG101, IremLrog017};
 pub use irq::{Mapper117, Mapper18, Mapper40, Mapper42, Mapper50, Mapper65, Mapper67, Mapper73};
 pub use jy::Mapper91;
@@ -32,8 +32,8 @@ pub use latch::{
     Sunsoft184, Sunsoft89, UnlPci556, UnromVariant, UnromVariantMapper,
 };
 pub use multicart::{
-    AddrLatch16k, AddrLatchVariant, Mapper15, Mapper226, Mapper240, Mapper241, Mapper244,
-    Mapper246, Mapper57, Mapper63,
+    ActionEnterprises, AddrLatch16k, AddrLatchVariant, Mapper15, Mapper226, Mapper240, Mapper241,
+    Mapper244, Mapper246, Mapper57, Mapper63,
 };
 pub use namco::{Namco108Mapper206, Namco108Mapper95, Namco118};
 pub use ntdec::Ntdec112;

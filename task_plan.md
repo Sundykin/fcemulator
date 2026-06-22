@@ -121,6 +121,7 @@ Phase 17: Mapper compatibility gap closure
 - [x] Add mapper 95 / Namco 108 Rev. B with CHR-register-controlled nametable pages
 - [x] Add mapper 118 / TxSROM with MMC3 IRQ plus CHR bit7 nametable pages
 - [x] Add mapper 206 / Namco 108 subset and mapper 207 / Taito X1-005 alternate mirroring
+- [x] Add low-risk mapper batch 192 / 195 / 228 / 232 / 255
 - [ ] Continue with architecture work for 68 and MMC3 protocol variants 114/115/121
 - **Status:** in_progress
 
@@ -154,6 +155,7 @@ Phase 17: Mapper compatibility gap closure
 | Implement Mapper 95 with a small Namco108 variant instead of overloading Namco118 | Mapper 95 masks CHR registers differently and uses CHR register high bits for nametable pages, while mapper 88 keeps fixed header mirroring |
 | Implement Mapper 118 as an MMC3 nametable-layout variant | TxSROM keeps normal MMC3 PRG and A12 IRQ behavior, but disables ordinary A000 mirroring and routes CHR bank bit7 into per-nametable CIRAM A10 |
 | Land mapper 206/207 before deeper architecture work | Both boards reuse already-local Namco108/Taito X1-005 shapes and do not require new CPU/PPU/Cartridge hooks, so they are a clean stable batch before 68 and MMC3 protocol variants |
+| Split mapper expansion into low-risk batches and architecture batches | 192/195/228/232/255 fit existing hooks, while 68 needs nametable-to-CHR access and 114/115/121 should follow MMC3 helper refactoring |
 
 ## Errors Encountered
 | Error | Attempt | Resolution |

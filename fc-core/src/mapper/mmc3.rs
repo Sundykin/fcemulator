@@ -203,10 +203,20 @@ impl Mmc3 {
         Mmc3::new(prg_16k, chr_8k, mirroring).with_chr_ram_window(0x40, 0x7F, 0x2000)
     }
 
+    /// Mapper 192 — MMC3 clone with 4KB CHR-RAM at CHR banks 8..=11.
+    pub(super) fn new_192(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
+        Mmc3::new(prg_16k, chr_8k, mirroring).with_chr_ram_window(0x08, 0x0B, 0x1000)
+    }
+
     /// Mapper 194 — TW MMC3+VRAM Rev. C, with the 2KB CHR-RAM window addressed
     /// by CHR bank numbers 0/1.
     pub(super) fn new_194(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
         Mmc3::new(prg_16k, chr_8k, mirroring).with_chr_ram_window(0, 1, 0x800)
+    }
+
+    /// Mapper 195 — MMC3 clone with 4KB CHR-RAM at CHR banks 0..=3.
+    pub(super) fn new_195(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
+        Mmc3::new(prg_16k, chr_8k, mirroring).with_chr_ram_window(0x00, 0x03, 0x1000)
     }
 
     /// Mapper 76 — Namco 109 / MMC3 command and IRQ core with custom CHR cwrap.
@@ -823,6 +833,54 @@ mod tests {
 
         mapper.write_register(0x8001, 0x08);
         assert_eq!(mapper.chr_write(0x1000, 0xAA), false);
+        assert_eq!(
+            mapper.chr_read(0x1000, super::super::ChrAccess::Default),
+            None
+        );
+    }
+
+    #[test]
+    fn mapper192_routes_banks_8_to_11_to_chr_ram() {
+        let mut mapper = Mmc3::new_192(32, 64, Mirroring::Vertical);
+
+        mapper.write_register(0x8000, 0x02);
+        mapper.write_register(0x8001, 0x07);
+        assert_eq!(mapper.chr_write(0x1000, 0xAA), false);
+        assert_eq!(
+            mapper.chr_read(0x1000, super::super::ChrAccess::Default),
+            None
+        );
+
+        mapper.write_register(0x8001, 0x08);
+        assert_eq!(mapper.chr_write(0x1004, 0x44), true);
+        assert_eq!(
+            mapper.chr_read(0x1004, super::super::ChrAccess::Default),
+            Some(0x44)
+        );
+
+        mapper.write_register(0x8001, 0x0B);
+        assert_eq!(mapper.chr_write(0x1004, 0x55), true);
+        mapper.write_register(0x8001, 0x08);
+        assert_eq!(
+            mapper.chr_read(0x1004, super::super::ChrAccess::Default),
+            Some(0x44)
+        );
+    }
+
+    #[test]
+    fn mapper195_routes_banks_0_to_3_to_chr_ram() {
+        let mut mapper = Mmc3::new_195(32, 64, Mirroring::Vertical);
+
+        mapper.write_register(0x8000, 0x02);
+        mapper.write_register(0x8001, 0x03);
+        assert_eq!(mapper.chr_write(0x1000, 0x77), true);
+        assert_eq!(
+            mapper.chr_read(0x1000, super::super::ChrAccess::Default),
+            Some(0x77)
+        );
+
+        mapper.write_register(0x8001, 0x04);
+        assert_eq!(mapper.chr_write(0x1000, 0x99), false);
         assert_eq!(
             mapper.chr_read(0x1000, super::super::ChrAccess::Default),
             None

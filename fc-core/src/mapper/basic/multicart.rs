@@ -163,6 +163,7 @@ pub enum AddrLatchVariant {
     Mapper229,
     Mapper201,
     Mapper217,
+    Mapper255,
 }
 
 impl AddrLatch16k {
@@ -392,6 +393,18 @@ impl AddrLatch16k {
                 self.chr_bank = (addr & 0x0F) as usize;
                 return;
             }
+            AddrLatchVariant::Mapper255 => {
+                let prg_bit = if addr & 0x1000 != 0 { 0 } else { 1 };
+                let bank = (((addr >> 8) & 0x40) | ((addr >> 6) & 0x3F)) as usize;
+                self.prg_pages = [bank & !prg_bit, bank | prg_bit];
+                self.chr_bank = (((addr >> 8) & 0x40) | (addr & 0x3F)) as usize;
+                self.mirroring = if addr & 0x2000 != 0 {
+                    Mirroring::Horizontal
+                } else {
+                    Mirroring::Vertical
+                };
+                return;
+            }
         }
         self.mirroring = if addr & 0x80 != 0 {
             Mirroring::Horizontal
@@ -439,6 +452,97 @@ impl MapperOps for AddrLatch16k {
     }
     fn mirroring(&self) -> Mirroring {
         self.mirroring
+    }
+}
+
+// ============================================================================
+// Mapper 228 — Action Enterprises
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ActionEnterprises {
+    prg_pages: [usize; 2],
+    chr_bank: usize,
+    mirroring: Mirroring,
+    nibble_ram: [u8; 4],
+    addr_latch: u16,
+    value_latch: u8,
+}
+
+impl ActionEnterprises {
+    pub(in crate::mapper) fn new() -> Self {
+        let mut m = ActionEnterprises {
+            prg_pages: [0, 1],
+            chr_bank: 0,
+            mirroring: Mirroring::Vertical,
+            nibble_ram: [0; 4],
+            addr_latch: 0x8000,
+            value_latch: 0,
+        };
+        m.sync(0x8000, 0);
+        m
+    }
+
+    fn sync(&mut self, addr: u16, value: u8) {
+        self.addr_latch = addr;
+        self.value_latch = value;
+
+        let mut page = (addr >> 7) & 0x3F;
+        if (page & 0x30) == 0x30 {
+            page -= 0x10;
+        }
+        let prg_low = (page << 1) | (((addr >> 6) & 1) & ((addr >> 5) & 1));
+        let prg_high = prg_low + (((addr >> 5) & 1) ^ 1);
+
+        self.prg_pages = [prg_low as usize, prg_high as usize];
+        self.chr_bank = (((addr & 0x0F) << 2) | ((value as u16) & 0x03)) as usize;
+        self.mirroring = if addr & 0x2000 != 0 {
+            Mirroring::Horizontal
+        } else {
+            Mirroring::Vertical
+        };
+    }
+}
+
+impl MapperOps for ActionEnterprises {
+    fn prg_index(&self, addr: u16) -> usize {
+        let slot = if addr < 0xC000 { 0 } else { 1 };
+        self.prg_pages[slot] * 0x4000 + (addr as usize & 0x3FFF)
+    }
+
+    fn chr_index(&self, addr: u16) -> usize {
+        self.chr_bank * 0x2000 + (addr as usize & 0x1FFF)
+    }
+
+    fn write_register(&mut self, addr: u16, value: u8) {
+        self.sync(addr, value);
+    }
+
+    fn read_expansion(&mut self, addr: u16) -> Option<u8> {
+        self.peek_expansion(addr)
+    }
+
+    fn peek_expansion(&self, addr: u16) -> Option<u8> {
+        if (0x5000..=0x5FFF).contains(&addr) {
+            Some(self.nibble_ram[(addr & 0x03) as usize])
+        } else {
+            None
+        }
+    }
+
+    fn write_expansion(&mut self, addr: u16, value: u8) {
+        if (0x5000..=0x5FFF).contains(&addr) {
+            self.nibble_ram[(addr & 0x03) as usize] = value & 0x0F;
+        }
+    }
+
+    fn mirroring(&self) -> Mirroring {
+        self.mirroring
+    }
+
+    fn reset(&mut self, _soft: bool) {
+        self.nibble_ram = [0; 4];
+        self.sync(0x8000, 0);
     }
 }
 
@@ -745,5 +849,49 @@ impl MapperOps for Mapper246 {
     }
     fn mirroring(&self) -> Mirroring {
         self.mirroring
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mapper228_decodes_action_enterprises_address_and_nibble_ram() {
+        let mut mapper = ActionEnterprises::new();
+
+        assert_eq!(mapper.prg_index(0x8004), 0x00004);
+        assert_eq!(mapper.prg_index(0xC004), 1 * 0x4000 + 4);
+        assert_eq!(mapper.mirroring(), Mirroring::Vertical);
+
+        mapper.write_register(0xA0E5, 0x03);
+        assert_eq!(mapper.prg_index(0x8004), 3 * 0x4000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 3 * 0x4000 + 4);
+        assert_eq!(mapper.chr_index(0x1004), 0x17 * 0x2000 + 0x1004);
+        assert_eq!(mapper.mirroring(), Mirroring::Horizontal);
+
+        mapper.write_expansion(0x5002, 0xAB);
+        assert_eq!(mapper.peek_expansion(0x5002), Some(0x0B));
+        assert_eq!(mapper.read_expansion(0x5006), Some(0x0B));
+
+        mapper.reset(true);
+        assert_eq!(mapper.peek_expansion(0x5002), Some(0));
+        assert_eq!(mapper.prg_index(0xC004), 1 * 0x4000 + 4);
+    }
+
+    #[test]
+    fn mapper255_uses_bmc255_address_latch_formula() {
+        let mut mapper = AddrLatch16k::new(AddrLatchVariant::Mapper255);
+
+        mapper.write_register(0xA123, 0);
+        assert_eq!(mapper.prg_index(0x8004), 4 * 0x4000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 5 * 0x4000 + 4);
+        assert_eq!(mapper.chr_index(0x1004), 0x23 * 0x2000 + 0x1004);
+        assert_eq!(mapper.mirroring(), Mirroring::Horizontal);
+
+        mapper.write_register(0x9123, 0);
+        assert_eq!(mapper.prg_index(0x8004), 4 * 0x4000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 4 * 0x4000 + 4);
+        assert_eq!(mapper.mirroring(), Mirroring::Vertical);
     }
 }

@@ -203,16 +203,16 @@ mod rambo1;
 mod vrc4;
 
 pub use basic::{
-    AddrLatch16k, AddrLatchVariant, Axrom, Bandai74161, Bnrom, Caltron41, Cnrom, Codemasters,
-    ColorDreams, ColorDreams46, Cprom, Gxrom, IremG101, IremLrog017, IremTamS1, JalecoJf11_14,
-    JalecoJf13, JalecoJf16, JalecoJfxx, Mapper103, Mapper106, Mapper107, Mapper116, Mapper117,
-    Mapper120, Mapper15, Mapper151, Mapper170, Mapper18, Mapper183, Mapper203, Mapper212,
-    Mapper222, Mapper226, Mapper230, Mapper233, Mapper234, Mapper235, Mapper240, Mapper241,
-    Mapper244, Mapper246, Mapper253, Mapper36, Mapper40, Mapper42, Mapper43, Mapper50, Mapper57,
-    Mapper60, Mapper63, Mapper65, Mapper67, Mapper72, Mapper73, Mapper79, Mapper83, Mapper91,
-    Mapper92, Namco108Mapper206, Namco108Mapper95, Namco118, Nina01, Nina03_06, Nrom, Ntdec112,
-    Sunsoft184, Sunsoft89, TaitoTc0190, TaitoX1005, TaitoX1017, UnlPci556, Unrom, UnromVariant,
-    UnromVariantMapper, Vrc1,
+    ActionEnterprises, AddrLatch16k, AddrLatchVariant, Axrom, Bandai74161, Bf9096, Bnrom,
+    Caltron41, Cnrom, Codemasters, ColorDreams, ColorDreams46, Cprom, Gxrom, IremG101, IremLrog017,
+    IremTamS1, JalecoJf11_14, JalecoJf13, JalecoJf16, JalecoJfxx, Mapper103, Mapper106, Mapper107,
+    Mapper116, Mapper117, Mapper120, Mapper15, Mapper151, Mapper170, Mapper18, Mapper183,
+    Mapper203, Mapper212, Mapper222, Mapper226, Mapper230, Mapper233, Mapper234, Mapper235,
+    Mapper240, Mapper241, Mapper244, Mapper246, Mapper253, Mapper36, Mapper40, Mapper42, Mapper43,
+    Mapper50, Mapper57, Mapper60, Mapper63, Mapper65, Mapper67, Mapper72, Mapper73, Mapper79,
+    Mapper83, Mapper91, Mapper92, Namco108Mapper206, Namco108Mapper95, Namco118, Nina01, Nina03_06,
+    Nrom, Ntdec112, Sunsoft184, Sunsoft89, TaitoTc0190, TaitoX1005, TaitoX1017, UnlPci556, Unrom,
+    UnromVariant, UnromVariantMapper, Vrc1,
 };
 pub use expansion_mappers::{Fme7, Namco163, Vrc6, Vrc6Variant, Vrc7};
 pub use mmc1::Mmc1;
@@ -291,6 +291,8 @@ pub enum Mapper {
     Namco108Mapper95(Namco108Mapper95),
     Namco108Mapper206(Namco108Mapper206),
     Namco118(Namco118),
+    ActionEnterprises(ActionEnterprises),
+    Bf9096(Bf9096),
     JalecoJf13(JalecoJf13),
     Sunsoft89(Sunsoft89),
     UnromVariant(UnromVariantMapper),
@@ -434,7 +436,9 @@ impl Mapper {
             )),
             183 => Mapper::Mapper183(Mapper183::new(prg_16k, chr_8k)),
             184 => Mapper::Sunsoft184(Sunsoft184::new(mirroring)),
+            192 => Mapper::Mmc3(Mmc3::new_192(prg_16k, chr_8k, mirroring)),
             194 => Mapper::Mmc3(Mmc3::new_194(prg_16k, chr_8k, mirroring)),
+            195 => Mapper::Mmc3(Mmc3::new_195(prg_16k, chr_8k, mirroring)),
             200 => Mapper::AddrLatch16k(AddrLatch16k::new(AddrLatchVariant::Mapper200)),
             201 => Mapper::AddrLatch16k(AddrLatch16k::new_with_mirroring(
                 AddrLatchVariant::Mapper201,
@@ -456,9 +460,11 @@ impl Mapper {
             )),
             222 => Mapper::Mapper222(Mapper222::new(prg_16k, chr_8k)),
             227 => Mapper::AddrLatch16k(AddrLatch16k::new(AddrLatchVariant::Mapper227)),
+            228 => Mapper::ActionEnterprises(ActionEnterprises::new()),
             226 => Mapper::Mapper226(Mapper226::new()),
             230 => Mapper::Mapper230(Mapper230::new()),
             231 => Mapper::AddrLatch16k(AddrLatch16k::new(AddrLatchVariant::Mapper231)),
+            232 => Mapper::Bf9096(Bf9096::new(prg_16k, submapper, mirroring)),
             233 => Mapper::Mapper233(Mapper233::new()),
             234 => Mapper::Mapper234(Mapper234::new()),
             235 => Mapper::Mapper235(Mapper235::new(prg_16k)),
@@ -468,6 +474,7 @@ impl Mapper {
             244 => Mapper::Mapper244(Mapper244::new(mirroring)),
             246 => Mapper::Mapper246(Mapper246::new(prg_16k, mirroring)),
             253 => Mapper::Mapper253(Mapper253::new(prg_16k, chr_8k)),
+            255 => Mapper::AddrLatch16k(AddrLatch16k::new(AddrLatchVariant::Mapper255)),
             213 => Mapper::AddrLatch16k(AddrLatch16k::new_with_mirroring(
                 AddrLatchVariant::Mapper213,
                 mirroring,
@@ -551,6 +558,8 @@ macro_rules! dispatch {
             Mapper::Namco108Mapper95($m) => $body,
             Mapper::Namco108Mapper206($m) => $body,
             Mapper::Namco118($m) => $body,
+            Mapper::ActionEnterprises($m) => $body,
+            Mapper::Bf9096($m) => $body,
             Mapper::JalecoJf13($m) => $body,
             Mapper::Sunsoft89($m) => $body,
             Mapper::UnromVariant($m) => $body,
@@ -787,6 +796,8 @@ mod tests {
             (230, false),  // Mapper 230
             (233, false),  // Mapper 233
             (234, false),  // Mapper 234
+            (192, true),   // Mapper 192 MMC3 A12 IRQ
+            (195, true),   // Mapper 195 MMC3 A12 IRQ
             (200, false),  // Mapper 200
             (201, false),  // Mapper 201
             (202, false),  // Mapper 202
@@ -801,15 +812,18 @@ mod tests {
             (222, true),   // Mapper 222 A12 IRQ
             (226, false),  // Mapper 226
             (227, false),  // Mapper 227
+            (228, false),  // Mapper 228
             (225, false),  // Mapper 225
             (229, false),  // Mapper 229
             (231, false),  // Mapper 231
+            (232, false),  // Mapper 232
             (240, false),  // Mapper 240
             (241, false),  // Mapper 241
             (242, false),  // Mapper 242
             (244, false),  // Mapper 244
             (246, false),  // Mapper 246
             (253, false),  // Mapper 253 IRQ is CPU-clocked, not PPU-bus-clocked
+            (255, false),  // Mapper 255
             (184, false),  // Sunsoft 184
             (4, true),     // MMC3
             (5, true),     // MMC5
@@ -911,6 +925,8 @@ mod tests {
             (233, false),  // Mapper 233
             (234, false),  // Mapper 234
             (235, false),  // Mapper 235
+            (192, false),  // Mapper 192 uses PPU A12 edges
+            (195, false),  // Mapper 195 uses PPU A12 edges
             (200, false),  // Mapper 200
             (201, false),  // Mapper 201
             (202, false),  // Mapper 202
@@ -925,15 +941,18 @@ mod tests {
             (222, false),  // Mapper 222 uses PPU A12 edges
             (226, false),  // Mapper 226
             (227, false),  // Mapper 227
+            (228, false),  // Mapper 228
             (225, false),  // Mapper 225
             (229, false),  // Mapper 229
             (231, false),  // Mapper 231
+            (232, false),  // Mapper 232
             (240, false),  // Mapper 240
             (241, false),  // Mapper 241
             (242, false),  // Mapper 242
             (244, false),  // Mapper 244
             (246, false),  // Mapper 246
             (253, true),   // Mapper 253 IRQ counter clocks per CPU cycle
+            (255, false),  // Mapper 255
             (184, false),  // Sunsoft 184
         ];
         for (num, expected) in cases {
@@ -1037,7 +1056,9 @@ mod tests {
             (180, false),
             (183, false),
             (184, false),
+            (192, false),
             (194, false),
+            (195, false),
             (200, false),
             (201, false),
             (202, false),
@@ -1054,9 +1075,11 @@ mod tests {
             (225, false),
             (226, false),
             (227, false),
+            (228, false),
             (229, false),
             (230, false),
             (231, false),
+            (232, false),
             (233, false),
             (234, false),
             (235, false),
@@ -1066,6 +1089,7 @@ mod tests {
             (244, false),
             (246, false),
             (253, false),
+            (255, false),
         ];
         for (num, expected) in cases {
             let submapper = if num == 34 { 2 } else { 0 };

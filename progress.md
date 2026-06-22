@@ -768,3 +768,19 @@
   - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 78/78 mapper tests.
   - `cargo test -p fc-core`: PASS, 118/118 fc-core tests.
   - `cargo test`: PASS, workspace tests.
+
+### Mapper 192 / 195 / 228 / 232 / 255 Low-risk Batch
+- Implemented mapper 192 and 195 as MMC3 CHR-RAM window variants in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs`.
+- Implemented mapper 232 / Codemasters BF9096 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/core.rs`.
+- Implemented mapper 228 / Action Enterprises and mapper 255 / BMC255 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/multicart.rs`.
+- Wired all five through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs` and updated capability guard tables.
+- Updated mapper gap and reference documents. Supported mapper count is now 126; remaining four-reference union gap is 367.
+- Verification so far:
+  - `cargo test -p fc-core mapper::basic::core::tests::mapper232 -- --nocapture`: PASS, 2/2.
+  - `cargo test -p fc-core mapper::mmc3::tests -- --nocapture`: PASS, 16/16.
+  - `cargo test -p fc-core mapper::basic::multicart::tests -- --nocapture`: PASS, 2/2.
+  - `cargo fmt --check`: PASS.
+  - `git diff --check`: PASS.
+  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 84/84 mapper tests.
+  - `cargo test -p fc-core`: PASS, 124/124 fc-core tests.
+  - `cargo test`: PASS, workspace tests.
