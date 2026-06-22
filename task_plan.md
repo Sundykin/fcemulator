@@ -129,6 +129,7 @@ Phase 17: Mapper compatibility gap closure
 - [x] Continue low-risk latch batch 154/155/108 after current MMC3 variant verification
 - [x] Add low-risk mapper batch 156 / 166 / 167
 - [x] Add mechanical mapper batch 185 / 189 / 193
+- [x] Add MMC3 mechanical mapper batch 191 / 245
 - **Status:** in_progress
 
 ### Phase 18: Mapper board compatibility layer
@@ -185,6 +186,8 @@ Phase 17: Mapper compatibility gap closure
 | Duplicate `tests` module in `basic/core.rs` | Added ColorDreams tests next to an existing BF9096 test module | Moved ColorDreams tests into the existing module and reran targeted mapper tests |
 | Cargo rejected multiple test filters | Tried to run `mapper::bank`, `mapper::basic::core::tests`, and `mapper::basic::latch::sachen::tests` in one command | Split into three `cargo test` invocations; all passed |
 | New `Mmc3A12Irq` unit tests failed | First assertions expected IRQ on the reload edge instead of the next valid A12 clock, and zero-reload suppression setup never passed through counter 1 | Corrected tests to follow MMC3 reload/decrement edge order; migrated MMC3 tests remained green |
+| Cargo rejected multiple test filters | Tried to run mapper191 and mapper245 tests as two positional filters in one command | Reran `cargo test -p fc-core mapper::mmc3::tests -- --nocapture`, which covers both new tests |
+| Mapper191 test failed to resolve `ChrAccess` | Used `super::ChrAccess` inside the `mmc3.rs` test module | Imported `crate::mapper::ChrAccess` in the test module and reran MMC3 tests |
 
 ## Notes
 - Preserve the invariant: CPU memory accesses tick the bus before the access; each CPU cycle advances PPU by 3 dots and APU by 1 cycle.

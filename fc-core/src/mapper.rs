@@ -491,6 +491,7 @@ impl Mapper {
             184 => Mapper::Sunsoft184(Sunsoft184::new(mirroring)),
             185 => Mapper::Mapper185(Mapper185::new(prg_16k, mirroring)),
             189 => Mapper::Mmc3(Mmc3::new_189(prg_16k, chr_8k, mirroring)),
+            191 => Mapper::Mmc3(Mmc3::new_191(prg_16k, chr_8k, mirroring)),
             192 => Mapper::Mmc3(Mmc3::new_192(prg_16k, chr_8k, mirroring)),
             193 => Mapper::Mapper193(Mapper193::new(mirroring)),
             194 => Mapper::Mmc3(Mmc3::new_194(prg_16k, chr_8k, mirroring)),
@@ -528,6 +529,7 @@ impl Mapper {
             241 => Mapper::Mapper241(Mapper241::new(mirroring)),
             242 => Mapper::AddrLatch16k(AddrLatch16k::new(AddrLatchVariant::Mapper242)),
             244 => Mapper::Mapper244(Mapper244::new(mirroring)),
+            245 => Mapper::Mmc3(Mmc3::new_245(prg_16k, chr_8k, mirroring)),
             246 => Mapper::Mapper246(Mapper246::new(prg_16k, mirroring)),
             253 => Mapper::Mapper253(Mapper253::new(prg_16k, chr_8k)),
             255 => Mapper::AddrLatch16k(AddrLatch16k::new(AddrLatchVariant::Mapper255)),
@@ -889,6 +891,7 @@ mod tests {
             (230, false),  // Mapper 230
             (233, false),  // Mapper 233
             (234, false),  // Mapper 234
+            (191, true),   // Mapper 191 MMC3 A12 IRQ
             (192, true),   // Mapper 192 MMC3 A12 IRQ
             (195, true),   // Mapper 195 MMC3 A12 IRQ
             (200, false),  // Mapper 200
@@ -914,6 +917,7 @@ mod tests {
             (241, false),  // Mapper 241
             (242, false),  // Mapper 242
             (244, false),  // Mapper 244
+            (245, true),   // Mapper 245 MMC3 A12 IRQ
             (246, false),  // Mapper 246
             (253, false),  // Mapper 253 IRQ is CPU-clocked, not PPU-bus-clocked
             (255, false),  // Mapper 255
@@ -1035,6 +1039,7 @@ mod tests {
             (233, false),  // Mapper 233
             (234, false),  // Mapper 234
             (235, false),  // Mapper 235
+            (191, false),  // Mapper 191 uses PPU A12 edges
             (192, false),  // Mapper 192 uses PPU A12 edges
             (195, false),  // Mapper 195 uses PPU A12 edges
             (200, false),  // Mapper 200
@@ -1060,6 +1065,7 @@ mod tests {
             (241, false),  // Mapper 241
             (242, false),  // Mapper 242
             (244, false),  // Mapper 244
+            (245, false),  // Mapper 245 uses PPU A12 edges
             (246, false),  // Mapper 246
             (253, true),   // Mapper 253 IRQ counter clocks per CPU cycle
             (255, false),  // Mapper 255
@@ -1183,6 +1189,7 @@ mod tests {
             (180, false),
             (183, false),
             (184, false),
+            (191, false),
             (192, false),
             (194, false),
             (195, false),
@@ -1214,6 +1221,7 @@ mod tests {
             (241, false),
             (242, false),
             (244, false),
+            (245, false),
             (246, false),
             (253, false),
             (255, false),

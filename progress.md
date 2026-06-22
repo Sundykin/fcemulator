@@ -1007,3 +1007,14 @@
   - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 113/113 mapper tests.
   - `cargo test -p fc-core`: PASS, 154/154 fc-core tests.
   - `cargo test`: PASS, workspace tests.
+
+### Mapper 191 / 245 MMC3 Mechanical Board Batch
+- Implemented mapper 191 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs`: reuses the shared `ChrRamWindow` helper for CHR banks `$80-$FF` selecting a 2KB CHR-RAM window, while preserving normal MMC3 PRG and A12 IRQ behavior.
+- Implemented mapper 245 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs`: adds a thin `Mmc3OuterBank::Mapper245` variant that masks CHR banks to low 3 bits and extends PRG banks with CHR register 0 bit1.
+- Wired both through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs` and updated `/Users/sunmeng/workspace/fc/docs/Mapper-适配差距清单.md` plus `/Users/sunmeng/workspace/fc/docs/Mapper-适配引用记录.md`; supported mapper count is now 148 and remaining four-reference union gap is 345.
+- Verification:
+  - `cargo fmt --check`: PASS.
+  - `git diff --check`: PASS.
+  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 115/115 mapper tests.
+  - `cargo test -p fc-core`: PASS, 156/156 fc-core tests.
+  - `cargo test`: PASS, workspace tests.

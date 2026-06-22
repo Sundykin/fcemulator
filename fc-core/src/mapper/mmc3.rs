@@ -27,6 +27,7 @@ enum Mmc3OuterBank {
     Mapper115 { regs: [u8; 3] },
     Mapper121 { regs: [u8; 8] },
     Mapper189 { reg: u8 },
+    Mapper245,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -236,6 +237,12 @@ impl Mmc3 {
         Mmc3::new(prg_16k, chr_8k, mirroring).with_chr_ram_window(0x40, 0x7F, 0x2000)
     }
 
+    /// Mapper 191 — Waixing Type B, MMC3 clone with 2KB CHR-RAM selected by
+    /// CHR banks $80..=$FF.
+    pub(super) fn new_191(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
+        Mmc3::new(prg_16k, chr_8k, mirroring).with_chr_ram_window(0x80, 0xFF, 0x800)
+    }
+
     /// Mapper 192 — MMC3 clone with 4KB CHR-RAM at CHR banks 8..=11.
     pub(super) fn new_192(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
         Mmc3::new(prg_16k, chr_8k, mirroring).with_chr_ram_window(0x08, 0x0B, 0x1000)
@@ -250,6 +257,14 @@ impl Mmc3 {
     /// Mapper 195 — MMC3 clone with 4KB CHR-RAM at CHR banks 0..=3.
     pub(super) fn new_195(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
         Mmc3::new(prg_16k, chr_8k, mirroring).with_chr_ram_window(0x00, 0x03, 0x1000)
+    }
+
+    /// Mapper 245 — Waixing Type H, MMC3 clone with CHR low-bit masking and
+    /// a PRG outer bit driven by CHR bank register 0 bit 1.
+    pub(super) fn new_245(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
+        let mut m = Mmc3::new(prg_16k, chr_8k, mirroring);
+        m.outer_bank = Mmc3OuterBank::Mapper245;
+        m
     }
 
     /// Mapper 76 — Namco 109 / MMC3 command and IRQ core with custom CHR cwrap.
@@ -439,6 +454,14 @@ impl Mmc3 {
             Mmc3OuterBank::Mapper189 { reg } => {
                 ((((reg | (reg >> 4)) & 0x07) as usize) << 2) | region as usize
             }
+            Mmc3OuterBank::Mapper245 => {
+                let outer = if self.banks[0] & 0x02 != 0 {
+                    0x40
+                } else {
+                    0x00
+                };
+                (bank & 0x3F) | outer
+            }
         }
     }
 
@@ -476,6 +499,7 @@ impl Mmc3 {
                 }
             }
             Mmc3OuterBank::Mapper189 { .. } => bank,
+            Mmc3OuterBank::Mapper245 => bank & 0x07,
         }
     }
 
@@ -926,6 +950,7 @@ impl MapperOps for Mmc3 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::mapper::ChrAccess;
 
     #[test]
     fn low_wram_maps_executable_expansion_area() {
@@ -1083,6 +1108,41 @@ mod tests {
 
         mapper.reset(true);
         assert_eq!(mapper.prg_index(0x8004), 0x00 * 0x2000 + 4);
+    }
+
+    #[test]
+    fn mapper191_routes_banks_80_to_ff_to_2k_chr_ram() {
+        let mut mapper = Mmc3::new_191(32, 32, Mirroring::Vertical);
+
+        mapper.write_register(0x8000, 0x02);
+        mapper.write_register(0x8001, 0x80);
+        assert!(mapper.chr_write(0x1004, 0x5A));
+        assert_eq!(mapper.chr_read(0x1004, ChrAccess::Default), Some(0x5A));
+
+        mapper.write_register(0x8001, 0x82);
+        assert!(mapper.chr_write(0x1004, 0xA5));
+        assert_eq!(mapper.chr_read(0x1004, ChrAccess::Default), Some(0xA5));
+
+        mapper.write_register(0x8001, 0x7F);
+        assert!(!mapper.chr_write(0x1004, 0x11));
+        assert_eq!(mapper.chr_read(0x1004, ChrAccess::Default), None);
+    }
+
+    #[test]
+    fn mapper245_masks_chr_to_8_pages_and_extends_prg_from_chr_reg0() {
+        let mut mapper = Mmc3::new_245(128, 32, Mirroring::Vertical);
+
+        mapper.write_register(0x8000, 0x00);
+        mapper.write_register(0x8001, 0x02);
+        mapper.write_register(0x8000, 0x06);
+        mapper.write_register(0x8001, 0x45);
+
+        assert_eq!(mapper.prg_index(0x8004), 0x45 * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 0x7E * 0x2000 + 4);
+
+        mapper.write_register(0x8000, 0x02);
+        mapper.write_register(0x8001, 0x1D);
+        assert_eq!(mapper.chr_index(0x1004), 0x05 * 0x0400 + 4);
     }
 
     #[test]
