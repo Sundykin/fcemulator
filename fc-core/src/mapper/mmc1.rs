@@ -10,6 +10,8 @@ use serde::{Deserialize, Serialize};
 pub struct Mmc1 {
     prg_16k: usize,
     chr_8k: usize,
+    #[serde(default)]
+    _ignore_wram_disable: bool,
     shift: u8,
     count: u8,
     control: u8, // bit0-1 mirroring, bit2-3 prg mode, bit4 chr mode
@@ -23,12 +25,20 @@ impl Mmc1 {
         Mmc1 {
             prg_16k: prg_16k.max(1),
             chr_8k,
+            _ignore_wram_disable: false,
             shift: 0x10,
             count: 0,
             control: 0x0C, // PRG mode 3 (fix last bank at $C000) on reset
             chr0: 0,
             chr1: 0,
             prg: 0,
+        }
+    }
+
+    pub(super) fn new_155(prg_16k: usize, chr_8k: usize) -> Self {
+        Mmc1 {
+            _ignore_wram_disable: true,
+            ..Self::new(prg_16k, chr_8k)
         }
     }
 

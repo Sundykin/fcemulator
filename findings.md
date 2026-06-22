@@ -268,3 +268,6 @@
 - 规划文档已新增到 `docs/Mapper-架构优化计划.md`，作为 Phase 18 的执行依据。
 - MMC3 写协议 helper 已拆成 `write_bank_select()` / `write_bank_data()` / `write_standard_register()`，并以 mapper 49/114/115/121 作为第一批协议变体验证：49 使用 outer latch，114 使用高区写重映射与 cmd_pending，115 使用低区 PRG/CHR/protection regs，121 使用 protection LUT、scramble 与 override regs。
 - `fc-core/src/mapper/bank.rs` 已作为 BankMap 初版落地，先提供无状态 PRG/CHR page index helper，避免 serde 状态迁移风险；ColorDreams/GxROM 与 Sachen 小家族已迁移，用来验证 helper 不改变现有 mapper 行为。
+- Mapper 108 是 FDS 转换类低区 PRG-ROM 窗口板：`$6000-$7FFF` 映射一个可切换 8KB PRG-ROM bank，`$8000-$FFFF` 固定到最后 32KB，`$8000-$8FFF` 和 `$F000-$FFFF` 写入选择低区 bank。
+- Mapper 154 可复用现有 Namco118/Namco108 bank 译码，只在 `$8000` command write 的 bit6 上加入单屏 mirroring 选择。这个模式验证了“在既有 board helper 外面加很薄的 board quirk”是可行的。
+- Mapper 155 当前按 MMC1 变体接入并标记忽略 WRAM disable。因为本项目 MMC1 还没有建模 PRG-RAM disable gating，所以现在行为等同 mapper 1；后续若补 PRG-RAM 使能/禁用路径，155 的标记会阻止误套普通 MMC1 的 disable bit。

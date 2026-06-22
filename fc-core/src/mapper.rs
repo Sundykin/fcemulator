@@ -228,14 +228,14 @@ pub use basic::{
     ActionEnterprises, AddrLatch16k, AddrLatchVariant, Axrom, Bandai74161, Bf9096, Bnrom,
     Caltron41, Cnrom, Codemasters, ColorDreams, ColorDreams46, Cprom, Gxrom, IremG101, IremLrog017,
     IremTamS1, JalecoJf11_14, JalecoJf13, JalecoJf16, JalecoJfxx, Mapper103, Mapper106, Mapper107,
-    Mapper116, Mapper117, Mapper120, Mapper122, Mapper15, Mapper151, Mapper170, Mapper18,
-    Mapper183, Mapper203, Mapper212, Mapper222, Mapper226, Mapper230, Mapper233, Mapper234,
-    Mapper235, Mapper240, Mapper241, Mapper244, Mapper246, Mapper253, Mapper36, Mapper40, Mapper42,
-    Mapper43, Mapper50, Mapper57, Mapper60, Mapper63, Mapper65, Mapper67, Mapper72, Mapper73,
-    Mapper79, Mapper83, Mapper91, Mapper92, Namco108Mapper206, Namco108Mapper95, Namco118, Nina01,
-    Nina03_06, Nrom, Ntdec112, Sachen133, Sachen149, SachenSa0161m, Sunsoft184, Sunsoft4,
-    Sunsoft89, TaitoTc0190, TaitoX1005, TaitoX1017, UnlPci556, Unrom, UnromVariant,
-    UnromVariantMapper, Vrc1,
+    Mapper108, Mapper116, Mapper117, Mapper120, Mapper122, Mapper15, Mapper151, Mapper170,
+    Mapper18, Mapper183, Mapper203, Mapper212, Mapper222, Mapper226, Mapper230, Mapper233,
+    Mapper234, Mapper235, Mapper240, Mapper241, Mapper244, Mapper246, Mapper253, Mapper36,
+    Mapper40, Mapper42, Mapper43, Mapper50, Mapper57, Mapper60, Mapper63, Mapper65, Mapper67,
+    Mapper72, Mapper73, Mapper79, Mapper83, Mapper91, Mapper92, Namco108Mapper154,
+    Namco108Mapper206, Namco108Mapper95, Namco118, Nina01, Nina03_06, Nrom, Ntdec112, Sachen133,
+    Sachen149, SachenSa0161m, Sunsoft184, Sunsoft4, Sunsoft89, TaitoTc0190, TaitoX1005, TaitoX1017,
+    UnlPci556, Unrom, UnromVariant, UnromVariantMapper, Vrc1,
 };
 pub use expansion_mappers::{Fme7, Namco163, Vrc6, Vrc6Variant, Vrc7};
 pub use mmc1::Mmc1;
@@ -294,6 +294,7 @@ pub enum Mapper {
     AddrLatch16k(AddrLatch16k),
     Mapper103(Mapper103),
     Mapper106(Mapper106),
+    Mapper108(Mapper108),
     Mapper116(Mapper116),
     Mapper117(Mapper117),
     Mapper120(Mapper120),
@@ -316,6 +317,7 @@ pub enum Mapper {
     Mapper246(Mapper246),
     Mapper253(Mapper253),
     IremLrog017(IremLrog017),
+    Namco108Mapper154(Namco108Mapper154),
     Namco108Mapper95(Namco108Mapper95),
     Namco108Mapper206(Namco108Mapper206),
     Namco118(Namco118),
@@ -445,6 +447,7 @@ impl Mapper {
             103 => Mapper::Mapper103(Mapper103::new(prg_16k, mirroring)),
             106 => Mapper::Mapper106(Mapper106::new(prg_16k, chr_8k)),
             107 => Mapper::Mapper107(Mapper107::new(mirroring)),
+            108 => Mapper::Mapper108(Mapper108::new(prg_16k, mirroring)),
             112 => Mapper::Ntdec112(Ntdec112::new(prg_16k)),
             113 => Mapper::Nina03_06(Nina03_06::new()),
             114 => Mapper::Mmc3(Mmc3::new_114(prg_16k, chr_8k, mirroring)),
@@ -466,6 +469,8 @@ impl Mapper {
             74 => Mapper::Mmc3(Mmc3::new_74(prg_16k, chr_8k, mirroring)),
             151 => Mapper::Mapper151(Mapper151::new(prg_16k, mirroring)),
             152 => Mapper::Bandai74161(Bandai74161::new(prg_16k, true)),
+            154 => Mapper::Namco108Mapper154(Namco108Mapper154::new(prg_16k)),
+            155 => Mapper::Mmc1(Mmc1::new_155(prg_16k, chr_8k)),
             170 => Mapper::Mapper170(Mapper170::new(mirroring)),
             174 => Mapper::AddrLatch16k(AddrLatch16k::new(AddrLatchVariant::Mapper174)),
             180 => Mapper::UnromVariant(UnromVariantMapper::new(
@@ -577,6 +582,7 @@ macro_rules! dispatch {
             Mapper::AddrLatch16k($m) => $body,
             Mapper::Mapper103($m) => $body,
             Mapper::Mapper106($m) => $body,
+            Mapper::Mapper108($m) => $body,
             Mapper::Mapper116($m) => $body,
             Mapper::Mapper117($m) => $body,
             Mapper::Mapper120($m) => $body,
@@ -599,6 +605,7 @@ macro_rules! dispatch {
             Mapper::Mapper246($m) => $body,
             Mapper::Mapper253($m) => $body,
             Mapper::IremLrog017($m) => $body,
+            Mapper::Namco108Mapper154($m) => $body,
             Mapper::Namco108Mapper95($m) => $body,
             Mapper::Namco108Mapper206($m) => $body,
             Mapper::Namco118($m) => $body,
@@ -837,6 +844,7 @@ mod tests {
             (101, false),  // Jaleco JF-xx ordered bits
             (103, false),  // Mapper 103
             (106, false),  // Mapper 106 IRQ is CPU-clocked, not PPU-bus-clocked
+            (108, false),  // Mapper 108
             (114, true),   // Mapper 114 MMC3 A12 IRQ
             (115, true),   // Mapper 115 MMC3 A12 IRQ
             (117, true),   // Mapper 117 A12 IRQ
@@ -853,6 +861,8 @@ mod tests {
             (112, false),  // NTDEC ASDER
             (116, true),   // Mapper 116 can switch into MMC3 A12 IRQ mode
             (151, false),  // Mapper 151
+            (154, false),  // Namco 108 mapper 154
+            (155, false),  // MMC1 mapper 155
             (170, false),  // Mapper 170
             (152, false),  // Bandai 74161/7432
             (174, false),  // Mapper 174
@@ -976,6 +986,7 @@ mod tests {
             (101, false),  // Jaleco JF-xx ordered bits
             (103, false),  // Mapper 103
             (106, true),   // Mapper 106 IRQ counter clocks per CPU cycle
+            (108, false),  // Mapper 108
             (114, false),  // Mapper 114 uses PPU A12 edges
             (115, false),  // Mapper 115 uses PPU A12 edges
             (117, false),  // Mapper 117 uses PPU A12 edges
@@ -992,6 +1003,8 @@ mod tests {
             (112, false),  // NTDEC ASDER
             (116, false),  // Mapper 116 uses PPU A12 edges only in MMC3 mode
             (151, false),  // Mapper 151
+            (154, false),  // Namco 108 mapper 154
+            (155, false),  // MMC1 mapper 155
             (170, false),  // Mapper 170
             (152, false),  // Bandai 74161/7432
             (174, false),  // Mapper 174
@@ -1118,6 +1131,7 @@ mod tests {
             (103, false),
             (106, false),
             (107, false),
+            (108, false),
             (112, false),
             (113, false),
             (114, false),
@@ -1137,6 +1151,8 @@ mod tests {
             (140, false),
             (151, false),
             (152, false),
+            (154, false),
+            (155, false),
             (170, false),
             (174, false),
             (180, false),

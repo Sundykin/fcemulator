@@ -35,9 +35,15 @@
 - `fc-core/src/mapper/basic/jy.rs:1-133`
   - 新增 Mapper 91 / JY Company。
   - 覆盖 2KB CHR、8KB PRG、submapper 1 outer bank/mirroring latch，以及 FCEUX/FCEUmm 风格 HBlank IRQ。
-- `fc-core/src/mapper/basic/namco.rs:1-302`
-  - 新增 Mapper 95 / Namco 108 Rev. B 与 Mapper 206 / Namco 108 子集。
-  - 覆盖 Namco108 风格高区寄存器、固定 PRG/CHR mode、CHR register bit5 到 per-nametable CIRAM A10 映射，以及 Mapper 206 的无 IRQ PRG8/CHR2+1 bank mask。
+- `fc-core/src/mapper/basic/namco.rs:1-356`
+  - 新增 Mapper 95 / Namco 108 Rev. B、Mapper 154 / Namco 108 单屏变体与 Mapper 206 / Namco 108 子集。
+  - 覆盖 Namco108 风格高区寄存器、固定 PRG/CHR mode、CHR register bit5 到 per-nametable CIRAM A10 映射、Mapper 154 的 command bit6 单屏 mirroring，以及 Mapper 206 的无 IRQ PRG8/CHR2+1 bank mask。
+- `fc-core/src/mapper/basic/special.rs:113-165`
+  - 新增 Mapper 108 / FDS conversion。
+  - 覆盖 `$6000-$7FFF` switchable PRG-ROM window、固定最后 32KB PRG-ROM、固定 CHR8 和 `$8000-$8FFF`/`$F000-$FFFF` 写窗口。
+- `fc-core/src/mapper/mmc1.rs:10-43`
+  - 新增 Mapper 155 / MMC1 WRAM-always-enabled 变体入口。
+  - 当前本项目 MMC1 尚未实现 WRAM disable gating，因此先记录 variant 标记；后续补 PRG-RAM enable/disable 时可保留 mapper 155 的 always-enabled 语义。
 - `fc-core/src/mapper/basic/sl12.rs:1-344`
   - 新增 Mapper 116 / Someri Team SL12。
   - 覆盖 VRC2/MMC3/MMC1 三模式切换、VRC2 nibble CHR、MMC3 A12 IRQ、MMC1 serial register、CHR outer bank bit。
@@ -135,6 +141,8 @@
 | 95 | `namco.rs:34-203` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/80.c` | 106-122, 124-134, 153-184 | FCEUmm Mapper 95 与 FCEUX 同源行为 cross-check |
 | 95 | `namco.rs:34-203` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Namco/Namco108.h` | 5-23 | Namco108 固定 PRG/CHR mode 与 hardwired mirroring 行为 |
 | 95 | `namco.rs:34-203` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Namco/Namco108_95.h` | 5-18 | Mapper 95 reg0/reg1 bit5 到四个 nametable 页映射；当前实现采用此模型 |
+| 108 | `special.rs:113-165,187-208` | `/Users/sunmeng/workspace/fc/fceux/src/boards/108.cpp` | 31-48,54-58 | Mapper 108 低区 `setprg8(0x6000, reg)`、高区 `setprg32(0x8000, ~0)`、固定 `setchr8(0)` 与写窗口 |
+| 108 | `special.rs:113-165,187-208` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/108.c` | 37-53,60-64 | FCEUmm Mapper 108 cross-check；同样覆盖 `$8000-$8FFF` 与 `$F000-$FFFF` 写处理 |
 | 206 | `namco.rs:86-154,275-301` | `/Users/sunmeng/workspace/fc/fceux/src/boards/206.cpp` | 33-78 | Mapper 206 Namco108 subset：2KB/1KB CHR、8KB PRG、cmd/data 写译码、power defaults |
 | 206 | `namco.rs:86-154,275-301` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/206_486.c` | 33-78 | FCEUmm Mapper 206 cross-check；同文件 80-98 记录相关 mapper 486 直写变体 |
 | 206 | `namco.rs:86-154,275-301` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Namco/Namco108.h` | 6-28 | Namco108 写地址 mask、固定最后两个 PRG bank、hardwired mirroring 行为 |
@@ -175,6 +183,12 @@
 | 149 | `latch/sachen.rs:64-135` | `/Users/sunmeng/workspace/fc/fceux/src/boards/sachen.cpp` | 306-310 | SA0036 复用 SA72007 CHR=`value>>7` |
 | 149 | `latch/sachen.rs:64-135` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/sachen.c` | 213-215 | FCEUmm SA0036 cross-check |
 | 149 | `latch/sachen.rs:64-135` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Sachen/Sachen_149.h` | 10-19 | mapper 149 固定 PRG、CHR bit7 latch |
+| 154 | `namco.rs:94-104,220-243,339-355` | `/Users/sunmeng/workspace/fc/fceux/src/boards/88.cpp` | 34-55,78-82 | Mapper 154 复用 Namco108/mapper88 bank layout，并在 command write bit6 上选择单屏 mirroring |
+| 154 | `namco.rs:94-104,220-243,339-355` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/88.c` | 34-55,79-84 | FCEUmm Mapper 154 cross-check；同样复用 mapper 88 sync 并启用 `is154` mirroring |
+| 154 | `namco.rs:94-104,220-243,339-355` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Namco/Namco108_154.h` | 6-13 | Mapper 154 command write bit6 映射 ScreenA/ScreenB 单屏 mirroring |
+| 155 | `mmc1.rs:10-43` | `/Users/sunmeng/workspace/fc/fceux/src/boards/mmc1.cpp` | 40-48,332-335 | Mapper 155 与 MMC1 相同，但 WRAM disable bit 被忽略，WRAM 始终可用 |
+| 155 | `mmc1.rs:10-43` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/mmc1.c` | 55-67,362-365 | FCEUmm Mapper 155 cross-check；`is155` 绕过 WRAM disable 读写门控 |
+| 155 | `mmc1.rs:10-43` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Nintendo/MMC1_155.h` | 4-13 | Mapper 155 在 `UpdateState()` 中强制 `_wramDisable = false` |
 | 192 | `mmc3.rs:187-220,842-888` | `/Users/sunmeng/workspace/fc/fceux/src/boards/mmc3.cpp` | 990-1008 | Mapper 192 CHR banks 8..B 路由到 4KB CHR-RAM |
 | 192 | `mmc3.rs:187-220,842-888` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/mmc3.c` | 1026-1045 | FCEUmm Mapper 192 cross-check |
 | 192 | `mmc3.rs:187-220,842-888` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Mmc3Variants/MMC3_ChrRam.h` | 5-38 | 通用 MMC3 CHR-RAM window 机制 |
@@ -246,6 +260,9 @@
 - `Sachen133::write_low_register()` / `write_register()` 对应 Mesen2 `Sachen_133.h:19-25` 与 FCEUX/FCEUmm `sachen.cpp`/`sachen.c:273-296,180-203`。
 - `SachenSa0161m::write_expansion()` / `write_register()` 对应 FCEUX/FCEUmm `sachen.cpp`/`sachen.c:258-284,306-316,165-190,213-222` 与 Mesen2 `Nina03_06.h:5-35`。
 - `Sachen149::write_register()` 对应 Mesen2 `Sachen_149.h:16-19` 与 FCEUX/FCEUmm SA0036 的 SA72007 sync 路径。
+- `Mapper108::low_prg_index()` / `write_register()` 对应 FCEUX `108.cpp:31-48` 与 FCEUmm `108.c:37-53`；高区固定最后 32KB，低区 `$6000-$7FFF` 按写入值映射 PRG-ROM。
+- `Namco108Mapper154::write_register()` 对应 FCEUX/FCEUmm `88.cpp`/`88.c:47-55` 与 Mesen2 `Namco108_154.h:9-12`；banking 复用 Namco118，command write bit6 只改变单屏 mirroring。
+- `Mmc1::new_155()` 对应 FCEUX/FCEUmm `mmc1.cpp`/`mmc1.c:332-335,362-365` 与 Mesen2 `MMC1_155.h:7-12`；当前先保存 variant intent，等待普通 MMC1 PRG-RAM disable gating 落地后体现差异。
 - `Mapper106::write_register()` / `cpu_clock()` 对应 Mesen2 `Mapper106.h:36-73`。
 - `Mapper116::write_expansion()` / `write_low_register()` 的 mode select 对应 FCEUX `116.cpp:165-181` 与 Mesen2 `Mapper116.h:282-291`。
 - `Mapper116::write_vrc2()` / VRC2 PRG/CHR/mirroring 对应 FCEUX `116.cpp:184-199` 与 Mesen2 `Mapper116.h:225-239`。

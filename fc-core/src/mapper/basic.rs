@@ -36,10 +36,10 @@ pub use multicart::{
     ActionEnterprises, AddrLatch16k, AddrLatchVariant, Mapper15, Mapper226, Mapper240, Mapper241,
     Mapper244, Mapper246, Mapper57, Mapper63,
 };
-pub use namco::{Namco108Mapper206, Namco108Mapper95, Namco118};
+pub use namco::{Namco108Mapper154, Namco108Mapper206, Namco108Mapper95, Namco118};
 pub use ntdec::Ntdec112;
 pub use sl12::Mapper116;
-pub use special::{Mapper103, Mapper120, Mapper170, Mapper230, Mapper233, Mapper234};
+pub use special::{Mapper103, Mapper108, Mapper120, Mapper170, Mapper230, Mapper233, Mapper234};
 pub use taito::{TaitoTc0190, TaitoX1005, TaitoX1017};
 pub use unlicensed::{
     Mapper106, Mapper183, Mapper212, Mapper222, Mapper235, Mapper43, Mapper60, Mapper83,

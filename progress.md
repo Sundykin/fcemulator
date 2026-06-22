@@ -886,3 +886,19 @@
   - `cargo test`: PASS.
 - Error note:
   - Tried to pass three test filters in one Cargo command; Cargo accepts one filter, so tests were split and rerun.
+
+### Mapper 108 / 154 / 155 Low-risk Board Batch
+- Implemented mapper 108 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/special.rs`: FDS conversion style `$6000-$7FFF` PRG-ROM window, high `$8000-$FFFF` fixed to the last 32KB, fixed CHR8, and write windows at `$8000-$8FFF` plus `$F000-$FFFF`.
+- Implemented mapper 154 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/namco.rs`: wraps the existing Namco118/Namco108 banking path and adds command-write bit6 single-screen mirroring.
+- Implemented mapper 155 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc1.rs`: routes through MMC1 with a saved variant marker for always-enabled WRAM behavior once MMC1 PRG-RAM disable gating exists.
+- Wired all three through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs` and updated mapper capability guard tables.
+- Updated `/Users/sunmeng/workspace/fc/docs/Mapper-适配差距清单.md` and `/Users/sunmeng/workspace/fc/docs/Mapper-适配引用记录.md`; supported mapper count is now 140 and remaining four-reference union gap is 353.
+- Verification so far:
+  - `cargo fmt --check`: PASS.
+  - `cargo test -p fc-core mapper::basic::special::tests -- --nocapture`: PASS, 1/1.
+  - `cargo test -p fc-core mapper::basic::namco::tests -- --nocapture`: PASS, 3/3.
+  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 38/38.
+  - `git diff --check`: PASS.
+  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 101/101 mapper tests.
+  - `cargo test -p fc-core`: PASS, 142/142 fc-core tests.
+  - `cargo test`: PASS, workspace tests.

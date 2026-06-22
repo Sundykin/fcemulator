@@ -91,6 +91,19 @@ pub struct Namco108Mapper206 {
     mirroring: Mirroring,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Namco108Mapper154 {
+    inner: Namco118,
+}
+
+impl Namco108Mapper154 {
+    pub(in crate::mapper) fn new(prg_16k: usize) -> Self {
+        Namco108Mapper154 {
+            inner: Namco118::new(prg_16k, Mirroring::SingleScreenLow),
+        }
+    }
+}
+
 impl Namco108Mapper206 {
     pub(in crate::mapper) fn new(prg_16k: usize, mirroring: Mirroring) -> Self {
         let mut regs = [0; 8];
@@ -204,6 +217,31 @@ impl MapperOps for Namco108Mapper95 {
     }
 }
 
+impl MapperOps for Namco108Mapper154 {
+    fn prg_index(&self, addr: u16) -> usize {
+        self.inner.prg_index(addr)
+    }
+
+    fn chr_index(&self, addr: u16) -> usize {
+        self.inner.chr_index(addr)
+    }
+
+    fn write_register(&mut self, addr: u16, value: u8) {
+        if addr & 0x8001 == 0x8000 {
+            self.inner.mirroring = if value & 0x40 != 0 {
+                Mirroring::SingleScreenHigh
+            } else {
+                Mirroring::SingleScreenLow
+            };
+        }
+        self.inner.write_register(addr, value);
+    }
+
+    fn mirroring(&self) -> Mirroring {
+        self.inner.mirroring()
+    }
+}
+
 impl MapperOps for Namco118 {
     fn prg_index(&self, addr: u16) -> usize {
         let slot = ((addr - 0x8000) / 0x2000) as usize;
@@ -298,5 +336,19 @@ mod tests {
         assert_eq!(mapper.prg_index(0x8004), 0x0F * 0x2000 + 4);
         assert_eq!(mapper.prg_index(0xA004), 0x01 * 0x2000 + 4);
         assert_eq!(mapper.mirroring(), Mirroring::Horizontal);
+    }
+
+    #[test]
+    fn mapper154_uses_namco118_banks_with_single_screen_mirroring() {
+        let mut mapper = Namco108Mapper154::new(8);
+
+        assert_eq!(mapper.mirroring(), Mirroring::SingleScreenLow);
+        mapper.write_register(0x8000, 0x40 | 6);
+        assert_eq!(mapper.mirroring(), Mirroring::SingleScreenHigh);
+        mapper.write_register(0x8001, 3);
+        assert_eq!(mapper.prg_index(0x8004), 3 * 0x2000 + 4);
+        mapper.write_register(0x8000, 0x00);
+        mapper.write_register(0x8001, 8);
+        assert_eq!(mapper.chr_index(0x0004), 8 * 0x0400 + 4);
     }
 }

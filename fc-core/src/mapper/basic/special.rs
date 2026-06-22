@@ -1,3 +1,4 @@
+use crate::mapper::bank::{chr_8k, prg_8k_at};
 use crate::mapper::MapperOps;
 use crate::types::Mirroring;
 use serde::{Deserialize, Serialize};
@@ -110,6 +111,60 @@ impl MapperOps for Mapper120 {
 }
 
 // ============================================================================
+// Mapper 108 — FDS conversion with switchable $6000-$7FFF PRG-ROM window
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Mapper108 {
+    prg_8k_total: usize,
+    low_prg_bank: usize,
+    mirroring: Mirroring,
+}
+
+impl Mapper108 {
+    pub(in crate::mapper) fn new(prg_16k: usize, mirroring: Mirroring) -> Self {
+        Mapper108 {
+            prg_8k_total: (prg_16k * 2).max(4),
+            low_prg_bank: 0,
+            mirroring,
+        }
+    }
+
+    fn high_prg_bank(&self, slot: usize) -> usize {
+        self.prg_8k_total - 4 + slot
+    }
+}
+
+impl MapperOps for Mapper108 {
+    fn prg_index(&self, addr: u16) -> usize {
+        let slot = ((addr - 0x8000) / 0x2000) as usize;
+        prg_8k_at(self.high_prg_bank(slot), addr, addr & !0x1FFF)
+    }
+
+    fn chr_index(&self, addr: u16) -> usize {
+        chr_8k(0, addr)
+    }
+
+    fn write_register(&mut self, addr: u16, value: u8) {
+        if (0x8000..=0x8FFF).contains(&addr) || (0xF000..=0xFFFF).contains(&addr) {
+            self.low_prg_bank = value as usize;
+        }
+    }
+
+    fn low_prg_index(&self, addr: u16) -> Option<usize> {
+        if (0x6000..=0x7FFF).contains(&addr) {
+            Some(prg_8k_at(self.low_prg_bank, addr, 0x6000))
+        } else {
+            None
+        }
+    }
+
+    fn mirroring(&self) -> Mirroring {
+        self.mirroring
+    }
+}
+
+// ============================================================================
 // Mapper 170 — low-address protection reads
 // ============================================================================
 
@@ -126,6 +181,29 @@ impl Mapper170 {
 
     fn read_value(&self, addr: u16) -> u8 {
         self.reg | (((addr >> 8) as u8) & 0x7F)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mapper108_maps_low_prg_rom_and_fixed_high_tail() {
+        let mut mapper = Mapper108::new(8, Mirroring::Vertical);
+
+        assert_eq!(mapper.low_prg_index(0x6004), Some(0x0004));
+        assert_eq!(mapper.prg_index(0x8004), 12 * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xE004), 15 * 0x2000 + 4);
+        assert_eq!(mapper.chr_index(0x1004), 0x1004);
+
+        mapper.write_register(0x9000, 0x03);
+        assert_eq!(mapper.low_prg_index(0x6004), Some(0x0004));
+        mapper.write_register(0x8000, 0x03);
+        assert_eq!(mapper.low_prg_index(0x6004), Some(3 * 0x2000 + 4));
+        mapper.write_register(0xF000, 0x05);
+        assert_eq!(mapper.low_prg_index(0x7FFF), Some(5 * 0x2000 + 0x1FFF));
+        assert_eq!(mapper.mirroring(), Mirroring::Vertical);
     }
 }
 
