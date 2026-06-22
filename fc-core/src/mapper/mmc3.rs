@@ -26,6 +26,7 @@ enum Mmc3OuterBank {
     Mapper114 { regs: [u8; 2], cmd_pending: bool },
     Mapper115 { regs: [u8; 3] },
     Mapper121 { regs: [u8; 8] },
+    Mapper189 { reg: u8 },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -191,6 +192,13 @@ impl Mmc3 {
         let mut regs = [0; 8];
         regs[3] = 0x80;
         m.outer_bank = Mmc3OuterBank::Mapper121 { regs };
+        m
+    }
+
+    /// Mapper 189 — MMC3 with a low-register 32KB PRG outer latch.
+    pub(super) fn new_189(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
+        let mut m = Mmc3::new(prg_16k, chr_8k, mirroring);
+        m.outer_bank = Mmc3OuterBank::Mapper189 { reg: 0 };
         m
     }
 
@@ -428,6 +436,9 @@ impl Mmc3 {
                     (bank & 0x1F) | or
                 }
             }
+            Mmc3OuterBank::Mapper189 { reg } => {
+                ((((reg | (reg >> 4)) & 0x07) as usize) << 2) | region as usize
+            }
         }
     }
 
@@ -464,6 +475,7 @@ impl Mmc3 {
                     bank
                 }
             }
+            Mmc3OuterBank::Mapper189 { .. } => bank,
         }
     }
 
@@ -745,6 +757,10 @@ impl MapperOps for Mmc3 {
                 Self::mapper115_write_extra(regs, addr, value);
                 true
             }
+            Mmc3OuterBank::Mapper189 { reg } => {
+                *reg = value | (value >> 4);
+                true
+            }
             _ => false,
         }
     }
@@ -899,6 +915,9 @@ impl MapperOps for Mmc3 {
                 *regs = [0; 8];
                 regs[3] = 0x80;
             }
+            Mmc3OuterBank::Mapper189 { reg } => {
+                *reg = 0;
+            }
             _ => {}
         }
     }
@@ -1040,6 +1059,30 @@ mod tests {
         assert_eq!(mapper.prg_index(0x8004), 0x3A * 0x2000 + 4);
         assert_eq!(mapper.prg_index(0xE004), 0x3F * 0x2000 + 4);
         assert_eq!(mapper.chr_index(0x1004), 0x1D5 * 0x400 + 4);
+    }
+
+    #[test]
+    fn mapper189_low_latch_selects_prg32_outer_bank() {
+        let mut mapper = Mmc3::new_189(32, 32, Mirroring::Vertical);
+
+        assert_eq!(mapper.prg_index(0x8004), 0x00 * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xE004), 0x03 * 0x2000 + 4);
+
+        mapper.write_low_register(0x4120, 0x20);
+        assert_eq!(mapper.prg_index(0x8004), 0x08 * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xA004), 0x09 * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 0x0A * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xE004), 0x0B * 0x2000 + 4);
+
+        mapper.write_low_register(0x6000, 0x02);
+        assert_eq!(mapper.prg_index(0x8004), 0x08 * 0x2000 + 4);
+
+        mapper.write_register(0x8000, 0x02);
+        mapper.write_register(0x8001, 0x15);
+        assert_eq!(mapper.chr_index(0x1004), 0x15 * 0x0400 + 4);
+
+        mapper.reset(true);
+        assert_eq!(mapper.prg_index(0x8004), 0x00 * 0x2000 + 4);
     }
 
     #[test]

@@ -47,6 +47,9 @@
 - `fc-core/src/mapper/basic/subor.rs:1-124`
   - 新增 Mapper 166 / 167 Subor。
   - 覆盖四个高区 register、outer/inner PRG bank XOR、UNROM/inverted UNROM/NROM-like 三种 PRG 模式、mapper 167 bank order 变体，以及 FCEUmm 风格 mirroring bit。
+- `fc-core/src/mapper/basic/discrete.rs:1-166`
+  - 新增 Mapper 185 / CNROM copy-protection CHR disable 与 Mapper 193 / MEGA-SOFT War in the Gulf。
+  - 覆盖 mapper-owned dummy CHR read/write gating、固定首/尾 16KB PRG、低区 `$6000-$6003` register、固定尾部 8KB PRG pages，以及 4KB/2KB/2KB CHR bank 译码。
 - `fc-core/src/mapper/mmc1.rs:10-43`
   - 新增 Mapper 155 / MMC1 WRAM-always-enabled 变体入口。
   - 当前本项目 MMC1 尚未实现 WRAM disable gating，因此先记录 variant 标记；后续补 PRG-RAM enable/disable 时可保留 mapper 155 的 always-enabled 语义。
@@ -57,7 +60,7 @@
   - 新增 Mapper 253 / Waixing Dragon Ball pirate。
   - 覆盖 8KB PRG、1KB CHR nibble register、2KB mapper-owned CHR-RAM window、mirroring、CPU-clock IRQ。
 - `fc-core/src/mapper/mmc3.rs:9-1238`
-  - 新增 Mapper 37 / 44 / 45 / 47 / 49 / 52 / 76 / 114 / 115 / 118 / 119 / 121 / 192 / 195 的 MMC3 变体布局。
+  - 新增 Mapper 37 / 44 / 45 / 47 / 49 / 52 / 76 / 114 / 115 / 118 / 119 / 121 / 189 / 192 / 195 的 MMC3 变体布局。
   - 复用 MMC3 PRG/IRQ 核心，扩展 outer PRG/CHR bank latch、Mapper 45 serial outer registers、Mapper 49 outer latch、Mapper 76 自定义 2KB CHR cwrap、Mapper 114/115/121 写协议与保护寄存器、Mapper 118 TxSROM per-nametable CIRAM A10，以及 Mapper 119 TQROM CHR-ROM/CHR-RAM window。
 - `fc-core/src/mapper/rambo1.rs:1-309`
   - 新增 Mapper 64 / Tengen RAMBO-1。
@@ -206,10 +209,16 @@
 | 167 | `subor.rs:1-124` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/subor.c` | 31-70,84-88 | FCEUmm Subor mapper 167 cross-check |
 | 167 | `subor.rs:1-124` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Unlicensed/Subor166.h` | 38-53 | mapper ID 167 的 `altMode` PRG order/fixed bank 行为 |
 | 167 | `subor.rs:1-124` | `/Users/sunmeng/workspace/fc/nestopia/source/core/board/NstBoardSubor.cpp` | 83-124 | Nestopia Subor Type0/Type1 PRG bank mode cross-check |
+| 185 | `basic/discrete.rs:9-63,127-143` | `/Users/sunmeng/workspace/fc/fceux/src/boards/185.cpp` | 24-50,59-70,83-93 | CNROM copy-protection：CHR enable 判定、dummy `0xFF` CHR mapping、固定 PRG16 首尾 bank |
+| 185 | `basic/discrete.rs:9-63,127-143` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/185.c` | 24-50,60-71,84-94 | FCEUmm mapper 185 cross-check；同样记录 `datareg != 0x13` 例外与 dummy CHR |
+| 189 | `mmc3.rs:18-29,198-203,439-440,760-762,918-920,1064-1086` | `/Users/sunmeng/workspace/fc/fceux/src/boards/189.cpp` | 24-43 | MMC3 PRG32 outer latch、`V | (V >> 4)` 低区写、power reset |
+| 189 | `mmc3.rs:18-29,198-203,439-440,760-762,918-920,1064-1086` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/189.c` | 24-43 | FCEUmm mapper 189 cross-check；同样记录 `$4120-$7FFF` 写窗口与 `setprg32` |
 | 192 | `mmc3.rs:187-220,842-888` | `/Users/sunmeng/workspace/fc/fceux/src/boards/mmc3.cpp` | 990-1008 | Mapper 192 CHR banks 8..B 路由到 4KB CHR-RAM |
 | 192 | `mmc3.rs:187-220,842-888` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/mmc3.c` | 1026-1045 | FCEUmm Mapper 192 cross-check |
 | 192 | `mmc3.rs:187-220,842-888` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Mmc3Variants/MMC3_ChrRam.h` | 5-38 | 通用 MMC3 CHR-RAM window 机制 |
 | 192 | `mmc3.rs:187-220,842-888` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/MapperFactory.cpp` | 465 | mapper 192 使用 `MMC3_ChrRam(0x08, 0x0B, 4)` |
+| 193 | `basic/discrete.rs:69-121,145-165` | `/Users/sunmeng/workspace/fc/fceux/src/boards/193.cpp` | 23-49,51-70 | MEGA-SOFT War in the Gulf：低区 4 个 register、固定尾部 PRG8、CHR4/CHR2/CHR2 译码 |
+| 193 | `basic/discrete.rs:69-121,145-165` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/193.c` | 26-50,54-73 | FCEUmm mapper 193 cross-check；同样记录 `$6000-$6003` 写窗口与 power sync |
 | 195 | `mmc3.rs:187-220,842-888` | `/Users/sunmeng/workspace/fc/fceux/src/boards/mmc3.cpp` | 1028-1045 | Mapper 195 基础 CHR banks 0..3 路由到 4KB CHR-RAM；FCEUX 还记录 `$5000` 4KB PRG-RAM |
 | 195 | `mmc3.rs:187-220,842-888` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/195.c` | 30-97 | 新 FCEUmm Mapper 195 CHR-RAM + PPU write intercept 保护逻辑；当前仅落地 Mesen/FCEUX 基础 CHR-RAM window |
 | 195 | `mmc3.rs:187-220,842-888` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Mmc3Variants/MMC3_ChrRam.h` | 5-38 | 通用 MMC3 CHR-RAM window 机制 |
@@ -282,6 +291,9 @@
 - `Mmc1::new_155()` 对应 FCEUX/FCEUmm `mmc1.cpp`/`mmc1.c:332-335,362-365` 与 Mesen2 `MMC1_155.h:7-12`；当前先保存 variant intent，等待普通 MMC1 PRG-RAM disable gating 落地后体现差异。
 - `Mapper156::write_register()` / `chr_index()` 对应 FCEUX/FCEUmm `156.cpp`/`156.c:49-68,36-47` 与 Nestopia `NstBoardOpenCorp.cpp:42-60,78-114`；当前 8KB WRAM 通过 Cartridge 默认 iNES PRG-RAM 路径提供。
 - `Subor166::selected_banks()` 对应 FCEUX/FCEUmm `subor.cpp`/`subor.c:31-58`、Mesen2 `Subor166.h:36-53` 与 Nestopia `NstBoardSubor.cpp:93-124`；mapper 166/167 只用 variant 切换 NROM-like bank order 和 fixed bank。
+- `Mapper185::chr_enabled()` / `chr_read()` 对应 FCEUX/FCEUmm `185.cpp`/`185.c:45-50`；当前用 mapper-owned read override 返回 `0xFF` 来表达 dummy CHR page。
+- `Mmc3OuterBank::Mapper189` 对应 FCEUX/FCEUmm `189.cpp`/`189.c:24-43`；低区写保存 `value | (value >> 4)`，PRG 走 32KB outer bank，CHR 和 IRQ 继续复用普通 MMC3。
+- `Mapper193::write_low_register()` / `chr_index()` / `prg_index()` 对应 FCEUX/FCEUmm `193.cpp`/`193.c:38-59`；低区四个寄存器直接控制 PRG8 与 CHR4/2/2。
 - `Mapper106::write_register()` / `cpu_clock()` 对应 Mesen2 `Mapper106.h:36-73`。
 - `Mapper116::write_expansion()` / `write_low_register()` 的 mode select 对应 FCEUX `116.cpp:165-181` 与 Mesen2 `Mapper116.h:282-291`。
 - `Mapper116::write_vrc2()` / VRC2 PRG/CHR/mirroring 对应 FCEUX `116.cpp:184-199` 与 Mesen2 `Mapper116.h:225-239`。
@@ -308,6 +320,7 @@
 - 同批替换 `fc-core/src/mapper/basic/latch/discrete.rs` 里 Mapper 36 / 72 / 79 / 92 / 122 的新增段、`fc-core/src/mapper/basic/latch/sachen.rs` 的新增段、`fc-core/src/mapper/basic/core.rs` 里 ColorDreams/Mapper144 的扩展段、`fc-core/src/mapper/basic/taito.rs` 里 Mapper 80 / 207 / 82 的新增段，以及 `fc-core/src/mapper/basic/multicart.rs` 里 Mapper 59 / 63 / 201 / 217 / 228 / 255 的新增段。
 - 同批替换 `fc-core/src/mapper/basic/latch/sunsoft.rs` 里 Mapper 68 的新增段，并同步检查 `MapperOps::nametable_chr_index` 与 `Cartridge::mapper_has_nametable_chr_mapping` 是否仍有其他使用者。
 - 同批替换 `fc-core/src/mapper/basic/core.rs` 里 Mapper 232 的新增段。
+- 同批替换 `fc-core/src/mapper/basic/discrete.rs` 里 Mapper 185 / 193 的新增段，以及 `fc-core/src/mapper/mmc3.rs` 里 Mapper189 的 `Mmc3OuterBank` 分支、构造、低区写、reset 和测试段。
 - 同批替换 `fc-core/src/mapper/basic/konami.rs` 的 VRC1 段、`fc-core/src/mapper/basic/jy.rs` 的 Mapper91 段、`fc-core/src/mapper/basic/sl12.rs` 的 Mapper116 段、`fc-core/src/mapper/basic/waixing.rs` 的 Mapper253 段、`fc-core/src/mapper/vrc4.rs` 的 VRC2/VRC4 段、`fc-core/src/mapper/rambo1.rs` 的 Mapper64 段，以及 `fc-core/src/mapper/mmc3.rs` 的 Mapper37/44/45/47/52/76/119 变体段。
 - 再处理 `fc-core/src/mapper.rs` 里 Mapper 43/60/75/76/83/91/106/183/212/222/235 的导出、枚举、构造和 dispatch 分支。
 - 若替换 Mapper91，请同步检查 `MapperOps::hblank_clock`、`Cartridge::mapper_clocks_hblank` 与 `Bus::clock_ppu_dot()` 的 HBlank hook 是否仍有使用者。

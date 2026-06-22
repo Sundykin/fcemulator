@@ -278,3 +278,6 @@
 - IRQ helper 第一刀应先抽 MMC3 A12：所有 MMC3 变体 4/37/44/45/47/49/52/74/76/114/115/118/119/121/192/194/195 共享同一个 A12 filter/reload/enable/pending 逻辑，适合迁移到 `Mmc3A12Irq`。VRC4、RAMBO-1、JY/HBlank、FME7 和若干 `basic/irq.rs` CPU counter 语义不同，应作为后续 helper 分层，不和 MMC3 A12 混抽。
 - A12 边沿滤波可以作为比 IRQ counter 更底层的共享件：MMC3 使用 9 PPU-dot低电平门限，RAMBO-1 使用 30，Mapper117 原逻辑 `>10` 等价于 helper 的 `>=11`。把 `A12EdgeFilter` 作为可序列化 flatten 字段，可先去掉重复 `a12_prev/a12_low_since`，同时不混合各板卡的 counter/reload/delay 语义。
 - CPU-cycle IRQ helper 的第一层适合覆盖简单 up-counter：mapper 43 计到 4096 后触发并停用，mapper 50 计到 0x1000 后触发并停用，mapper 106 从寄存器值递增到 0 溢出后触发并停用。`CpuCycleIrq` 目前只承载 enabled/counter/pending、low/high byte 写入、阈值触发和 wrap-to-zero 触发；mapper 18/65/67/73/VRC4/RAMBO 等 reload/prescaler/delay 语义仍应独立抽取。
+- Mapper 185 / CNROM copy-protection 可以用现有 mapper-owned CHR read/write override 表达：参考 FCEUX/FCEUmm 在 CHR disabled 时映射 dummy 8KB CHR page 且填充 `0xFF`，本项目等价地让 `chr_read()` 返回 `Some(0xFF)` 并消费写入。
+- Mapper 189 是非常薄的 MMC3 outer PRG latch 变体：低区 `$4120-$7FFF` 写 `value | (value >> 4)`，PRG 以 32KB outer bank 选择，CHR bank 和 A12 IRQ 继续复用普通 MMC3。这个形态验证了 MMC3 variant layer 能继续吸收小 clone board。
+- Mapper 193 / MEGA-SOFT War in the Gulf 是独立 discrete board：`$6000-$6003` 四个低区 register 分别控制 CHR4、CHR2、CHR2 和 `$8000` PRG8，`$A000/$C000/$E000` 固定到 `0x0D/0x0E/0x0F`。现有 low-register write hook 足够，不需要新架构。

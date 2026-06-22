@@ -128,6 +128,7 @@ Phase 17: Mapper compatibility gap closure
 - [x] Refactor MMC3 write helpers and add first-pass MMC3 protocol variants 49/114/115/121
 - [x] Continue low-risk latch batch 154/155/108 after current MMC3 variant verification
 - [x] Add low-risk mapper batch 156 / 166 / 167
+- [x] Add mechanical mapper batch 185 / 189 / 193
 - **Status:** in_progress
 
 ### Phase 18: Mapper board compatibility layer
