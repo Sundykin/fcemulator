@@ -902,3 +902,20 @@
   - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 101/101 mapper tests.
   - `cargo test -p fc-core`: PASS, 142/142 fc-core tests.
   - `cargo test`: PASS, workspace tests.
+
+### Mapper 156 / 166 / 167 Low-risk Board Batch
+- Implemented mapper 156 / OpenCorp Daou306 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/opencorp.rs`: 16KB PRG select, fixed final 16KB PRG, 8 independent 1KB CHR low/high registers, `$C014` mirroring register, and reset behavior.
+- Implemented mapper 166/167 / Subor in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/subor.rs`: shared four-register PRG formula, UNROM/inverted UNROM/NROM-like modes, mapper 167 alternate bank order/fixed bank, fixed CHR8, and FCEUmm-style mirroring bit.
+- Wired 156/166/167 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs` and updated mapper capability guard tables.
+- Updated `/Users/sunmeng/workspace/fc/docs/Mapper-适配差距清单.md` and `/Users/sunmeng/workspace/fc/docs/Mapper-适配引用记录.md`; supported mapper count is now 143 and remaining four-reference union gap is 350.
+- Verification so far:
+  - `cargo fmt`: PASS.
+  - `cargo test -p fc-core mapper::basic::opencorp::tests -- --nocapture`: PASS, 1/1.
+  - `cargo test -p fc-core mapper::basic::subor::tests -- --nocapture`: PASS, 2/2.
+  - `cargo fmt --check`: PASS.
+  - `git diff --check`: PASS.
+  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 104/104 mapper tests.
+  - `cargo test -p fc-core`: PASS, 145/145 fc-core tests.
+  - `cargo test`: PASS, workspace tests.
+- Error note:
+  - Tried to pass two test filters in one Cargo command; Cargo accepts one filter, so tests were split and rerun.

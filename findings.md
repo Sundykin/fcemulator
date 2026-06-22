@@ -271,3 +271,5 @@
 - Mapper 108 是 FDS 转换类低区 PRG-ROM 窗口板：`$6000-$7FFF` 映射一个可切换 8KB PRG-ROM bank，`$8000-$FFFF` 固定到最后 32KB，`$8000-$8FFF` 和 `$F000-$FFFF` 写入选择低区 bank。
 - Mapper 154 可复用现有 Namco118/Namco108 bank 译码，只在 `$8000` command write 的 bit6 上加入单屏 mirroring 选择。这个模式验证了“在既有 board helper 外面加很薄的 board quirk”是可行的。
 - Mapper 155 当前按 MMC1 变体接入并标记忽略 WRAM disable。因为本项目 MMC1 还没有建模 PRG-RAM disable gating，所以现在行为等同 mapper 1；后续若补 PRG-RAM 使能/禁用路径，155 的标记会阻止误套普通 MMC1 的 disable bit。
+- Mapper 156 / OpenCorp Daou306 不需要新架构：现有 high-register write、CHR1 bank helper、PRG-RAM 默认低区路径和 reset hook 足够覆盖参考实现的第一版。
+- Mapper 166/167 / Subor 也可用现有 `MapperOps` 直接落地。两者共用四个 register 与 outer/inner PRG XOR 公式，只在 NROM-like 模式 bank order 和 fixed high bank 上由 mapper ID 区分；FCEUmm 的 `regs[0].bit0` mirroring 被纳入第一版。

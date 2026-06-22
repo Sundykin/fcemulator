@@ -228,14 +228,14 @@ pub use basic::{
     ActionEnterprises, AddrLatch16k, AddrLatchVariant, Axrom, Bandai74161, Bf9096, Bnrom,
     Caltron41, Cnrom, Codemasters, ColorDreams, ColorDreams46, Cprom, Gxrom, IremG101, IremLrog017,
     IremTamS1, JalecoJf11_14, JalecoJf13, JalecoJf16, JalecoJfxx, Mapper103, Mapper106, Mapper107,
-    Mapper108, Mapper116, Mapper117, Mapper120, Mapper122, Mapper15, Mapper151, Mapper170,
-    Mapper18, Mapper183, Mapper203, Mapper212, Mapper222, Mapper226, Mapper230, Mapper233,
-    Mapper234, Mapper235, Mapper240, Mapper241, Mapper244, Mapper246, Mapper253, Mapper36,
-    Mapper40, Mapper42, Mapper43, Mapper50, Mapper57, Mapper60, Mapper63, Mapper65, Mapper67,
-    Mapper72, Mapper73, Mapper79, Mapper83, Mapper91, Mapper92, Namco108Mapper154,
+    Mapper108, Mapper116, Mapper117, Mapper120, Mapper122, Mapper15, Mapper151, Mapper156,
+    Mapper170, Mapper18, Mapper183, Mapper203, Mapper212, Mapper222, Mapper226, Mapper230,
+    Mapper233, Mapper234, Mapper235, Mapper240, Mapper241, Mapper244, Mapper246, Mapper253,
+    Mapper36, Mapper40, Mapper42, Mapper43, Mapper50, Mapper57, Mapper60, Mapper63, Mapper65,
+    Mapper67, Mapper72, Mapper73, Mapper79, Mapper83, Mapper91, Mapper92, Namco108Mapper154,
     Namco108Mapper206, Namco108Mapper95, Namco118, Nina01, Nina03_06, Nrom, Ntdec112, Sachen133,
-    Sachen149, SachenSa0161m, Sunsoft184, Sunsoft4, Sunsoft89, TaitoTc0190, TaitoX1005, TaitoX1017,
-    UnlPci556, Unrom, UnromVariant, UnromVariantMapper, Vrc1,
+    Sachen149, SachenSa0161m, Subor166, SuborVariant, Sunsoft184, Sunsoft4, Sunsoft89, TaitoTc0190,
+    TaitoX1005, TaitoX1017, UnlPci556, Unrom, UnromVariant, UnromVariantMapper, Vrc1,
 };
 pub use expansion_mappers::{Fme7, Namco163, Vrc6, Vrc6Variant, Vrc7};
 pub use mmc1::Mmc1;
@@ -302,6 +302,8 @@ pub enum Mapper {
     Sachen133(Sachen133),
     SachenSa0161m(SachenSa0161m),
     Sachen149(Sachen149),
+    Mapper156(Mapper156),
+    Subor166(Subor166),
     Mapper170(Mapper170),
     Mapper183(Mapper183),
     Mapper212(Mapper212),
@@ -471,6 +473,9 @@ impl Mapper {
             152 => Mapper::Bandai74161(Bandai74161::new(prg_16k, true)),
             154 => Mapper::Namco108Mapper154(Namco108Mapper154::new(prg_16k)),
             155 => Mapper::Mmc1(Mmc1::new_155(prg_16k, chr_8k)),
+            156 => Mapper::Mapper156(Mapper156::new(prg_16k)),
+            166 => Mapper::Subor166(Subor166::new(SuborVariant::Mapper166)),
+            167 => Mapper::Subor166(Subor166::new(SuborVariant::Mapper167)),
             170 => Mapper::Mapper170(Mapper170::new(mirroring)),
             174 => Mapper::AddrLatch16k(AddrLatch16k::new(AddrLatchVariant::Mapper174)),
             180 => Mapper::UnromVariant(UnromVariantMapper::new(
@@ -590,6 +595,8 @@ macro_rules! dispatch {
             Mapper::Sachen133($m) => $body,
             Mapper::SachenSa0161m($m) => $body,
             Mapper::Sachen149($m) => $body,
+            Mapper::Mapper156($m) => $body,
+            Mapper::Subor166($m) => $body,
             Mapper::Mapper170($m) => $body,
             Mapper::Mapper183($m) => $body,
             Mapper::Mapper212($m) => $body,
@@ -858,6 +865,9 @@ mod tests {
             (146, false),  // Sachen SA016-1M
             (148, false),  // Sachen SA0037
             (149, false),  // Sachen SA0036
+            (156, false),  // Mapper 156
+            (166, false),  // Subor 166
+            (167, false),  // Subor 167
             (112, false),  // NTDEC ASDER
             (116, true),   // Mapper 116 can switch into MMC3 A12 IRQ mode
             (151, false),  // Mapper 151
@@ -1000,6 +1010,9 @@ mod tests {
             (146, false),  // Sachen SA016-1M
             (148, false),  // Sachen SA0037
             (149, false),  // Sachen SA0036
+            (156, false),  // Mapper 156
+            (166, false),  // Subor 166
+            (167, false),  // Subor 167
             (112, false),  // NTDEC ASDER
             (116, false),  // Mapper 116 uses PPU A12 edges only in MMC3 mode
             (151, false),  // Mapper 151
@@ -1148,11 +1161,14 @@ mod tests {
             (146, false),
             (148, false),
             (149, false),
+            (156, false),
             (140, false),
             (151, false),
             (152, false),
             (154, false),
             (155, false),
+            (166, false),
+            (167, false),
             (170, false),
             (174, false),
             (180, false),

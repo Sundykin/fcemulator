@@ -41,6 +41,12 @@
 - `fc-core/src/mapper/basic/special.rs:113-165`
   - 新增 Mapper 108 / FDS conversion。
   - 覆盖 `$6000-$7FFF` switchable PRG-ROM window、固定最后 32KB PRG-ROM、固定 CHR8 和 `$8000-$8FFF`/`$F000-$FFFF` 写窗口。
+- `fc-core/src/mapper/basic/opencorp.rs:1-121`
+  - 新增 Mapper 156 / OpenCorp Daou306。
+  - 覆盖 16KB PRG bank、固定最后 16KB PRG、8 个 1KB CHR low/high register、`$C014` mirroring register 与 reset hook。
+- `fc-core/src/mapper/basic/subor.rs:1-124`
+  - 新增 Mapper 166 / 167 Subor。
+  - 覆盖四个高区 register、outer/inner PRG bank XOR、UNROM/inverted UNROM/NROM-like 三种 PRG 模式、mapper 167 bank order 变体，以及 FCEUmm 风格 mirroring bit。
 - `fc-core/src/mapper/mmc1.rs:10-43`
   - 新增 Mapper 155 / MMC1 WRAM-always-enabled 变体入口。
   - 当前本项目 MMC1 尚未实现 WRAM disable gating，因此先记录 variant 标记；后续补 PRG-RAM enable/disable 时可保留 mapper 155 的 always-enabled 语义。
@@ -189,6 +195,17 @@
 | 155 | `mmc1.rs:10-43` | `/Users/sunmeng/workspace/fc/fceux/src/boards/mmc1.cpp` | 40-48,332-335 | Mapper 155 与 MMC1 相同，但 WRAM disable bit 被忽略，WRAM 始终可用 |
 | 155 | `mmc1.rs:10-43` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/mmc1.c` | 55-67,362-365 | FCEUmm Mapper 155 cross-check；`is155` 绕过 WRAM disable 读写门控 |
 | 155 | `mmc1.rs:10-43` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Nintendo/MMC1_155.h` | 4-13 | Mapper 155 在 `UpdateState()` 中强制 `_wramDisable = false` |
+| 156 | `opencorp.rs:1-121` | `/Users/sunmeng/workspace/fc/fceux/src/boards/156.cpp` | 36-89,102-113 | OpenCorp/Daou306 PRG16、固定末尾 PRG16、8 个 CHR1 low/high register、mirroring register、WRAM 低区 |
+| 156 | `opencorp.rs:1-121` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/156.c` | 42-95,108-119 | FCEUmm Mapper 156 cross-check；同样记录 DIS23C01 DAOU ROM controller 行为 |
+| 156 | `opencorp.rs:1-121` | `/Users/sunmeng/workspace/fc/nestopia/source/core/board/NstBoardOpenCorp.cpp` | 42-75,78-114 | Nestopia Daou306 CHR1 register layout、mirroring fallback 与 `$C010` PRG swap |
+| 166 | `subor.rs:1-124` | `/Users/sunmeng/workspace/fc/fceux/src/boards/subor.cpp` | 31-69,76-87 | Subor mapper 166 PRG bank formula、mode bits 与 reset defaults |
+| 166 | `subor.rs:1-124` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/subor.c` | 31-70,77-88 | FCEUmm Subor cross-check，并采用其 `regs[0].bit0` mirroring 行为 |
+| 166 | `subor.rs:1-124` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Unlicensed/Subor166.h` | 27-54 | Mesen2 Subor166 outer/inner PRG bank XOR、mode select 与 mapper 167 alternate mode |
+| 166 | `subor.rs:1-124` | `/Users/sunmeng/workspace/fc/nestopia/source/core/board/NstBoardSubor.cpp` | 83-124 | Nestopia Type1/Type0 mode formula cross-check；`NstBoard.hpp:507-508` 记录 166/167 type 映射 |
+| 167 | `subor.rs:1-124` | `/Users/sunmeng/workspace/fc/fceux/src/boards/subor.cpp` | 31-69,83-87 | Subor mapper 167 NROM-like bank order 和 fixed bank 差异 |
+| 167 | `subor.rs:1-124` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/subor.c` | 31-70,84-88 | FCEUmm Subor mapper 167 cross-check |
+| 167 | `subor.rs:1-124` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Unlicensed/Subor166.h` | 38-53 | mapper ID 167 的 `altMode` PRG order/fixed bank 行为 |
+| 167 | `subor.rs:1-124` | `/Users/sunmeng/workspace/fc/nestopia/source/core/board/NstBoardSubor.cpp` | 83-124 | Nestopia Subor Type0/Type1 PRG bank mode cross-check |
 | 192 | `mmc3.rs:187-220,842-888` | `/Users/sunmeng/workspace/fc/fceux/src/boards/mmc3.cpp` | 990-1008 | Mapper 192 CHR banks 8..B 路由到 4KB CHR-RAM |
 | 192 | `mmc3.rs:187-220,842-888` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/mmc3.c` | 1026-1045 | FCEUmm Mapper 192 cross-check |
 | 192 | `mmc3.rs:187-220,842-888` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Mmc3Variants/MMC3_ChrRam.h` | 5-38 | 通用 MMC3 CHR-RAM window 机制 |
@@ -263,6 +280,8 @@
 - `Mapper108::low_prg_index()` / `write_register()` 对应 FCEUX `108.cpp:31-48` 与 FCEUmm `108.c:37-53`；高区固定最后 32KB，低区 `$6000-$7FFF` 按写入值映射 PRG-ROM。
 - `Namco108Mapper154::write_register()` 对应 FCEUX/FCEUmm `88.cpp`/`88.c:47-55` 与 Mesen2 `Namco108_154.h:9-12`；banking 复用 Namco118，command write bit6 只改变单屏 mirroring。
 - `Mmc1::new_155()` 对应 FCEUX/FCEUmm `mmc1.cpp`/`mmc1.c:332-335,362-365` 与 Mesen2 `MMC1_155.h:7-12`；当前先保存 variant intent，等待普通 MMC1 PRG-RAM disable gating 落地后体现差异。
+- `Mapper156::write_register()` / `chr_index()` 对应 FCEUX/FCEUmm `156.cpp`/`156.c:49-68,36-47` 与 Nestopia `NstBoardOpenCorp.cpp:42-60,78-114`；当前 8KB WRAM 通过 Cartridge 默认 iNES PRG-RAM 路径提供。
+- `Subor166::selected_banks()` 对应 FCEUX/FCEUmm `subor.cpp`/`subor.c:31-58`、Mesen2 `Subor166.h:36-53` 与 Nestopia `NstBoardSubor.cpp:93-124`；mapper 166/167 只用 variant 切换 NROM-like bank order 和 fixed bank。
 - `Mapper106::write_register()` / `cpu_clock()` 对应 Mesen2 `Mapper106.h:36-73`。
 - `Mapper116::write_expansion()` / `write_low_register()` 的 mode select 对应 FCEUX `116.cpp:165-181` 与 Mesen2 `Mapper116.h:282-291`。
 - `Mapper116::write_vrc2()` / VRC2 PRG/CHR/mirroring 对应 FCEUX `116.cpp:184-199` 与 Mesen2 `Mapper116.h:225-239`。
