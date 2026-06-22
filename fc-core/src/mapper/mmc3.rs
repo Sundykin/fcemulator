@@ -1,5 +1,6 @@
 use super::MapperOps;
 use crate::mapper::bank::ChrRamWindow;
+use crate::mapper::irq::Mmc3A12Irq;
 use crate::types::Mirroring;
 use serde::{Deserialize, Serialize};
 
@@ -52,17 +53,8 @@ pub struct Mmc3 {
     #[serde(default = "Mmc3::default_nametable_layout")]
     nametable_layout: Mmc3NametableLayout,
     mirroring: Mirroring,
-    // scanline IRQ
-    irq_latch: u8,
-    irq_counter: u8,
-    irq_reload: bool,
-    irq_enabled: bool,
-    irq_pending: bool,
-    #[serde(default)]
-    irq_suppress_zero_reload: bool,
-    // A12 edge detection
-    a12_prev: bool,
-    a12_low_since: u64,
+    #[serde(flatten)]
+    irq: Mmc3A12Irq,
     // Some TW MMC3+VRAM boards route a small CHR-RAM window through selected
     // CHR bank numbers instead of CHR-ROM (used for dynamic text/map tiles).
     #[serde(default)]
@@ -103,14 +95,7 @@ impl Mmc3 {
             outer_bank: Mmc3OuterBank::None,
             nametable_layout: Mmc3NametableLayout::Header,
             mirroring,
-            irq_latch: 0,
-            irq_counter: 0,
-            irq_reload: false,
-            irq_enabled: false,
-            irq_pending: false,
-            irq_suppress_zero_reload: false,
-            a12_prev: false,
-            a12_low_since: 0,
+            irq: Mmc3A12Irq::new(),
             chr_ram_bank_base: None,
             chr_ram_window: None,
             chr_ram: Vec::new(),
@@ -537,17 +522,16 @@ impl Mmc3 {
             }
             0xC000..=0xDFFF => {
                 if even {
-                    self.irq_latch = value;
+                    self.irq.write_latch(value);
                 } else {
-                    self.irq_reload = true;
+                    self.irq.request_reload();
                 }
             }
             _ => {
                 if even {
-                    self.irq_enabled = false;
-                    self.irq_pending = false;
+                    self.irq.disable();
                 } else {
-                    self.irq_enabled = true;
+                    self.irq.enable();
                 }
             }
         }
@@ -578,13 +562,10 @@ impl Mmc3 {
                     self.write_standard_register(0x8001, value);
                 }
             }
-            0xA001 => self.irq_latch = value,
-            0xC001 => self.irq_reload = true,
-            0xE000 => {
-                self.irq_enabled = false;
-                self.irq_pending = false;
-            }
-            0xE001 => self.irq_enabled = true,
+            0xA001 => self.irq.write_latch(value),
+            0xC001 => self.irq.request_reload(),
+            0xE000 => self.irq.disable(),
+            0xE001 => self.irq.enable(),
             _ => {}
         }
     }
@@ -657,30 +638,6 @@ impl Mmc3 {
             regs[1] = value;
         } else {
             regs[0] = value;
-        }
-    }
-
-    /// Clock the scanline IRQ counter (on a filtered A12 rising edge).
-    fn clock_irq_counter(&mut self) {
-        let reset_reload = self.irq_reload;
-        let natural_zero_reload = self.irq_counter == 0 && !reset_reload;
-        let decrement_to_zero_with_zero_latch =
-            self.irq_counter == 1 && self.irq_latch == 0 && !reset_reload;
-
-        if self.irq_counter == 0 || reset_reload {
-            self.irq_counter = self.irq_latch;
-            self.irq_reload = false;
-        } else {
-            self.irq_counter -= 1;
-        }
-
-        // MMC6-family behavior: if the counter naturally reached 0 while the
-        // latch was already 0, the following reload-to-0 edge does not re-assert IRQ.
-        let zero_reload_suppressed = natural_zero_reload && self.irq_suppress_zero_reload;
-        self.irq_suppress_zero_reload = decrement_to_zero_with_zero_latch;
-
-        if self.irq_counter == 0 && self.irq_enabled && !zero_reload_suppressed {
-            self.irq_pending = true;
         }
     }
 }
@@ -911,26 +868,15 @@ impl MapperOps for Mmc3 {
         true // A12 rising edge clocks the scanline IRQ counter
     }
     fn notify_a12(&mut self, addr: u16, cycle: u64) {
-        let a12 = addr & 0x1000 != 0;
-        if a12 && !self.a12_prev {
-            // Rising edge: only counts if A12 was low long enough. The MMC3
-            // debounce is ~3 CPU cycles; `cycle` ticks 3× per CPU cycle, so the
-            // threshold is ~9.
-            if cycle.wrapping_sub(self.a12_low_since) >= 9 {
-                self.clock_irq_counter();
-            }
-        } else if !a12 && self.a12_prev {
-            self.a12_low_since = cycle;
-        }
-        self.a12_prev = a12;
+        self.irq.notify_a12(addr, cycle);
     }
 
     fn irq(&self) -> bool {
-        self.irq_pending
+        self.irq.irq()
     }
 
     fn clear_irq(&mut self) {
-        self.irq_pending = false;
+        self.irq.clear();
     }
 
     fn reset(&mut self, _soft: bool) {

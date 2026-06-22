@@ -216,6 +216,7 @@ mod bank;
 mod basic;
 mod expansion_audio;
 mod expansion_mappers;
+mod irq;
 mod mmc1;
 mod mmc2;
 mod mmc3;

@@ -869,6 +869,20 @@
   - `cargo test -p fc-core`: PASS, 146/146.
   - `cargo test`: PASS, workspace tests.
 
+### Phase 18 MMC3 A12 IRQ Helper Pass
+- Added `/Users/sunmeng/workspace/fc/fc-core/src/mapper/irq.rs` with `Mmc3A12Irq`.
+- Migrated `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs` from local IRQ/A12 fields to `#[serde(flatten)] irq: Mmc3A12Irq`, preserving old save-state field names while making the IRQ unit reusable.
+- Left VRC4, RAMBO-1, Waixing, FME7, and `basic/irq.rs` CPU counter IRQs untouched; their prescaler/delay/overflow semantics differ and need a separate helper pass.
+- Initial helper unit tests failed because the assertions skipped the MMC3 reload edge timing. Corrected them so the first valid A12 edge reloads, the following valid edge clocks toward IRQ, and the zero-reload suppression case first decrements from 1 to 0.
+- Verification so far:
+  - `cargo fmt --check`: PASS.
+  - `cargo test -p fc-core mapper::irq -- --nocapture`: PASS, 2/2.
+  - `cargo test -p fc-core mapper::mmc3::tests -- --nocapture`: PASS, 20/20.
+  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 107/107.
+  - `git diff --check`: PASS.
+  - `cargo test -p fc-core`: PASS, 148/148.
+  - `cargo test`: PASS, workspace tests.
+
 ### Mapper 49 / 114 / 115 / 121 MMC3 Protocol Variant Batch
 - Refactored MMC3 writes in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs` into `write_bank_select()`, `write_bank_data()`, and `write_standard_register()`.
 - Added mapper 49 / 114 / 115 / 121 as MMC3 variants:

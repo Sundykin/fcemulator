@@ -183,6 +183,7 @@ Phase 17: Mapper compatibility gap closure
 | Cargo rejected multiple test filters | Tried to run three mapper capability tests as separate positional filters in one command | Reran `cargo test -p fc-core mapper::tests -- --nocapture`, which covers all mapper facade/capability tests |
 | Duplicate `tests` module in `basic/core.rs` | Added ColorDreams tests next to an existing BF9096 test module | Moved ColorDreams tests into the existing module and reran targeted mapper tests |
 | Cargo rejected multiple test filters | Tried to run `mapper::bank`, `mapper::basic::core::tests`, and `mapper::basic::latch::sachen::tests` in one command | Split into three `cargo test` invocations; all passed |
+| New `Mmc3A12Irq` unit tests failed | First assertions expected IRQ on the reload edge instead of the next valid A12 clock, and zero-reload suppression setup never passed through counter 1 | Corrected tests to follow MMC3 reload/decrement edge order; migrated MMC3 tests remained green |
 
 ## Notes
 - Preserve the invariant: CPU memory accesses tick the bus before the access; each CPU cycle advances PPU by 3 dots and APU by 1 cycle.

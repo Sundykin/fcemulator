@@ -142,3 +142,4 @@
 - 2026-06-22：新增 `fc-core/src/mapper/bank.rs`，先提供无状态 PRG/CHR page index helper，并迁移 ColorDreams/GxROM 与 Sachen 133/146/148/149 作为第一批验证。
 - 2026-06-22：扩展 `bank.rs` 的 `ChrRamWindow` / `ChrBankSource`，把 MMC3 派生 mapper 74/119/192/194/195 的 CHR-ROM/CHR-RAM 混合窗口迁移到通用 helper。CPU handler 层仍留在后续阶段。
 - 2026-06-22：在 `Cartridge` 内落地 CPU 地址 helper 层，把 expansion、low、high 三段 read/peek/write 的 open-bus、PRG-RAM、低地址 PRG-ROM、mapper register read、patch 和 bus-conflict 优先级集中起来。当前保持私有 helper，不扩大 `MapperOps`，作为后续低地址映射、读副作用和 reset hook 类 mapper 的接入点。
+- 2026-06-22：新增 `fc-core/src/mapper/irq.rs`，先抽出 `Mmc3A12Irq`，并用 `serde(flatten)` 迁移 MMC3 全家共享的 A12 filter、reload、enable、pending 和 MMC6 zero-reload 抑制逻辑。VRC/RAMBO/CPU counter/HBlank IRQ 保持后续独立收敛。

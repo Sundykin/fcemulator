@@ -275,3 +275,4 @@
 - Mapper 156 / OpenCorp Daou306 不需要新架构：现有 high-register write、CHR1 bank helper、PRG-RAM 默认低区路径和 reset hook 足够覆盖参考实现的第一版。
 - Mapper 166/167 / Subor 也可用现有 `MapperOps` 直接落地。两者共用四个 register 与 outer/inner PRG XOR 公式，只在 NROM-like 模式 bank order 和 fixed high bank 上由 mapper ID 区分；FCEUmm 的 `regs[0].bit0` mirroring 被纳入第一版。
 - `fc-core/src/mapper/bank.rs` 现在包含 `ChrRamWindow` / `ChrBankSource`，把 CHR-ROM/CHR-RAM 混合窗口从 MMC3 局部逻辑抽成通用基础设施；mapper 74/119/192/194/195 已迁移作为验证，后续 MMC3-like CHR-RAM window 变体可直接声明 bank 范围和 RAM 尺寸。
+- IRQ helper 第一刀应先抽 MMC3 A12：所有 MMC3 变体 4/37/44/45/47/49/52/74/76/114/115/118/119/121/192/194/195 共享同一个 A12 filter/reload/enable/pending 逻辑，适合迁移到 `Mmc3A12Irq`。VRC4、RAMBO-1、JY/HBlank、FME7 和若干 `basic/irq.rs` CPU counter 语义不同，应作为后续 helper 分层，不和 MMC3 A12 混抽。
