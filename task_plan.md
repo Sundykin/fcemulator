@@ -116,7 +116,8 @@ Phase 17: Mapper compatibility gap closure
 - [x] Team-mode parallel mapper pass: Worker A VRC/Konami, Worker B MMC3-derived, Worker C mapper 253/unlicensed, PM integrates and validates
 - [x] Add mapper 116 / Someri Team SL12 composite VRC2/MMC3/MMC1 board
 - [x] Add mapper 45 / BMC-Hero as an MMC3 outer-bank serial-register variant
-- [ ] Continue with P0/P1 missing mapper families: 64, then VRC/MMC3/Taito variants that need A12/PPU-pattern mirroring hooks
+- [x] Add mapper 64 / Tengen RAMBO-1 with CPU/PPU IRQ modes
+- [ ] Continue with P0/P1 missing mapper families: 119/95/118 next, then architecture work for 68 and MMC3 protocol variants
 - **Status:** in_progress
 
 ## Key Questions
@@ -143,6 +144,8 @@ Phase 17: Mapper compatibility gap closure
 | Fold MMC3-derived mapper 76 into `Mmc3` variant layout instead of a standalone clone | Reusing MMC3 PRG/IRQ behavior keeps future MMC3 variants from copying timing-sensitive logic |
 | Run mapper team mode through disjoint ownership and PM integration | VRC/Konami, MMC3-derived, and Waixing/253 touched separable modules; PM-side docs/tests keep parallel changes from landing as unreviewed WIP |
 | Model Mapper 45 as an MMC3 outer-bank variant | References agree its PRG/CHR wrapping and low-register serial latch sit above normal MMC3 IRQ/register behavior, so reusing the existing MMC3 core keeps A12 timing centralized |
+| Implement Mapper 64 as an independent RAMBO-1 ASIC | It has MMC3-like PRG/CHR banking, but its register set and selectable CPU/A12 IRQ source differ enough that a standalone module is cleaner and can later host mapper 158 |
+| Defer Mapper 68 until nametable-to-CHR architecture exists | Sunsoft-4 maps nametable fetches to CHR backing memory, and the current mapper nametable hook only receives CIRAM |
 
 ## Errors Encountered
 | Error | Attempt | Resolution |

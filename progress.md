@@ -203,6 +203,24 @@
   - `cargo test -p fc-core`: PASS, 109/109 fc-core tests.
   - `cargo test`: PASS, workspace tests.
 
+### Mapper 64 RAMBO-1 Pass
+- Implemented mapper 64 / Tengen RAMBO-1 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/rambo1.rs`.
+- Covered PRG bit-6 swap mode, CHR 2KB/1KB mode with extra regs 8/9, CHR A12 inversion, `$A000` mirroring, CPU-cycle IRQ mode, PPU A12 IRQ mode, IRQ assertion delay, and the CPU-mode force-clock quirk when switching IRQ source.
+- Wired mapper 64 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs` and updated capability guard tables. The mapper advertises both `watches_ppu_bus` and `clocks_cpu` because `$C001.0` can switch source at runtime.
+- Updated mapper gap checklist and reference records with FCEUX, FCEUmm, Mesen2, and Nestopia source locations. Supported mapper count is now 116; remaining union gap is 377.
+- Research notes from parallel agents:
+  - Mapper 68 / Sunsoft-4 needs nametable-to-CHR backing access in `Cartridge` before implementation.
+  - Next mechanical candidates are mapper 119, then 95/118; 114/115/121 need stronger MMC3 variant internals.
+- Verification so far:
+  - `cargo fmt --check`: PASS.
+  - `cargo test -p fc-core mapper::rambo1::tests -- --nocapture`: PASS, 4/4.
+  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 73/73 mapper tests.
+  - `git diff --check`: PASS.
+  - `cargo test -p fc-core`: PASS, 113/113 fc-core tests.
+  - `cargo test`: PASS, workspace tests.
+- Error note:
+  - Attempted to pass multiple test filters to one `cargo test` command; cargo accepts one filter, so reran mapper-wide tests instead.
+
 ### Continued Phase: PPU open-bus decay
 - Started: 2026-06-19 14:51:32 CST
 - Reproduced `ppu_open_bus/ppu_open_bus.nes` failure: subtest #3, "Decay value should become zero by one second".

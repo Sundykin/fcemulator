@@ -32,6 +32,9 @@
 - `fc-core/src/mapper/mmc3.rs:9-180,248-294,322-545,604-686,728-763`
   - 新增 Mapper 37 / 44 / 45 / 47 / 52 / 76 的 MMC3 变体布局。
   - 复用 MMC3 PRG/IRQ 核心，扩展 outer PRG/CHR bank latch、Mapper 45 serial outer registers 和 Mapper 76 自定义 2KB CHR cwrap。
+- `fc-core/src/mapper/rambo1.rs:1-309`
+  - 新增 Mapper 64 / Tengen RAMBO-1。
+  - 覆盖 8KB PRG bank mode、2KB/1KB CHR mode、CHR A12 inversion、mapper-controlled mirroring、CPU/PPU A12 双模式 IRQ、IRQ 延迟与 CPU-mode force-clock。
 - `fc-core/src/mapper/vrc4.rs:1-329`
   - 扩展 Mapper 21 / 22 / 23 / 25 的 VRC2/VRC4 共用实现。
   - 覆盖 mapper/submapper 地址线变体、VRC2a CHR 右移、VRC2 无 IRQ、VRC4 CPU-clock IRQ。
@@ -79,6 +82,12 @@
 | 60 | `unlicensed.rs:123-163` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Unlicensed/Mapper60.h` | 11-29 | reset counter 选择 PRG/CHR bank |
 | 60 | `unlicensed.rs:123-163` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/60.c` | 23-35 | reset hook 行为 cross-check |
 | 63 | `multicart.rs` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/addrlatch.c` | 203-235 | NTDEC multicart PRG mode、submapper mask、越界 PRG open-bus、mirroring |
+| 64 | `rambo1.rs:1-309` | `/Users/sunmeng/workspace/fc/fceux/src/boards/tengen.cpp` | 23-139 | Tengen RAMBO-1 state、bank sync、register decode、旧 IRQ hook 和 init cross-check |
+| 64 | `rambo1.rs:1-309` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/tengen.c` | 21-195 | Mapper 64/158 共用 RAMBO-1、现代 trigger-on-reach-zero IRQ 注释、PRG/CHR/mirroring/register 行为 |
+| 64 | `rambo1.rs:1-309` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Tengen/Rambo1.h` | 11-177 | RAMBO-1 PRG/CHR mode、CPU/PPU IRQ source、IRQ delay、force-clock quirk、A12 watcher |
+| 64 | `rambo1.rs:1-309` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/A12Watcher.h` | 26-54 | PPU A12 low-time filter semantics |
+| 64 | `rambo1.rs:1-309` | `/Users/sunmeng/workspace/fc/nestopia/source/core/board/NstBoardTengenRambo1.cpp` | 75-96, 190-225, 233-344 | RAMBO-1 register map、IRQ unit、PRG/CHR update、write handlers |
+| 64 | `rambo1.rs:1-309` | `/Users/sunmeng/workspace/fc/nestopia/source/core/board/NstBoardTengenRambo1.hpp` | 82-106 | CPU M2 divisor、A12 filter、IRQ delay/source constants |
 | 83 | `unlicensed.rs:165-337` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Unlicensed/Mapper83.h` | 18-23, 57-68, 71-108, 111-156 | YOKO/30-in-1 PRG/CHR 模式、低寄存器、CPU IRQ |
 | 83 | `unlicensed.rs:165-337` | `/Users/sunmeng/workspace/fc/fceux/src/boards/yoko.cpp` | 73-99, 118-139, 164-176, 197-204 | FCEUX 旧 mapper 83 译码和 IRQ cross-check |
 | 83 | `unlicensed.rs:165-337` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/83_264.c` | 41-117, 130-157, 159-189, 219-231 | 新 submapper 设计参考；当前仅落地基础 mapper 83 行为 |
@@ -131,6 +140,7 @@
 - `Mmc3::new_76()` / `mapper76_chr_write()` 对应 FCEUX `mmc3.cpp:696-706` 与 FCEUmm `mmc3.c:772-781`。
 - `Mapper79::write_expansion()` 对应 FCEUmm `79.c:37-42`；高区 `write_register()` 兼容 FCEUX `79.cpp:37-49` 的 register write 路径。
 - `AddrLatchVariant::Mapper59` 对应 FCEUX `addrlatch.cpp:164-179` 的 M59Sync/M59Read，包括 bit8 置位时高区读返回 0。
+- `Rambo1::write_register()` / `prg_index()` / `chr_index()` 对应 Mesen2 `Rambo1.h:96-167` 与 Nestopia `NstBoardTengenRambo1.cpp:233-344`；CPU-mode IRQ 每 4 CPU cycle、PPU-mode IRQ 走 A12 filter，分别对应 Mesen2 `Rambo1.h:55-75,170-177` 和 Nestopia `NstBoardTengenRambo1.hpp:82-106`。
 - `Mapper60::reset()` 对应 Mesen2 `Mapper60.h:22-30` 与 FCEUmm `60.c:32-35`。
 - `Mapper63::set_from_addr()` / open-bus high read 对应 FCEUmm `addrlatch.c:203-235`。
 - `Mapper83` 的 PRG/CHR 译码对应 Mesen2 `Mapper83.h:71-99`，低寄存器读写对应 `Mapper83.h:102-114`，IRQ 对应 `Mapper83.h:57-68,146-154`。
@@ -159,7 +169,7 @@
 
 - 先替换 `fc-core/src/mapper/basic/unlicensed.rs:1-884`。
 - 同批替换 `fc-core/src/mapper/basic/latch/discrete.rs` 里 Mapper 36 / 72 / 79 / 92 的新增段、`fc-core/src/mapper/basic/taito.rs` 里 Mapper 80 / 82 的新增段，以及 `fc-core/src/mapper/basic/multicart.rs` 里 Mapper 59 / 63 / 201 / 217 的新增段。
-- 同批替换 `fc-core/src/mapper/basic/konami.rs` 的 VRC1 段、`fc-core/src/mapper/basic/jy.rs` 的 Mapper91 段、`fc-core/src/mapper/basic/sl12.rs` 的 Mapper116 段、`fc-core/src/mapper/basic/waixing.rs` 的 Mapper253 段、`fc-core/src/mapper/vrc4.rs` 的 VRC2/VRC4 段，以及 `fc-core/src/mapper/mmc3.rs` 的 Mapper37/44/45/47/52/76 变体段。
+- 同批替换 `fc-core/src/mapper/basic/konami.rs` 的 VRC1 段、`fc-core/src/mapper/basic/jy.rs` 的 Mapper91 段、`fc-core/src/mapper/basic/sl12.rs` 的 Mapper116 段、`fc-core/src/mapper/basic/waixing.rs` 的 Mapper253 段、`fc-core/src/mapper/vrc4.rs` 的 VRC2/VRC4 段、`fc-core/src/mapper/rambo1.rs` 的 Mapper64 段，以及 `fc-core/src/mapper/mmc3.rs` 的 Mapper37/44/45/47/52/76 变体段。
 - 再处理 `fc-core/src/mapper.rs` 里 Mapper 43/60/75/76/83/91/106/183/212/222/235 的导出、枚举、构造和 dispatch 分支。
 - 若替换 Mapper91，请同步检查 `MapperOps::hblank_clock`、`Cartridge::mapper_clocks_hblank` 与 `Bus::clock_ppu_dot()` 的 HBlank hook 是否仍有使用者。
 - 最后检查 `fc-core/src/cartridge.rs` 的 open-bus aware 读钩子是否仍被其他 mapper 使用；如果无使用者，可收窄接口。

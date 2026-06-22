@@ -199,6 +199,7 @@ mod mmc2;
 mod mmc3;
 mod mmc4;
 mod mmc5;
+mod rambo1;
 mod vrc4;
 
 pub use basic::{
@@ -218,6 +219,7 @@ pub use mmc2::Mmc2;
 pub use mmc3::Mmc3;
 pub use mmc4::Mmc4;
 pub use mmc5::Mmc5;
+pub use rambo1::Rambo1;
 pub use vrc4::Vrc4;
 
 /// Enum dispatch over all supported mappers (keeps the cartridge serializable).
@@ -252,6 +254,7 @@ pub enum Mapper {
     Mapper57(Mapper57),
     Mapper60(Mapper60),
     Mapper63(Mapper63),
+    Rambo1(Rambo1),
     Mapper65(Mapper65),
     Mapper67(Mapper67),
     Mapper72(Mapper72),
@@ -367,6 +370,7 @@ impl Mapper {
             61 => Mapper::AddrLatch16k(AddrLatch16k::new(AddrLatchVariant::Mapper61)),
             62 => Mapper::AddrLatch16k(AddrLatch16k::new(AddrLatchVariant::Mapper62)),
             63 => Mapper::Mapper63(Mapper63::new(prg_16k, submapper)),
+            64 => Mapper::Rambo1(Rambo1::new(prg_16k, chr_8k, mirroring)),
             65 => Mapper::Mapper65(Mapper65::new(prg_16k, chr_8k)),
             66 => Mapper::Gxrom(Gxrom::new(mirroring)),
             67 => Mapper::Mapper67(Mapper67::new(prg_16k, chr_8k, mirroring)),
@@ -503,6 +507,7 @@ macro_rules! dispatch {
             Mapper::Mapper57($m) => $body,
             Mapper::Mapper60($m) => $body,
             Mapper::Mapper63($m) => $body,
+            Mapper::Rambo1($m) => $body,
             Mapper::Mapper65($m) => $body,
             Mapper::Mapper67($m) => $body,
             Mapper::Mapper72($m) => $body,
@@ -735,6 +740,7 @@ mod tests {
             (61, false),   // Mapper 61
             (62, false),   // Mapper 62
             (63, false),   // Mapper 63
+            (64, true),    // Tengen RAMBO-1 can use PPU A12 IRQ mode
             (65, false),   // Irem H3001
             (70, false),   // Bandai 74161/7432
             (71, false),   // Codemasters
@@ -852,6 +858,7 @@ mod tests {
             (61, false),   // Mapper 61
             (62, false),   // Mapper 62
             (63, false),   // Mapper 63
+            (64, true),    // Tengen RAMBO-1 can use CPU-cycle IRQ mode
             (65, true),    // Irem H3001 IRQ counter clocks per CPU cycle
             (70, false),   // Bandai 74161/7432
             (71, false),   // Codemasters
@@ -963,6 +970,7 @@ mod tests {
             (61, false),
             (62, false),
             (63, false),
+            (64, false),
             (65, false),
             (66, false),
             (67, false),
