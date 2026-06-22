@@ -113,6 +113,7 @@ Phase 17: Mapper compatibility gap closure
 - [x] Implement first low-risk common mapper batch: 72, 79, 80, 82
 - [x] Record reference source locations for the new mapper batch
 - [x] Add mapper architecture hooks and next batch: VRC1 mapper 75, MMC3-derived mapper 76, JY mapper 91 with cached HBlank IRQ clocking
+- [ ] Team-mode parallel mapper pass: Worker A VRC/Konami, Worker B MMC3-derived, Worker C mapper 253/unlicensed, PM integrates and validates
 - [ ] Continue with P0/P1 missing mapper families: 116, 253, then VRC/MMC3/Taito variants that need A12/PPU-pattern mirroring hooks
 - **Status:** in_progress
 
