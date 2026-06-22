@@ -14,6 +14,7 @@ mod latch;
 mod multicart;
 mod namco;
 mod ntdec;
+mod sl12;
 mod special;
 mod taito;
 mod unlicensed;
@@ -36,6 +37,7 @@ pub use multicart::{
 };
 pub use namco::Namco118;
 pub use ntdec::Ntdec112;
+pub use sl12::Mapper116;
 pub use special::{Mapper103, Mapper120, Mapper170, Mapper230, Mapper233, Mapper234};
 pub use taito::{TaitoTc0190, TaitoX1005, TaitoX1017};
 pub use unlicensed::{

@@ -204,13 +204,13 @@ mod vrc4;
 pub use basic::{
     AddrLatch16k, AddrLatchVariant, Axrom, Bandai74161, Bnrom, Caltron41, Cnrom, Codemasters,
     ColorDreams, ColorDreams46, Cprom, Gxrom, IremG101, IremLrog017, IremTamS1, JalecoJf11_14,
-    JalecoJf13, JalecoJf16, JalecoJfxx, Mapper103, Mapper106, Mapper107, Mapper117, Mapper120,
-    Mapper15, Mapper151, Mapper170, Mapper18, Mapper183, Mapper203, Mapper212, Mapper222,
-    Mapper226, Mapper230, Mapper233, Mapper234, Mapper235, Mapper240, Mapper241, Mapper244,
-    Mapper246, Mapper253, Mapper36, Mapper40, Mapper42, Mapper43, Mapper50, Mapper57, Mapper60,
-    Mapper63, Mapper65, Mapper67, Mapper72, Mapper73, Mapper79, Mapper83, Mapper91, Mapper92,
-    Namco118, Nina01, Nina03_06, Nrom, Ntdec112, Sunsoft184, Sunsoft89, TaitoTc0190, TaitoX1005,
-    TaitoX1017, UnlPci556, Unrom, UnromVariant, UnromVariantMapper, Vrc1,
+    JalecoJf13, JalecoJf16, JalecoJfxx, Mapper103, Mapper106, Mapper107, Mapper116, Mapper117,
+    Mapper120, Mapper15, Mapper151, Mapper170, Mapper18, Mapper183, Mapper203, Mapper212,
+    Mapper222, Mapper226, Mapper230, Mapper233, Mapper234, Mapper235, Mapper240, Mapper241,
+    Mapper244, Mapper246, Mapper253, Mapper36, Mapper40, Mapper42, Mapper43, Mapper50, Mapper57,
+    Mapper60, Mapper63, Mapper65, Mapper67, Mapper72, Mapper73, Mapper79, Mapper83, Mapper91,
+    Mapper92, Namco118, Nina01, Nina03_06, Nrom, Ntdec112, Sunsoft184, Sunsoft89, TaitoTc0190,
+    TaitoX1005, TaitoX1017, UnlPci556, Unrom, UnromVariant, UnromVariantMapper, Vrc1,
 };
 pub use expansion_mappers::{Fme7, Namco163, Vrc6, Vrc6Variant, Vrc7};
 pub use mmc1::Mmc1;
@@ -266,6 +266,7 @@ pub enum Mapper {
     AddrLatch16k(AddrLatch16k),
     Mapper103(Mapper103),
     Mapper106(Mapper106),
+    Mapper116(Mapper116),
     Mapper117(Mapper117),
     Mapper120(Mapper120),
     Mapper170(Mapper170),
@@ -405,6 +406,7 @@ impl Mapper {
             107 => Mapper::Mapper107(Mapper107::new(mirroring)),
             112 => Mapper::Ntdec112(Ntdec112::new(prg_16k)),
             113 => Mapper::Nina03_06(Nina03_06::new()),
+            116 => Mapper::Mapper116(Mapper116::new(prg_16k, chr_8k)),
             117 => Mapper::Mapper117(Mapper117::new(prg_16k, chr_8k, mirroring)),
             120 => Mapper::Mapper120(Mapper120::new(mirroring)),
             140 => Mapper::JalecoJf11_14(JalecoJf11_14::new(mirroring)),
@@ -514,6 +516,7 @@ macro_rules! dispatch {
             Mapper::AddrLatch16k($m) => $body,
             Mapper::Mapper103($m) => $body,
             Mapper::Mapper106($m) => $body,
+            Mapper::Mapper116($m) => $body,
             Mapper::Mapper117($m) => $body,
             Mapper::Mapper120($m) => $body,
             Mapper::Mapper170($m) => $body,
@@ -754,6 +757,7 @@ mod tests {
             (117, true),   // Mapper 117 A12 IRQ
             (120, false),  // Mapper 120
             (112, false),  // NTDEC ASDER
+            (116, true),   // Mapper 116 can switch into MMC3 A12 IRQ mode
             (151, false),  // Mapper 151
             (170, false),  // Mapper 170
             (152, false),  // Bandai 74161/7432
@@ -869,6 +873,7 @@ mod tests {
             (117, false),  // Mapper 117 uses PPU A12 edges
             (120, false),  // Mapper 120
             (112, false),  // NTDEC ASDER
+            (116, false),  // Mapper 116 uses PPU A12 edges only in MMC3 mode
             (151, false),  // Mapper 151
             (170, false),  // Mapper 170
             (152, false),  // Bandai 74161/7432
@@ -986,6 +991,7 @@ mod tests {
             (107, false),
             (112, false),
             (113, false),
+            (116, false),
             (117, false),
             (120, false),
             (140, false),

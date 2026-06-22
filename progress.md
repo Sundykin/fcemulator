@@ -177,6 +177,19 @@
   - `cargo test`: PASS, workspace tests.
 - New support count in `/Users/sunmeng/workspace/fc/docs/Mapper-适配差距清单.md`: 113 mapper numbers, with 380 remaining against the four-reference union.
 
+### Mapper 116 SL12 Pass
+- Implemented mapper 116 / Someri Team SL12 as an independent composite mapper in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/sl12.rs`.
+- Covered three ASIC modes from FCEUX/Mesen2/Nestopia baseline references:
+  - mode 0: VRC2-style PRG/CHR/mirroring.
+  - mode 1: MMC3-style PRG/CHR/mirroring and A12 IRQ.
+  - mode 2/3: MMC1-style serial register PRG/CHR/mirroring.
+- Wired mapper 116 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs` and updated capability guard tests. `watches_ppu_bus` is always true because the mapper can switch into MMC3 A12 mode at runtime.
+- Verification:
+  - `cargo test -p fc-core mapper::basic::sl12::tests -- --nocapture`: PASS, 3/3.
+  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 67/67 mapper tests.
+  - `cargo test -p fc-core`: PASS, 107/107 fc-core tests.
+- Updated mapper gap checklist and reference record. Supported mapper count is now 114; remaining union gap is 379.
+
 ### Continued Phase: PPU open-bus decay
 - Started: 2026-06-19 14:51:32 CST
 - Reproduced `ppu_open_bus/ppu_open_bus.nes` failure: subtest #3, "Decay value should become zero by one second".
