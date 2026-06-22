@@ -8,6 +8,12 @@
 - `fc-core/src/mapper/basic/unlicensed.rs:1-884`
   - 新增 Mapper 43 / 60 / 83 / 106 / 183 / 212 / 222 / 235。
   - 覆盖 PRG/CHR bank 译码、低地址 PRG-ROM 窗口、mapper register read、open-bus 读侧效应、reset hook、CPU clock IRQ、A12 IRQ。
+- `fc-core/src/mapper/basic/latch/discrete.rs`
+  - 新增 Mapper 36 / 92。
+  - 覆盖 TXC/Micro Genius 简化 latch、$4100 读回、bus conflict，以及 Jaleco 2-in-1 的 PRG/CHR 写位规则。
+- `fc-core/src/mapper/basic/multicart.rs`
+  - 新增 Mapper 59 / 63 / 201 / 217。
+  - 覆盖 address latch PRG/CHR/mirroring、Mapper 63 越界 PRG open-bus 读。
 - `fc-core/src/mapper.rs:196-204, 216-287, 300-423, 444-500`
   - mapper facade 的导出、枚举、构造表和 dispatch 接入。
 - `fc-core/src/mapper.rs:625-805, 1373-1502`
@@ -21,19 +27,30 @@
 
 | Mapper | 当前实现范围 | 参考来源 | 行号 | 主要用途 |
 |---:|---|---|---:|---|
+| 36 | `latch/discrete.rs` | `/Users/sunmeng/workspace/fc/fceux/src/boards/36.cpp` | 28-65 | TXC/Micro Genius 简化 mapper、PRG/CHR latch、$4100 读回、bus conflict |
+| 36 | `latch/discrete.rs` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/txcchip.c` | 177-194 | TXC mapper 36 cross-check；FCEUmm 更完整 TXC 芯片模型留作后续精修参考 |
 | 43 | `unlicensed.rs:5-121` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Unlicensed/Mapper43.h` | 16-20, 22-33, 49-82 | PRG/CHR page size、$5000/$6000 映射、寄存器地址译码、4096 CPU-cycle IRQ |
 | 43 | `unlicensed.rs:5-121` | `/Users/sunmeng/workspace/fc/fceux/src/boards/43.cpp` | 38-58, 72-78 | `transo` LUT、swap bank、IRQ counter cross-check |
+| 59 | `multicart.rs` | `/Users/sunmeng/workspace/fc/fceux/src/boards/addrlatch.cpp` | 164-179 | address latch PRG32/CHR/mirroring、bit8 read gate 参考 |
+| 59 | `multicart.rs` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/addrlatch.c` | 158-173 | 历史实现 cross-check；FCEUmm 注释其旧实现曾误归类 |
 | 60 | `unlicensed.rs:123-163` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Unlicensed/Mapper60.h` | 11-29 | reset counter 选择 PRG/CHR bank |
 | 60 | `unlicensed.rs:123-163` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/60.c` | 23-35 | reset hook 行为 cross-check |
+| 63 | `multicart.rs` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/addrlatch.c` | 203-235 | NTDEC multicart PRG mode、submapper mask、越界 PRG open-bus、mirroring |
 | 83 | `unlicensed.rs:165-337` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Unlicensed/Mapper83.h` | 18-23, 57-68, 71-108, 111-156 | YOKO/30-in-1 PRG/CHR 模式、低寄存器、CPU IRQ |
 | 83 | `unlicensed.rs:165-337` | `/Users/sunmeng/workspace/fc/fceux/src/boards/yoko.cpp` | 73-99, 118-139, 164-176, 197-204 | FCEUX 旧 mapper 83 译码和 IRQ cross-check |
 | 83 | `unlicensed.rs:165-337` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/83_264.c` | 41-117, 130-157, 159-189, 219-231 | 新 submapper 设计参考；当前仅落地基础 mapper 83 行为 |
+| 92 | `latch/discrete.rs` | `/Users/sunmeng/workspace/fc/fceux/src/boards/72.cpp` | 35-80 | Jaleco 2-in-1 mapper 92 PRG fixed-low/CHR latch 写位 |
+| 92 | `latch/discrete.rs` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/addrlatch.c` | 247-263 | address-latch 形式 cross-check；保留后续按地址高位差异精修入口 |
 | 106 | `unlicensed.rs:339-431` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Unlicensed/Mapper106.h` | 14-16, 18-26, 36-73 | PRG/CHR register decode、CPU-cycle IRQ |
 | 106 | `unlicensed.rs:339-431` | `/Users/sunmeng/workspace/fc/fceux/src/boards/106.cpp` | 36-59, 81-87 | FCEUX PRG/CHR sync 和 IRQ overflow cross-check |
 | 183 | `unlicensed.rs:433-579` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Unlicensed/Mapper183.h` | 17-21, 46-83, 86-105 | 低区 PRG-ROM、VRC-like CHR nibble register、mirroring、IRQ scaler |
 | 183 | `unlicensed.rs:433-579` | `/Users/sunmeng/workspace/fc/fceux/src/boards/183.cpp` | 41-47, 49-61, 70-96 | FCEUX Gimmick bootleg bank/IRQ cross-check |
+| 201 | `multicart.rs` | `/Users/sunmeng/workspace/fc/fceux/src/boards/addrlatch.cpp` | 229-237 | 21-in-1 address latch PRG32/CHR bank |
+| 201 | `multicart.rs` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/addrlatch.c` | 284-289 | Mapper 201 fixed-horizontal note 与 bank 译码 cross-check |
 | 212 | `unlicensed.rs:581-650` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Unlicensed/Mapper212.h` | 8-15, 18-38 | address latch PRG/CHR/mirroring、低区读 OR bit7 |
 | 212 | `unlicensed.rs:581-650` | `/Users/sunmeng/workspace/fc/fceux/src/boards/addrlatch.cpp` | 272-293 | M212Sync / M212Read cross-check |
+| 217 | `multicart.rs` | `/Users/sunmeng/workspace/fc/fceux/src/boards/addrlatch.cpp` | 325-332 | address latch PRG32/CHR bank |
+| 217 | `multicart.rs` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/addrlatch.c` | 363-368 | Mapper 217 bank 译码 cross-check |
 | 222 | `unlicensed.rs:652-764` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Unlicensed/Mapper222.h` | 15-23, 33-64 | PRG/CHR register decode、A12 IRQ counter |
 | 222 | `unlicensed.rs:652-764` | `/Users/sunmeng/workspace/fc/fceux/src/boards/222.cpp` | 52-81, 84-98 | FCEUX VRC4-like bootleg sync 和 IRQ cross-check |
 | 222 | `unlicensed.rs:652-764` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/222.c` | 39-65, 67-90 | 新 VRC2-style IRQ 参考；当前实现先按 Mesen2 A12 行为 |
@@ -44,10 +61,15 @@
 
 - `Mapper43::write_any_register()` 对应 Mesen2 `Mapper43.h:69-82` 与 FCEUX `43.cpp:51-58`。
 - `Mapper43::expansion_prg_index()` / `low_prg_index()` 对应 Mesen2 `Mapper43.h:29-33,62-67` 与 FCEUX `43.cpp:38-48`。
+- `Mapper36::write_register()` / `$4100` 读回对应 FCEUX `36.cpp:35-53`。
+- `AddrLatchVariant::Mapper59` 对应 FCEUX `addrlatch.cpp:164-179` 的 M59Sync/M59Read，包括 bit8 置位时高区读返回 0。
 - `Mapper60::reset()` 对应 Mesen2 `Mapper60.h:22-30` 与 FCEUmm `60.c:32-35`。
+- `Mapper63::set_from_addr()` / open-bus high read 对应 FCEUmm `addrlatch.c:203-235`。
 - `Mapper83` 的 PRG/CHR 译码对应 Mesen2 `Mapper83.h:71-99`，低寄存器读写对应 `Mapper83.h:102-114`，IRQ 对应 `Mapper83.h:57-68,146-154`。
+- `Mapper92::write_register()` 对应 FCEUX `72.cpp:35-80` 的 mapper 92 变体。
 - `Mapper106::write_register()` / `cpu_clock()` 对应 Mesen2 `Mapper106.h:36-73`。
 - `Mapper183::write_any_register()` / `cpu_clock()` 对应 Mesen2 `Mapper183.h:52-83,86-105`。
+- `AddrLatchVariant::Mapper201` / `Mapper217` 对应 FCEUX `addrlatch.cpp:229-237,325-332` 与 FCEUmm `addrlatch.c:284-289,363-368`。
 - `Mapper212::select_from_addr()` / low read OR bit7 对应 Mesen2 `Mapper212.h:18-38` 和 FCEUX `addrlatch.cpp:274-289`。
 - `Mapper222::notify_a12()` / register decode 对应 Mesen2 `Mapper222.h:33-64`。
 - `Mapper235::read_register_with_open_bus()` / reset UNROM mode 对应 FCEUX `235.cpp:42-95`。
@@ -55,5 +77,6 @@
 ## 以后替换时的删除边界
 
 - 先替换 `fc-core/src/mapper/basic/unlicensed.rs:1-884`。
+- 同批替换 `fc-core/src/mapper/basic/latch/discrete.rs` 里 Mapper 36 / 92 的新增段，以及 `fc-core/src/mapper/basic/multicart.rs` 里 Mapper 59 / 63 / 201 / 217 的新增段。
 - 再处理 `fc-core/src/mapper.rs` 里 Mapper 43/60/83/106/183/212/222/235 的导出、枚举、构造和 dispatch 分支。
 - 最后检查 `fc-core/src/cartridge.rs` 的 open-bus aware 读钩子是否仍被其他 mapper 使用；如果无使用者，可收窄接口。

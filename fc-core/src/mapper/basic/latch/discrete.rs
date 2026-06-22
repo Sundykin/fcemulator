@@ -94,6 +94,62 @@ impl MapperOps for Bandai74161 {
 }
 
 // ============================================================================
+// Mapper 36 — TXC/Micro Genius simplified mapper
+//
+// References:
+// - FCEUX `src/boards/36.cpp`
+// - FCEUmm `src/boards/txcchip.c`
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Mapper36 {
+    latch: u8,
+    mirroring: Mirroring,
+}
+
+impl Mapper36 {
+    pub(in crate::mapper) fn new() -> Self {
+        Mapper36 {
+            latch: 0,
+            mirroring: Mirroring::Vertical,
+        }
+    }
+}
+
+impl MapperOps for Mapper36 {
+    fn prg_index(&self, addr: u16) -> usize {
+        ((self.latch >> 4) as usize) * 0x8000 + (addr - 0x8000) as usize
+    }
+    fn chr_index(&self, addr: u16) -> usize {
+        ((self.latch & 0x0F) as usize) * 0x2000 + (addr & 0x1FFF) as usize
+    }
+    fn write_register(&mut self, addr: u16, value: u8) {
+        match (addr >> 12) & 0x07 {
+            0 => self.mirroring = Mirroring::Vertical,
+            4 => self.mirroring = Mirroring::Horizontal,
+            _ => {}
+        }
+        self.latch = value;
+    }
+    fn read_expansion(&mut self, addr: u16) -> Option<u8> {
+        self.peek_expansion(addr)
+    }
+    fn peek_expansion(&self, addr: u16) -> Option<u8> {
+        if addr == 0x4100 {
+            Some(self.latch)
+        } else {
+            None
+        }
+    }
+    fn has_bus_conflicts(&self) -> bool {
+        true
+    }
+    fn mirroring(&self) -> Mirroring {
+        self.mirroring
+    }
+}
+
+// ============================================================================
 // Mapper 38 — UNL-PCI-556
 // ============================================================================
 
@@ -173,6 +229,55 @@ impl MapperOps for Mapper107 {
     fn write_register(&mut self, _addr: u16, value: u8) {
         self.prg_bank = (value >> 1) as usize;
         self.chr_bank = value as usize;
+    }
+    fn mirroring(&self) -> Mirroring {
+        self.mirroring
+    }
+}
+
+// ============================================================================
+// Mapper 92 — Jaleco two-in-one wiring variant
+//
+// References:
+// - FCEUX `src/boards/72.cpp`
+// - FCEUmm `src/boards/addrlatch.c`
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Mapper92 {
+    prg_bank: usize,
+    chr_bank: usize,
+    mirroring: Mirroring,
+}
+
+impl Mapper92 {
+    pub(in crate::mapper) fn new(mirroring: Mirroring) -> Self {
+        Mapper92 {
+            prg_bank: 0,
+            chr_bank: 0,
+            mirroring,
+        }
+    }
+}
+
+impl MapperOps for Mapper92 {
+    fn prg_index(&self, addr: u16) -> usize {
+        if addr < 0xC000 {
+            (addr - 0x8000) as usize
+        } else {
+            self.prg_bank * 0x4000 + (addr - 0xC000) as usize
+        }
+    }
+    fn chr_index(&self, addr: u16) -> usize {
+        self.chr_bank * 0x2000 + (addr & 0x1FFF) as usize
+    }
+    fn write_register(&mut self, _addr: u16, value: u8) {
+        if value & 0x80 != 0 {
+            self.prg_bank = (value & 0x0F) as usize;
+        }
+        if value & 0x40 != 0 {
+            self.chr_bank = (value & 0x0F) as usize;
+        }
     }
     fn mirroring(&self) -> Mirroring {
         self.mirroring

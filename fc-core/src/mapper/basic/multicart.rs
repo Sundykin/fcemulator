@@ -71,7 +71,7 @@ impl MapperOps for Mapper15 {
 }
 
 // ============================================================================
-// Mapper 57/58/61/62 — simple address/data latch multicarts
+// Mapper 57/58/59/61/62 — simple address/data latch multicarts
 // ============================================================================
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -139,11 +139,14 @@ pub struct AddrLatch16k {
     chr_bank: usize,
     mirroring: Mirroring,
     variant: AddrLatchVariant,
+    #[serde(default)]
+    mapper59_zero_reads: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AddrLatchVariant {
     Mapper58,
+    Mapper59,
     Mapper61,
     Mapper62,
     Mapper216,
@@ -158,6 +161,8 @@ pub enum AddrLatchVariant {
     Mapper214,
     Mapper225,
     Mapper229,
+    Mapper201,
+    Mapper217,
 }
 
 impl AddrLatch16k {
@@ -174,6 +179,7 @@ impl AddrLatch16k {
             chr_bank: 0,
             mirroring,
             variant,
+            mapper59_zero_reads: false,
         }
     }
 
@@ -187,6 +193,18 @@ impl AddrLatch16k {
                     [bank & 0x06, (bank & 0x06) + 1]
                 };
                 self.chr_bank = ((addr >> 3) & 0x07) as usize;
+            }
+            AddrLatchVariant::Mapper59 => {
+                let bank = ((addr >> 4) & 0x07) as usize;
+                self.prg_pages = [bank * 2, bank * 2 + 1];
+                self.chr_bank = (addr & 0x07) as usize;
+                self.mapper59_zero_reads = addr & 0x100 != 0;
+                self.mirroring = if addr & 0x08 != 0 {
+                    Mirroring::Vertical
+                } else {
+                    Mirroring::Horizontal
+                };
+                return;
             }
             AddrLatchVariant::Mapper61 => {
                 let bank = (((addr & 0x0F) << 1) | ((addr >> 5) & 0x01)) as usize;
@@ -362,6 +380,18 @@ impl AddrLatch16k {
                 };
                 return;
             }
+            AddrLatchVariant::Mapper201 => {
+                let bank = (addr & 0x03) as usize;
+                self.prg_pages = [bank * 2, bank * 2 + 1];
+                self.chr_bank = bank;
+                return;
+            }
+            AddrLatchVariant::Mapper217 => {
+                let bank = ((addr >> 2) & 0x03) as usize;
+                self.prg_pages = [bank * 2, bank * 2 + 1];
+                self.chr_bank = (addr & 0x0F) as usize;
+                return;
+            }
         }
         self.mirroring = if addr & 0x80 != 0 {
             Mirroring::Horizontal
@@ -382,6 +412,16 @@ impl MapperOps for AddrLatch16k {
     fn write_register(&mut self, addr: u16, value: u8) {
         self.set_from_addr(addr, value);
     }
+    fn read_register(&mut self, addr: u16, prg_value: u8) -> Option<u8> {
+        self.peek_register(addr, prg_value)
+    }
+    fn peek_register(&self, _addr: u16, _prg_value: u8) -> Option<u8> {
+        if matches!(self.variant, AddrLatchVariant::Mapper59) && self.mapper59_zero_reads {
+            Some(0)
+        } else {
+            None
+        }
+    }
     fn read_expansion(&mut self, addr: u16) -> Option<u8> {
         self.peek_expansion(addr)
     }
@@ -396,6 +436,85 @@ impl MapperOps for AddrLatch16k {
         if matches!(self.variant, AddrLatchVariant::Mapper216) && addr == 0x5000 {
             let _ = value;
         }
+    }
+    fn mirroring(&self) -> Mirroring {
+        self.mirroring
+    }
+}
+
+// ============================================================================
+// Mapper 63 — NTDEC multicart with out-of-range PRG open bus
+//
+// References:
+// - FCEUmm `src/boards/addrlatch.c`
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Mapper63 {
+    prg_16k: usize,
+    submapper: u8,
+    prg_pages: [usize; 2],
+    open_bus: bool,
+    mirroring: Mirroring,
+}
+
+impl Mapper63 {
+    pub(in crate::mapper) fn new(prg_16k: usize, submapper: u8) -> Self {
+        Mapper63 {
+            prg_16k: prg_16k.max(1),
+            submapper,
+            prg_pages: [0, 1],
+            open_bus: false,
+            mirroring: Mirroring::Vertical,
+        }
+    }
+
+    fn set_from_addr(&mut self, addr: u16) {
+        let mask = if self.submapper == 1 { 0x7F } else { 0xFF };
+        let bank = ((addr >> 2) as usize) & mask;
+        self.prg_pages = if addr & 0x02 != 0 {
+            [bank & !1, (bank & !1) + 1]
+        } else {
+            [bank, bank]
+        };
+        self.open_bus = bank >= self.prg_16k;
+        self.mirroring = if addr & 0x01 != 0 {
+            Mirroring::Horizontal
+        } else {
+            Mirroring::Vertical
+        };
+    }
+
+    fn maybe_open_bus(&self, open_bus: u8) -> Option<u8> {
+        if self.open_bus {
+            Some(open_bus)
+        } else {
+            None
+        }
+    }
+}
+
+impl MapperOps for Mapper63 {
+    fn prg_index(&self, addr: u16) -> usize {
+        let slot = if addr < 0xC000 { 0 } else { 1 };
+        self.prg_pages[slot] * 0x4000 + (addr as usize & 0x3FFF)
+    }
+    fn chr_index(&self, addr: u16) -> usize {
+        (addr & 0x1FFF) as usize
+    }
+    fn write_register(&mut self, addr: u16, _value: u8) {
+        self.set_from_addr(addr);
+    }
+    fn read_register_with_open_bus(
+        &mut self,
+        _addr: u16,
+        _prg_value: u8,
+        open_bus: u8,
+    ) -> Option<u8> {
+        self.maybe_open_bus(open_bus)
+    }
+    fn peek_register_with_open_bus(&self, _addr: u16, _prg_value: u8, open_bus: u8) -> Option<u8> {
+        self.maybe_open_bus(open_bus)
     }
     fn mirroring(&self) -> Mirroring {
         self.mirroring

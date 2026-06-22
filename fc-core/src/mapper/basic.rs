@@ -22,12 +22,12 @@ pub use irem::{IremG101, IremLrog017};
 pub use irq::{Mapper117, Mapper18, Mapper40, Mapper42, Mapper50, Mapper65, Mapper67, Mapper73};
 pub use latch::{
     Bandai74161, Caltron41, ColorDreams46, Cprom, IremTamS1, JalecoJf11_14, JalecoJf13, JalecoJf16,
-    JalecoJfxx, Mapper107, Mapper151, Mapper203, Nina03_06, Sunsoft184, Sunsoft89, UnlPci556,
-    UnromVariant, UnromVariantMapper,
+    JalecoJfxx, Mapper107, Mapper151, Mapper203, Mapper36, Mapper92, Nina03_06, Sunsoft184,
+    Sunsoft89, UnlPci556, UnromVariant, UnromVariantMapper,
 };
 pub use multicart::{
     AddrLatch16k, AddrLatchVariant, Mapper15, Mapper226, Mapper240, Mapper241, Mapper244,
-    Mapper246, Mapper57,
+    Mapper246, Mapper57, Mapper63,
 };
 pub use namco::Namco118;
 pub use ntdec::Ntdec112;
