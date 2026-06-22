@@ -1028,3 +1028,13 @@
   - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 116/116 mapper tests.
   - `cargo test -p fc-core`: PASS, 157/157 fc-core tests.
   - `cargo test`: PASS, workspace tests.
+
+### Mapper 254 Protected WRAM Batch
+- Implemented mapper 254 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs`: adds protected low WRAM reads using `read_low_register_with_prg_ram()`, `$8000` unlock, and `$A001` XOR mask while preserving normal MMC3 banking and A12 IRQ behavior.
+- Wired mapper 254 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs`, updated capability guard tests, and refreshed mapper gap/reference docs; supported mapper count is now 150 and remaining four-reference union gap is 343.
+- Verification:
+  - `cargo fmt --check`: PASS.
+  - `git diff --check`: PASS.
+  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 117/117 mapper tests.
+  - `cargo test -p fc-core`: PASS, 158/158 fc-core tests.
+  - `cargo test`: PASS, workspace tests.

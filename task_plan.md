@@ -131,6 +131,7 @@ Phase 17: Mapper compatibility gap closure
 - [x] Add mechanical mapper batch 185 / 189 / 193
 - [x] Add MMC3 mechanical mapper batch 191 / 245
 - [x] Add MMC3 protocol variant mapper 196
+- [x] Add MMC3 protected WRAM mapper 254
 - **Status:** in_progress
 
 ### Phase 18: Mapper board compatibility layer
@@ -190,6 +191,7 @@ Phase 17: Mapper compatibility gap closure
 | Cargo rejected multiple test filters | Tried to run mapper191 and mapper245 tests as two positional filters in one command | Reran `cargo test -p fc-core mapper::mmc3::tests -- --nocapture`, which covers both new tests |
 | Mapper191 test failed to resolve `ChrAccess` | Used `super::ChrAccess` inside the `mmc3.rs` test module | Imported `crate::mapper::ChrAccess` in the test module and reran MMC3 tests |
 | Mapper196 test expected ordinary `$8004/$8005` pair | First assertion used an address pair that remaps to MMC3 command writes differently than intended | Corrected the test to use `$8000/$8002`, which exercises mapper196's address-line remap into normal select/data writes |
+| Mapper254 compile failed for non-exhaustive `Mmc3OuterBank` match | Added a new outer-bank variant but missed the plain PRG wrapper arm | Added `Mapper254` to `outer_prg_bank()` as pass-through MMC3 PRG behavior |
 
 ## Notes
 - Preserve the invariant: CPU memory accesses tick the bus before the access; each CPU cycle advances PPU by 3 dots and APU by 1 cycle.

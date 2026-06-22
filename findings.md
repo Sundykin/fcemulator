@@ -284,3 +284,4 @@
 - Mapper 191 的第一版可直接复用 `ChrRamWindow(0x80..=0xFF, 2KB)`，与 FCEUX 和 Mesen2 的参数化 MMC3 CHR-RAM board 对齐。FCEUmm 2025 版本增加了 submapper 与低区 PRG 行为，记录为后续精修，而不阻塞基础兼容面。
 - Mapper 245 是 MMC3 thin variant：CHR bank 写只保留低 3 位，CHR register 0 的 bit1 作为 PRG outer bit 加到 8KB PRG bank bit6。现有 `Mmc3OuterBank` 可以承载，无需新 mapper 架构。
 - Mapper 196 需要的是 MMC3 write protocol remap，而不是新 mapper trait：高区地址线先折叠到普通 MMC3 register 地址，低区 `$6000-$6FFF` 写启用 PRG32 latch。现有 `write_standard_register()` helper 和 `Mmc3OuterBank` 足够表达。
+- Mapper 254 验证了低区 PRG-RAM 组合读 hook 的价值：参考实现读取 `$6000-$7FFF` WRAM 后按保护寄存器 XOR，本项目的 `read_low_register_with_prg_ram()` 可以直接表达，不需要 Cartridge 泄露更多存储细节给 mapper。

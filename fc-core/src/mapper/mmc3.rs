@@ -29,6 +29,7 @@ enum Mmc3OuterBank {
     Mapper189 { reg: u8 },
     Mapper196 { enabled: bool, reg: u8 },
     Mapper245,
+    Mapper254 { unlocked: bool, xor_mask: u8 },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -279,6 +280,16 @@ impl Mmc3 {
         m
     }
 
+    /// Mapper 254 — Pikachu Y2K, MMC3 with protected WRAM reads.
+    pub(super) fn new_254(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
+        let mut m = Mmc3::new(prg_16k, chr_8k, mirroring);
+        m.outer_bank = Mmc3OuterBank::Mapper254 {
+            unlocked: false,
+            xor_mask: 0,
+        };
+        m
+    }
+
     /// Mapper 76 — Namco 109 / MMC3 command and IRQ core with custom CHR cwrap.
     pub(super) fn new_76(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
         let mut m = Mmc3::new(prg_16k, chr_8k, mirroring);
@@ -481,6 +492,7 @@ impl Mmc3 {
                 };
                 (bank & 0x3F) | outer
             }
+            Mmc3OuterBank::Mapper254 { .. } => bank,
         }
     }
 
@@ -520,6 +532,7 @@ impl Mmc3 {
             Mmc3OuterBank::Mapper189 { .. } => bank,
             Mmc3OuterBank::Mapper196 { .. } => bank,
             Mmc3OuterBank::Mapper245 => bank & 0x07,
+            Mmc3OuterBank::Mapper254 { .. } => bank,
         }
     }
 
@@ -756,6 +769,15 @@ impl MapperOps for Mmc3 {
             self.mapper121_write(addr, value);
         } else if matches!(self.outer_bank, Mmc3OuterBank::Mapper196 { .. }) {
             self.write_standard_register(Self::mapper196_remap_addr(addr), value);
+        } else if let Mmc3OuterBank::Mapper254 { unlocked, xor_mask } = &mut self.outer_bank {
+            match addr {
+                0x8000 => *unlocked = true,
+                0xA001 => *xor_mask = value,
+                _ => {}
+            }
+            if addr <= 0xBFFF {
+                self.write_standard_register(addr, value);
+            }
         } else {
             self.write_standard_register(addr, value);
         }
@@ -829,7 +851,7 @@ impl MapperOps for Mmc3 {
     }
 
     fn read_low_register(&mut self, addr: u16) -> Option<u8> {
-        self.peek_low_register(addr)
+        self.read_low_register_with_prg_ram(addr, 0)
     }
 
     fn peek_low_register(&self, addr: u16) -> Option<u8> {
@@ -837,6 +859,23 @@ impl MapperOps for Mmc3 {
             Mmc3OuterBank::Mapper115 { regs } if (addr & 3) == 2 => Some(regs[2]),
             _ => None,
         }
+    }
+
+    fn read_low_register_with_prg_ram(&mut self, addr: u16, prg_ram_value: u8) -> Option<u8> {
+        self.peek_low_register_with_prg_ram(addr, prg_ram_value)
+    }
+
+    fn peek_low_register_with_prg_ram(&self, addr: u16, prg_ram_value: u8) -> Option<u8> {
+        if let Mmc3OuterBank::Mapper254 { unlocked, xor_mask } = &self.outer_bank {
+            if (0x6000..=0x7FFF).contains(&addr) {
+                return Some(if *unlocked {
+                    prg_ram_value
+                } else {
+                    prg_ram_value ^ *xor_mask
+                });
+            }
+        }
+        self.peek_low_register(addr)
     }
 
     fn read_expansion(&mut self, addr: u16) -> Option<u8> {
@@ -980,6 +1019,10 @@ impl MapperOps for Mmc3 {
             Mmc3OuterBank::Mapper196 { enabled, reg } => {
                 *enabled = false;
                 *reg = 0;
+            }
+            Mmc3OuterBank::Mapper254 { unlocked, xor_mask } => {
+                *unlocked = false;
+                *xor_mask = 0;
             }
             _ => {}
         }
@@ -1204,6 +1247,37 @@ mod tests {
 
         mapper.reset(true);
         assert_eq!(mapper.prg_index(0x8004), 0x12 * 0x2000 + 4);
+    }
+
+    #[test]
+    fn mapper254_xors_wram_reads_until_unlocked() {
+        let mut mapper = Mmc3::new_254(64, 32, Mirroring::Vertical);
+
+        assert_eq!(
+            mapper.peek_low_register_with_prg_ram(0x6004, 0x5A),
+            Some(0x5A)
+        );
+
+        mapper.write_register(0xA001, 0x3C);
+        assert_eq!(
+            mapper.peek_low_register_with_prg_ram(0x6004, 0x5A),
+            Some(0x66)
+        );
+
+        mapper.write_register(0x8000, 0x06);
+        assert_eq!(
+            mapper.read_low_register_with_prg_ram(0x6004, 0x5A),
+            Some(0x5A)
+        );
+
+        mapper.write_register(0x8001, 0x12);
+        assert_eq!(mapper.prg_index(0x8004), 0x12 * 0x2000 + 4);
+
+        mapper.reset(true);
+        assert_eq!(
+            mapper.peek_low_register_with_prg_ram(0x6004, 0x5A),
+            Some(0x5A)
+        );
     }
 
     #[test]
