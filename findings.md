@@ -273,3 +273,4 @@
 - Mapper 155 当前按 MMC1 变体接入并标记忽略 WRAM disable。因为本项目 MMC1 还没有建模 PRG-RAM disable gating，所以现在行为等同 mapper 1；后续若补 PRG-RAM 使能/禁用路径，155 的标记会阻止误套普通 MMC1 的 disable bit。
 - Mapper 156 / OpenCorp Daou306 不需要新架构：现有 high-register write、CHR1 bank helper、PRG-RAM 默认低区路径和 reset hook 足够覆盖参考实现的第一版。
 - Mapper 166/167 / Subor 也可用现有 `MapperOps` 直接落地。两者共用四个 register 与 outer/inner PRG XOR 公式，只在 NROM-like 模式 bank order 和 fixed high bank 上由 mapper ID 区分；FCEUmm 的 `regs[0].bit0` mirroring 被纳入第一版。
+- `fc-core/src/mapper/bank.rs` 现在包含 `ChrRamWindow` / `ChrBankSource`，把 CHR-ROM/CHR-RAM 混合窗口从 MMC3 局部逻辑抽成通用基础设施；mapper 74/119/192/194/195 已迁移作为验证，后续 MMC3-like CHR-RAM window 变体可直接声明 bank 范围和 RAM 尺寸。

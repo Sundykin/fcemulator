@@ -1,4 +1,5 @@
 use super::MapperOps;
+use crate::mapper::bank::ChrRamWindow;
 use crate::types::Mirroring;
 use serde::{Deserialize, Serialize};
 
@@ -30,12 +31,6 @@ enum Mmc3OuterBank {
 enum Mmc3NametableLayout {
     Header,
     TxSrom { pages: [u8; 4] },
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-struct Mmc3ChrRamWindow {
-    first: u16,
-    last: u16,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -73,7 +68,7 @@ pub struct Mmc3 {
     #[serde(default)]
     chr_ram_bank_base: Option<u8>, // legacy save-state field, superseded by chr_ram_window
     #[serde(default)]
-    chr_ram_window: Option<Mmc3ChrRamWindow>,
+    chr_ram_window: Option<ChrRamWindow>,
     #[serde(default)]
     chr_ram: Vec<u8>,
     // Some MMC3 clone boards used by large Chinese RPG translations expose
@@ -233,7 +228,7 @@ impl Mmc3 {
         if bytes == 0x800 && last == first + 1 && first <= u8::MAX as u16 {
             self.chr_ram_bank_base = Some(first as u8);
         }
-        self.chr_ram_window = Some(Mmc3ChrRamWindow { first, last });
+        self.chr_ram_window = Some(ChrRamWindow::new(first, last));
         self.chr_ram = vec![0u8; bytes];
         self
     }
@@ -365,18 +360,10 @@ impl Mmc3 {
     fn chr_ram_read_index(&self, a: u16) -> Option<usize> {
         let window = self.chr_ram_window.or_else(|| {
             let first = self.chr_ram_bank_base? as u16;
-            Some(Mmc3ChrRamWindow {
-                first,
-                last: first + 1,
-            })
+            Some(ChrRamWindow::new(first, first + 1))
         })?;
         let (bank, off) = self.chr_1k_bank(a);
-        if (window.first..=window.last).contains(&bank) {
-            let i = ((bank - window.first) as usize) * 0x400 + off as usize;
-            Some(i % self.chr_ram.len().max(1))
-        } else {
-            None
-        }
+        window.ram_index(bank, off, self.chr_ram.len())
     }
 
     fn mmc3_prg_bank_for_region(&self, region: u16) -> usize {

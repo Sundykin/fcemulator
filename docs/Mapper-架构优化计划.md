@@ -139,4 +139,5 @@
 
 ## 落地记录
 
-- 2026-06-22：新增 `fc-core/src/mapper/bank.rs`，先提供无状态 PRG/CHR page index helper，并迁移 ColorDreams/GxROM 与 Sachen 133/146/148/149 作为第一批验证。混合 ROM/RAM window 和 handler 层仍留在后续阶段。
+- 2026-06-22：新增 `fc-core/src/mapper/bank.rs`，先提供无状态 PRG/CHR page index helper，并迁移 ColorDreams/GxROM 与 Sachen 133/146/148/149 作为第一批验证。
+- 2026-06-22：扩展 `bank.rs` 的 `ChrRamWindow` / `ChrBankSource`，把 MMC3 派生 mapper 74/119/192/194/195 的 CHR-ROM/CHR-RAM 混合窗口迁移到通用 helper。CPU handler 层仍留在后续阶段。

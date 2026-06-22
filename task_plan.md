@@ -133,7 +133,7 @@ Phase 17: Mapper compatibility gap closure
 ### Phase 18: Mapper board compatibility layer
 - [x] Design a reference-emulator-style board layer for fast mapper translation
 - [x] Add initial reusable bank mapping helpers for PRG/CHR page index translation
-- [ ] Extend bank mapping helpers for mixed ROM/RAM windows
+- [x] Extend bank mapping helpers for mixed ROM/RAM windows
 - [ ] Add CPU address handler helpers for expansion, low, and high mapper ranges
 - [ ] Extract reusable IRQ units: MMC3 A12, CPU counter, HBlank, VRC/RAMBO-style counters
 - [ ] Standardize reset/power hooks, mapper register reads, side effects, and open-bus paths

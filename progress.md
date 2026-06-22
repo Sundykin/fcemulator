@@ -919,3 +919,16 @@
   - `cargo test`: PASS, workspace tests.
 - Error note:
   - Tried to pass two test filters in one Cargo command; Cargo accepts one filter, so tests were split and rerun.
+
+### Mapper Bank Helper Mixed CHR-ROM/RAM Window Step
+- Extended `/Users/sunmeng/workspace/fc/fc-core/src/mapper/bank.rs` with `ChrBankSource` and `ChrRamWindow`, covering selected 1KB CHR banks routed to mapper-owned CHR-RAM while all other banks stay CHR-ROM-backed.
+- Migrated `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs` away from its local `Mmc3ChrRamWindow` type. Mapper 74/119/192/194/195 now use the shared helper while preserving the legacy `chr_ram_bank_base` save-state fallback.
+- Updated `/Users/sunmeng/workspace/fc/docs/Mapper-架构优化计划.md`, `/Users/sunmeng/workspace/fc/task_plan.md`, and `/Users/sunmeng/workspace/fc/findings.md` to mark the mixed ROM/RAM window helper step complete.
+- Verification so far:
+  - `cargo fmt --check`: PASS.
+  - `git diff --check`: PASS.
+  - `cargo test -p fc-core mapper::bank -- --nocapture`: PASS, 3/3.
+  - `cargo test -p fc-core mapper::mmc3::tests -- --nocapture`: PASS, 20/20.
+  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 105/105 mapper tests.
+  - `cargo test -p fc-core`: PASS, 146/146 fc-core tests.
+  - `cargo test`: PASS, workspace tests.
