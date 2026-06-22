@@ -1,3 +1,4 @@
+use crate::mapper::irq::CpuCycleIrq;
 use crate::mapper::MapperOps;
 use crate::types::Mirroring;
 use serde::{Deserialize, Serialize};
@@ -14,9 +15,8 @@ use serde::{Deserialize, Serialize};
 pub struct Mapper43 {
     reg: usize,
     swap: bool,
-    irq_counter: u16,
-    irq_enabled: bool,
-    irq_pending: bool,
+    #[serde(flatten)]
+    irq: CpuCycleIrq,
 }
 
 impl Mapper43 {
@@ -26,9 +26,7 @@ impl Mapper43 {
         Mapper43 {
             reg: 0,
             swap: false,
-            irq_counter: 0,
-            irq_enabled: false,
-            irq_pending: false,
+            irq: CpuCycleIrq::new(),
         }
     }
 
@@ -36,11 +34,7 @@ impl Mapper43 {
         match addr & 0xF1FF {
             0x4022 => self.reg = Self::REG_LUT[(value & 0x07) as usize],
             0x4120 => self.swap = value & 0x01 != 0,
-            0x8122 | 0x4122 => {
-                self.irq_enabled = value & 0x01 != 0;
-                self.irq_pending = false;
-                self.irq_counter = 0;
-            }
+            0x8122 | 0x4122 => self.irq.set_enabled(value & 0x01 != 0, true),
             _ => {}
         }
     }
@@ -97,14 +91,7 @@ impl MapperOps for Mapper43 {
     }
 
     fn cpu_clock(&mut self) {
-        if !self.irq_enabled {
-            return;
-        }
-        self.irq_counter = self.irq_counter.wrapping_add(1);
-        if self.irq_counter >= 4096 {
-            self.irq_enabled = false;
-            self.irq_pending = true;
-        }
+        self.irq.clock_up_to(4096, true);
     }
 
     fn clocks_cpu(&self) -> bool {
@@ -112,11 +99,11 @@ impl MapperOps for Mapper43 {
     }
 
     fn irq(&self) -> bool {
-        self.irq_pending
+        self.irq.irq()
     }
 
     fn clear_irq(&mut self) {
-        self.irq_pending = false;
+        self.irq.clear();
     }
 }
 
@@ -350,9 +337,8 @@ pub struct Mapper106 {
     chr_1k_total: usize,
     prg: [usize; 4],
     chr: [usize; 8],
-    irq_counter: u16,
-    irq_enabled: bool,
-    irq_pending: bool,
+    #[serde(flatten)]
+    irq: CpuCycleIrq,
 }
 
 impl Mapper106 {
@@ -363,9 +349,7 @@ impl Mapper106 {
             chr_1k_total: (chr_8k * 8).max(8),
             prg: [prg_8k_total - 1; 4],
             chr: [0; 8],
-            irq_counter: 0,
-            irq_enabled: false,
-            irq_pending: false,
+            irq: CpuCycleIrq::new(),
         }
     }
 }
@@ -388,15 +372,11 @@ impl MapperOps for Mapper106 {
             4..=7 => self.chr[(addr & 0x0F) as usize] = value as usize,
             8 | 0x0B => self.prg[(addr & 0x0F) as usize - 8] = ((value & 0x0F) | 0x10) as usize,
             9 | 0x0A => self.prg[(addr & 0x0F) as usize - 8] = (value & 0x1F) as usize,
-            0x0D => {
-                self.irq_enabled = false;
-                self.irq_pending = false;
-                self.irq_counter = 0;
-            }
-            0x0E => self.irq_counter = (self.irq_counter & 0xFF00) | value as u16,
+            0x0D => self.irq.disable(true, true),
+            0x0E => self.irq.set_counter_low(value, false),
             0x0F => {
-                self.irq_counter = (self.irq_counter & 0x00FF) | ((value as u16) << 8);
-                self.irq_enabled = true;
+                self.irq.set_counter_high(value, false);
+                self.irq.enable();
             }
             _ => {}
         }
@@ -407,14 +387,7 @@ impl MapperOps for Mapper106 {
     }
 
     fn cpu_clock(&mut self) {
-        if !self.irq_enabled {
-            return;
-        }
-        self.irq_counter = self.irq_counter.wrapping_add(1);
-        if self.irq_counter == 0 {
-            self.irq_enabled = false;
-            self.irq_pending = true;
-        }
+        self.irq.clock_up_to_zero(true);
     }
 
     fn clocks_cpu(&self) -> bool {
@@ -422,11 +395,11 @@ impl MapperOps for Mapper106 {
     }
 
     fn irq(&self) -> bool {
-        self.irq_pending
+        self.irq.irq()
     }
 
     fn clear_irq(&mut self) {
-        self.irq_pending = false;
+        self.irq.clear();
     }
 }
 

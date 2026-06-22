@@ -38,6 +38,99 @@ impl Default for A12EdgeFilter {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub(in crate::mapper) struct CpuCycleIrq {
+    irq_counter: u16,
+    irq_enabled: bool,
+    irq_pending: bool,
+}
+
+impl CpuCycleIrq {
+    pub(in crate::mapper) fn new() -> Self {
+        Self {
+            irq_counter: 0,
+            irq_enabled: false,
+            irq_pending: false,
+        }
+    }
+
+    pub(in crate::mapper) fn set_enabled(&mut self, enabled: bool, reset_counter: bool) {
+        self.irq_enabled = enabled;
+        self.irq_pending = false;
+        if reset_counter {
+            self.irq_counter = 0;
+        }
+    }
+
+    pub(in crate::mapper) fn enable(&mut self) {
+        self.irq_enabled = true;
+    }
+
+    pub(in crate::mapper) fn disable(&mut self, reset_counter: bool, clear_pending: bool) {
+        self.irq_enabled = false;
+        if reset_counter {
+            self.irq_counter = 0;
+        }
+        if clear_pending {
+            self.irq_pending = false;
+        }
+    }
+
+    pub(in crate::mapper) fn set_counter_low(&mut self, value: u8, clear_pending: bool) {
+        self.irq_counter = (self.irq_counter & 0xFF00) | value as u16;
+        if clear_pending {
+            self.irq_pending = false;
+        }
+    }
+
+    pub(in crate::mapper) fn set_counter_high(&mut self, value: u8, clear_pending: bool) {
+        self.irq_counter = (self.irq_counter & 0x00FF) | ((value as u16) << 8);
+        if clear_pending {
+            self.irq_pending = false;
+        }
+    }
+
+    pub(in crate::mapper) fn clock_up_to(&mut self, limit: u16, disable_on_hit: bool) {
+        if !self.irq_enabled {
+            return;
+        }
+        self.irq_counter = self.irq_counter.wrapping_add(1);
+        if self.irq_counter >= limit {
+            if disable_on_hit {
+                self.irq_enabled = false;
+            }
+            self.irq_pending = true;
+        }
+    }
+
+    pub(in crate::mapper) fn clock_up_to_zero(&mut self, disable_on_hit: bool) {
+        if !self.irq_enabled {
+            return;
+        }
+        self.irq_counter = self.irq_counter.wrapping_add(1);
+        if self.irq_counter == 0 {
+            if disable_on_hit {
+                self.irq_enabled = false;
+            }
+            self.irq_pending = true;
+        }
+    }
+
+    pub(in crate::mapper) fn irq(&self) -> bool {
+        self.irq_pending
+    }
+
+    pub(in crate::mapper) fn clear(&mut self) {
+        self.irq_pending = false;
+    }
+}
+
+impl Default for CpuCycleIrq {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub(super) struct Mmc3A12Irq {
     irq_latch: u8,
     irq_counter: u8,
@@ -185,5 +278,41 @@ mod tests {
         assert!(!filter.clocked(0x0000, 11, 9));
         assert!(filter.clocked(0x1000, 20, 9));
         assert!(!filter.clocked(0x1000, 30, 9));
+    }
+
+    #[test]
+    fn cpu_cycle_irq_counts_to_limit_and_disables_on_hit() {
+        let mut irq = CpuCycleIrq::new();
+        irq.set_enabled(true, true);
+
+        for _ in 0..4095 {
+            irq.clock_up_to(4096, true);
+        }
+        assert!(!irq.irq());
+
+        irq.clock_up_to(4096, true);
+        assert!(irq.irq());
+        irq.clear();
+
+        irq.clock_up_to(4096, true);
+        assert!(!irq.irq());
+    }
+
+    #[test]
+    fn cpu_cycle_irq_can_count_wrapping_to_zero() {
+        let mut irq = CpuCycleIrq::new();
+        irq.set_counter_low(0xFE, false);
+        irq.set_counter_high(0xFF, false);
+        irq.enable();
+
+        irq.clock_up_to_zero(true);
+        assert!(!irq.irq());
+
+        irq.clock_up_to_zero(true);
+        assert!(irq.irq());
+        irq.clear();
+
+        irq.clock_up_to_zero(true);
+        assert!(!irq.irq());
     }
 }

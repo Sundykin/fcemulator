@@ -1,4 +1,4 @@
-use crate::mapper::irq::A12EdgeFilter;
+use crate::mapper::irq::{A12EdgeFilter, CpuCycleIrq};
 use crate::mapper::MapperOps;
 use crate::types::Mirroring;
 use serde::{Deserialize, Serialize};
@@ -343,9 +343,8 @@ impl MapperOps for Mapper42 {
 pub struct Mapper50 {
     variable_prg_bank: usize,
     mirroring: Mirroring,
-    irq_counter: u16,
-    irq_enabled: bool,
-    irq_pending: bool,
+    #[serde(flatten)]
+    irq: CpuCycleIrq,
 }
 
 impl Mapper50 {
@@ -353,9 +352,7 @@ impl Mapper50 {
         Mapper50 {
             variable_prg_bank: 0,
             mirroring,
-            irq_counter: 0,
-            irq_enabled: false,
-            irq_pending: false,
+            irq: CpuCycleIrq::new(),
         }
     }
 }
@@ -392,10 +389,10 @@ impl MapperOps for Mapper50 {
                     ((value & 0x08) | ((value & 0x01) << 2) | ((value & 0x06) >> 1)) as usize;
             }
             0x4120 => {
-                self.irq_enabled = value & 0x01 != 0;
-                if !self.irq_enabled {
-                    self.irq_counter = 0;
-                    self.irq_pending = false;
+                if value & 0x01 != 0 {
+                    self.irq.enable();
+                } else {
+                    self.irq.disable(true, true);
                 }
             }
             _ => {}
@@ -407,14 +404,7 @@ impl MapperOps for Mapper50 {
     }
 
     fn cpu_clock(&mut self) {
-        if !self.irq_enabled {
-            return;
-        }
-        self.irq_counter = self.irq_counter.wrapping_add(1);
-        if self.irq_counter == 0x1000 {
-            self.irq_pending = true;
-            self.irq_enabled = false;
-        }
+        self.irq.clock_up_to(0x1000, true);
     }
 
     fn clocks_cpu(&self) -> bool {
@@ -422,11 +412,11 @@ impl MapperOps for Mapper50 {
     }
 
     fn irq(&self) -> bool {
-        self.irq_pending
+        self.irq.irq()
     }
 
     fn clear_irq(&mut self) {
-        self.irq_pending = false;
+        self.irq.clear();
     }
 }
 

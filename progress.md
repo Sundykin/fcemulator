@@ -899,6 +899,22 @@
   - `cargo test -p fc-core`: PASS, 149/149.
   - `cargo test`: PASS, workspace tests.
 
+### Phase 18 CPU-Cycle IRQ Helper Pass
+- Added `CpuCycleIrq` to `/Users/sunmeng/workspace/fc/fc-core/src/mapper/irq.rs`.
+- Migrated low-risk CPU-cycle up-counter mappers using `#[serde(flatten)]` to preserve old save-state field names:
+  - `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/unlicensed.rs` mapper 43: count to 4096 and disable on hit.
+  - `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/irq.rs` mapper 50: count to 0x1000 and disable on hit.
+  - `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/unlicensed.rs` mapper 106: write low/high counter bytes, count up to zero, then disable on hit.
+- Left decrementing/reload/prescaler IRQs for a later pass because their semantics differ materially.
+- Verification so far:
+  - `cargo fmt --check`: PASS.
+  - `git diff --check`: PASS.
+  - `cargo test -p fc-core mapper::irq -- --nocapture`: PASS, 5/5.
+  - `cargo test -p fc-core mapper::tests::unlicensed_mapper_batch_matches_reference_bank_and_irq_rules -- --nocapture`: PASS.
+  - `cargo test -p fc-core mapper::tests::additional_cpu_irq_mappers_follow_reference_bank_and_irq_rules -- --nocapture`: PASS.
+  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 110/110.
+  - `cargo test -p fc-core`: PASS, 151/151.
+
 ### Mapper 49 / 114 / 115 / 121 MMC3 Protocol Variant Batch
 - Refactored MMC3 writes in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs` into `write_bank_select()`, `write_bank_data()`, and `write_standard_register()`.
 - Added mapper 49 / 114 / 115 / 121 as MMC3 variants:

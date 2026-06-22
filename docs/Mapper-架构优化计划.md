@@ -144,3 +144,4 @@
 - 2026-06-22：在 `Cartridge` 内落地 CPU 地址 helper 层，把 expansion、low、high 三段 read/peek/write 的 open-bus、PRG-RAM、低地址 PRG-ROM、mapper register read、patch 和 bus-conflict 优先级集中起来。当前保持私有 helper，不扩大 `MapperOps`，作为后续低地址映射、读副作用和 reset hook 类 mapper 的接入点。
 - 2026-06-22：新增 `fc-core/src/mapper/irq.rs`，先抽出 `Mmc3A12Irq`，并用 `serde(flatten)` 迁移 MMC3 全家共享的 A12 filter、reload、enable、pending 和 MMC6 zero-reload 抑制逻辑。VRC/RAMBO/CPU counter/HBlank IRQ 保持后续独立收敛。
 - 2026-06-22：继续抽出 `A12EdgeFilter`，迁移 MMC3、RAMBO-1、Mapper117 共享的 A12 低电平门限/上升沿检测状态。各 mapper 仍保留自己的 counter/reload/delay 语义，后续再分层抽 CPU counter/HBlank/VRC/RAMBO IRQ。
+- 2026-06-22：新增 `CpuCycleIrq`，迁移 mapper 43/50/106 这类简单 CPU-cycle up-counter IRQ。当前 helper 只覆盖 enabled/counter/pending、阈值触发、wrap-to-zero 触发和 byte 写入；复杂 reload/prescaler/delay IRQ 后续单独抽取。
