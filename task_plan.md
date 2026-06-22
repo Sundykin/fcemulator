@@ -118,7 +118,9 @@ Phase 17: Mapper compatibility gap closure
 - [x] Add mapper 45 / BMC-Hero as an MMC3 outer-bank serial-register variant
 - [x] Add mapper 64 / Tengen RAMBO-1 with CPU/PPU IRQ modes
 - [x] Add mapper 119 / TQROM with MMC3 CHR-ROM/CHR-RAM bank selection
-- [ ] Continue with P0/P1 missing mapper families: 95/118 next, then architecture work for 68 and MMC3 protocol variants
+- [x] Add mapper 95 / Namco 108 Rev. B with CHR-register-controlled nametable pages
+- [x] Add mapper 118 / TxSROM with MMC3 IRQ plus CHR bit7 nametable pages
+- [ ] Continue with architecture work for 68 and MMC3 protocol variants 114/115/121
 - **Status:** in_progress
 
 ## Key Questions
@@ -148,11 +150,14 @@ Phase 17: Mapper compatibility gap closure
 | Implement Mapper 64 as an independent RAMBO-1 ASIC | It has MMC3-like PRG/CHR banking, but its register set and selectable CPU/A12 IRQ source differ enough that a standalone module is cleaner and can later host mapper 158 |
 | Defer Mapper 68 until nametable-to-CHR architecture exists | Sunsoft-4 maps nametable fetches to CHR backing memory, and the current mapper nametable hook only receives CIRAM |
 | Generalize MMC3 CHR-RAM windows for mapper 119 | TQROM needs a bank range mapped to 8KB CHR-RAM; this also prepares later MMC3_ChrRam variants while preserving mapper 74/194 behavior |
+| Implement Mapper 95 with a small Namco108 variant instead of overloading Namco118 | Mapper 95 masks CHR registers differently and uses CHR register high bits for nametable pages, while mapper 88 keeps fixed header mirroring |
+| Implement Mapper 118 as an MMC3 nametable-layout variant | TxSROM keeps normal MMC3 PRG and A12 IRQ behavior, but disables ordinary A000 mirroring and routes CHR bank bit7 into per-nametable CIRAM A10 |
 
 ## Errors Encountered
 | Error | Attempt | Resolution |
 |-------|---------|------------|
 | Mapper91 unit test expected fixed banks 62/63 | First mapper91 test assumed FCEUX `~1/~0` fixed PRG banks for all paths | Corrected the test to match the implemented FCEUmm submapper-aware sync path: fixed `0x0E/0x0F` plus outer bank |
+| Cargo rejected multiple test filters | Tried to run three mapper capability tests as separate positional filters in one command | Reran `cargo test -p fc-core mapper::tests -- --nocapture`, which covers all mapper facade/capability tests |
 
 ## Notes
 - Preserve the invariant: CPU memory accesses tick the bus before the access; each CPU cycle advances PPU by 3 dots and APU by 1 cycle.

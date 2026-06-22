@@ -210,8 +210,8 @@ pub use basic::{
     Mapper222, Mapper226, Mapper230, Mapper233, Mapper234, Mapper235, Mapper240, Mapper241,
     Mapper244, Mapper246, Mapper253, Mapper36, Mapper40, Mapper42, Mapper43, Mapper50, Mapper57,
     Mapper60, Mapper63, Mapper65, Mapper67, Mapper72, Mapper73, Mapper79, Mapper83, Mapper91,
-    Mapper92, Namco118, Nina01, Nina03_06, Nrom, Ntdec112, Sunsoft184, Sunsoft89, TaitoTc0190,
-    TaitoX1005, TaitoX1017, UnlPci556, Unrom, UnromVariant, UnromVariantMapper, Vrc1,
+    Mapper92, Namco108Mapper95, Namco118, Nina01, Nina03_06, Nrom, Ntdec112, Sunsoft184, Sunsoft89,
+    TaitoTc0190, TaitoX1005, TaitoX1017, UnlPci556, Unrom, UnromVariant, UnromVariantMapper, Vrc1,
 };
 pub use expansion_mappers::{Fme7, Namco163, Vrc6, Vrc6Variant, Vrc7};
 pub use mmc1::Mmc1;
@@ -287,6 +287,7 @@ pub enum Mapper {
     Mapper246(Mapper246),
     Mapper253(Mapper253),
     IremLrog017(IremLrog017),
+    Namco108Mapper95(Namco108Mapper95),
     Namco118(Namco118),
     JalecoJf13(JalecoJf13),
     Sunsoft89(Sunsoft89),
@@ -404,6 +405,7 @@ impl Mapper {
                 UnromVariant::Mapper94,
                 mirroring,
             )),
+            95 => Mapper::Namco108Mapper95(Namco108Mapper95::new(prg_16k)),
             97 => Mapper::IremTamS1(IremTamS1::new(prg_16k)),
             101 => Mapper::JalecoJfxx(JalecoJfxx::new(true, mirroring)),
             103 => Mapper::Mapper103(Mapper103::new(prg_16k, mirroring)),
@@ -413,6 +415,7 @@ impl Mapper {
             113 => Mapper::Nina03_06(Nina03_06::new()),
             116 => Mapper::Mapper116(Mapper116::new(prg_16k, chr_8k)),
             117 => Mapper::Mapper117(Mapper117::new(prg_16k, chr_8k, mirroring)),
+            118 => Mapper::Mmc3(Mmc3::new_118(prg_16k, chr_8k, mirroring)),
             119 => Mapper::Mmc3(Mmc3::new_119(prg_16k, chr_8k, mirroring)),
             120 => Mapper::Mapper120(Mapper120::new(mirroring)),
             140 => Mapper::JalecoJf11_14(JalecoJf11_14::new(mirroring)),
@@ -541,6 +544,7 @@ macro_rules! dispatch {
             Mapper::Mapper246($m) => $body,
             Mapper::Mapper253($m) => $body,
             Mapper::IremLrog017($m) => $body,
+            Mapper::Namco108Mapper95($m) => $body,
             Mapper::Namco118($m) => $body,
             Mapper::JalecoJf13($m) => $body,
             Mapper::Sunsoft89($m) => $body,
@@ -760,10 +764,12 @@ mod tests {
             (88, false),   // Namco 118
             (91, false),   // Mapper 91 IRQ is HBlank-clocked
             (92, false),   // Mapper 92
+            (95, false),   // Namco 108 mapper 95
             (101, false),  // Jaleco JF-xx ordered bits
             (103, false),  // Mapper 103
             (106, false),  // Mapper 106 IRQ is CPU-clocked, not PPU-bus-clocked
             (117, true),   // Mapper 117 A12 IRQ
+            (118, true),   // Mapper 118 MMC3 A12 IRQ
             (119, true),   // Mapper 119 MMC3 A12 IRQ
             (120, false),  // Mapper 120
             (112, false),  // NTDEC ASDER
@@ -879,10 +885,12 @@ mod tests {
             (88, false),   // Namco 118
             (91, false),   // Mapper 91 IRQ is HBlank-clocked
             (92, false),   // Mapper 92
+            (95, false),   // Namco 108 mapper 95
             (101, false),  // Jaleco JF-xx ordered bits
             (103, false),  // Mapper 103
             (106, true),   // Mapper 106 IRQ counter clocks per CPU cycle
             (117, false),  // Mapper 117 uses PPU A12 edges
+            (118, false),  // Mapper 118 uses PPU A12 edges
             (119, false),  // Mapper 119 uses PPU A12 edges
             (120, false),  // Mapper 120
             (112, false),  // NTDEC ASDER
@@ -999,6 +1007,7 @@ mod tests {
             (92, false),
             (93, false),
             (94, false),
+            (95, false),
             (97, false),
             (101, false),
             (103, false),
@@ -1008,6 +1017,7 @@ mod tests {
             (113, false),
             (116, false),
             (117, false),
+            (118, false),
             (119, false),
             (120, false),
             (140, false),

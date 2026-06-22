@@ -238,6 +238,29 @@
   - `cargo test -p fc-core`: PASS, 114/114 fc-core tests.
   - `cargo test`: PASS, workspace tests.
 
+### Mapper 95/118 Nametable Banking Pass
+- Implemented mapper 95 / Namco 108 Rev. B in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/namco.rs`.
+  - Uses Namco108-style fixed PRG/CHR mode.
+  - Masks CHR register writes to 5 bits and routes bit5 to per-nametable CIRAM pages.
+- Implemented mapper 118 / TxSROM in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs`.
+  - Reuses MMC3 PRG/CHR/A12 IRQ core.
+  - Adds a serializable `Mmc3NametableLayout::TxSrom` that maps CHR bank bit7 to per-nametable CIRAM A10.
+  - Masks CHR bank bit7 out of CHR-ROM addressing and ignores ordinary `$A000` mirroring writes.
+- Wired mapper 95/118 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs` and capability tables.
+- Updated mapper gap checklist and reference records. Supported mapper count is now 119; remaining union gap is 374.
+- Verification so far:
+  - `cargo test -p fc-core mapper::basic::namco::tests::mapper95_routes_nametables_from_chr_register_high_bits -- --nocapture`: PASS, 1/1.
+  - `cargo test -p fc-core mapper::mmc3::tests::mapper118_uses_chr_bank_bit7_for_nametable_pages -- --nocapture`: PASS, 1/1.
+  - `cargo fmt --check`: initially failed on export-list formatting; fixed with `cargo fmt`.
+  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 38/38 mapper facade/capability tests.
+  - `cargo fmt --check`: PASS after formatting.
+  - `git diff --check`: PASS.
+  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 76/76 mapper tests.
+  - `cargo test -p fc-core`: PASS, 116/116 fc-core tests.
+  - `cargo test`: PASS, workspace tests.
+- Error note:
+  - Attempted to pass three test filters to one `cargo test` command; cargo accepts one filter, so reran the mapper facade group instead.
+
 ### Continued Phase: PPU open-bus decay
 - Started: 2026-06-19 14:51:32 CST
 - Reproduced `ppu_open_bus/ppu_open_bus.nes` failure: subtest #3, "Decay value should become zero by one second".

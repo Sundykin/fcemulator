@@ -3,7 +3,7 @@ use crate::types::Mirroring;
 use serde::{Deserialize, Serialize};
 
 // ============================================================================
-// Mapper 88 — Namco 118/Tengen RAMBO-1 CHR/PRG banking subset
+// Mapper 88/95 — Namco 108/118 CHR/PRG banking subsets
 // ============================================================================
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -34,6 +34,105 @@ impl Namco118 {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Namco108Mapper95 {
+    prg_8k_total: usize,
+    cmd: usize,
+    regs: [usize; 8],
+    nt: [u8; 4],
+}
+
+impl Namco108Mapper95 {
+    pub(in crate::mapper) fn new(prg_16k: usize) -> Self {
+        Namco108Mapper95 {
+            prg_8k_total: (prg_16k * 2).max(1),
+            cmd: 0,
+            regs: [0; 8],
+            nt: [0; 4],
+        }
+    }
+
+    fn prg_page(&self, slot: usize) -> usize {
+        match slot {
+            0 => self.regs[6],
+            1 => self.regs[7],
+            2 => self.prg_8k_total - 2,
+            _ => self.prg_8k_total - 1,
+        }
+    }
+
+    fn update_chr_nt(&mut self, reg: usize, value: u8) {
+        self.regs[reg] = (value & 0x1F) as usize;
+        let nt = (value >> 5) & 1;
+        match reg {
+            0 => {
+                self.nt[0] = nt;
+                self.nt[1] = nt;
+            }
+            1 => {
+                self.nt[2] = nt;
+                self.nt[3] = nt;
+            }
+            _ => {}
+        }
+    }
+
+    fn ciram_index(&self, addr: u16) -> usize {
+        let table = ((addr >> 10) & 0x03) as usize;
+        ((self.nt[table] as usize) * 0x400) | (addr as usize & 0x03FF)
+    }
+}
+
+impl MapperOps for Namco108Mapper95 {
+    fn prg_index(&self, addr: u16) -> usize {
+        let slot = ((addr - 0x8000) / 0x2000) as usize;
+        (self.prg_page(slot) % self.prg_8k_total) * 0x2000 + (addr as usize & 0x1FFF)
+    }
+
+    fn chr_index(&self, addr: u16) -> usize {
+        let addr = addr & 0x1FFF;
+        let (bank, off) = match addr {
+            0x0000..=0x07FF => (self.regs[0] & !1, addr & 0x07FF),
+            0x0800..=0x0FFF => (self.regs[1] & !1, addr & 0x07FF),
+            0x1000..=0x13FF => (self.regs[2], addr & 0x03FF),
+            0x1400..=0x17FF => (self.regs[3], addr & 0x03FF),
+            0x1800..=0x1BFF => (self.regs[4], addr & 0x03FF),
+            _ => (self.regs[5], addr & 0x03FF),
+        };
+        bank * 0x0400 + off as usize
+    }
+
+    fn write_register(&mut self, addr: u16, value: u8) {
+        match addr & 0x8001 {
+            0x8000 => self.cmd = (value & 0x07) as usize,
+            0x8001 => match self.cmd {
+                0..=5 => self.update_chr_nt(self.cmd, value),
+                6 | 7 => self.regs[self.cmd] = value as usize,
+                _ => {}
+            },
+            _ => {}
+        }
+    }
+
+    fn nametable_read(&mut self, addr: u16, ciram: &[u8; 0x1000]) -> Option<u8> {
+        self.peek_nametable(addr, ciram)
+    }
+
+    fn peek_nametable(&self, addr: u16, ciram: &[u8; 0x1000]) -> Option<u8> {
+        Some(ciram[self.ciram_index(addr)])
+    }
+
+    fn nametable_write(&mut self, addr: u16, value: u8, ciram: &mut [u8; 0x1000]) -> bool {
+        let i = self.ciram_index(addr);
+        ciram[i] = value;
+        true
+    }
+
+    fn mirroring(&self) -> Mirroring {
+        Mirroring::FourScreen
+    }
+}
+
 impl MapperOps for Namco118 {
     fn prg_index(&self, addr: u16) -> usize {
         let slot = ((addr - 0x8000) / 0x2000) as usize;
@@ -60,5 +159,45 @@ impl MapperOps for Namco118 {
     }
     fn mirroring(&self) -> Mirroring {
         self.mirroring
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mapper95_routes_nametables_from_chr_register_high_bits() {
+        let mut mapper = Namco108Mapper95::new(8);
+        let mut ciram = [0u8; 0x1000];
+        ciram[0x004] = 0x11;
+        ciram[0x404] = 0x22;
+
+        assert_eq!(mapper.peek_nametable(0x2004, &ciram), Some(0x11));
+        assert_eq!(mapper.peek_nametable(0x2404, &ciram), Some(0x11));
+
+        mapper.write_register(0x8000, 0);
+        mapper.write_register(0x8001, 0x27);
+        assert_eq!(mapper.chr_index(0x0004), 6 * 0x0400 + 4);
+        assert_eq!(mapper.peek_nametable(0x2004, &ciram), Some(0x22));
+        assert_eq!(mapper.peek_nametable(0x2404, &ciram), Some(0x22));
+        assert_eq!(mapper.peek_nametable(0x2804, &ciram), Some(0x11));
+
+        mapper.write_register(0x8000, 1);
+        mapper.write_register(0x8001, 0x04);
+        assert_eq!(mapper.peek_nametable(0x2804, &ciram), Some(0x11));
+        mapper.write_register(0x8001, 0x24);
+        assert_eq!(mapper.peek_nametable(0x2804, &ciram), Some(0x22));
+        assert_eq!(mapper.peek_nametable(0x2C04, &ciram), Some(0x22));
+
+        mapper.write_register(0x8000, 6);
+        mapper.write_register(0x8001, 3);
+        mapper.write_register(0x8000, 7);
+        mapper.write_register(0x8001, 4);
+        assert_eq!(mapper.prg_index(0x8000), 3 * 0x2000);
+        assert_eq!(mapper.prg_index(0xA000), 4 * 0x2000);
+        assert_eq!(mapper.prg_index(0xC000), 14 * 0x2000);
+        assert_eq!(mapper.prg_index(0xE000), 15 * 0x2000);
+        assert_eq!(mapper.mirroring(), Mirroring::FourScreen);
     }
 }

@@ -22,6 +22,12 @@ enum Mmc3OuterBank {
     Mapper52 { reg: u8, locked: bool },
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+enum Mmc3NametableLayout {
+    Header,
+    TxSrom { pages: [u8; 4] },
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 struct Mmc3ChrRamWindow {
     first: u16,
@@ -44,6 +50,8 @@ pub struct Mmc3 {
     chr_layout: Mmc3ChrLayout,
     #[serde(default = "Mmc3::default_outer_bank")]
     outer_bank: Mmc3OuterBank,
+    #[serde(default = "Mmc3::default_nametable_layout")]
+    nametable_layout: Mmc3NametableLayout,
     mirroring: Mirroring,
     // scanline IRQ
     irq_latch: u8,
@@ -79,6 +87,10 @@ impl Mmc3 {
         Mmc3OuterBank::None
     }
 
+    fn default_nametable_layout() -> Mmc3NametableLayout {
+        Mmc3NametableLayout::Header
+    }
+
     pub(super) fn new(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
         Mmc3 {
             prg_8k: (prg_16k * 2).max(1),
@@ -90,6 +102,7 @@ impl Mmc3 {
             chr_mode: false,
             chr_layout: Mmc3ChrLayout::Standard,
             outer_bank: Mmc3OuterBank::None,
+            nametable_layout: Mmc3NametableLayout::Header,
             mirroring,
             irq_latch: 0,
             irq_counter: 0,
@@ -156,6 +169,15 @@ impl Mmc3 {
         m
     }
 
+    /// Mapper 118 — TxSROM/TLSROM/TKSROM, MMC3 with CHR bank bit 7 routed to
+    /// CIRAM A10 for per-nametable single-screen selection.
+    pub(super) fn new_118(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
+        let mut m = Mmc3::new(prg_16k, chr_8k, mirroring);
+        m.nametable_layout = Mmc3NametableLayout::TxSrom { pages: [0; 4] };
+        m.rebuild_txsrom_nametables();
+        m
+    }
+
     pub(super) fn new_with_low_wram(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
         let mut m = Mmc3::new(prg_16k, chr_8k, mirroring);
         m.low_wram = vec![0u8; 0x1000];
@@ -219,6 +241,30 @@ impl Mmc3 {
         }
     }
 
+    fn rebuild_txsrom_nametables(&mut self) {
+        if let Mmc3NametableLayout::TxSrom { pages } = &mut self.nametable_layout {
+            if !self.chr_mode {
+                pages[0] = (self.banks[0] >> 7) & 1;
+                pages[1] = (self.banks[0] >> 7) & 1;
+                pages[2] = (self.banks[1] >> 7) & 1;
+                pages[3] = (self.banks[1] >> 7) & 1;
+            } else {
+                pages[0] = (self.banks[2] >> 7) & 1;
+                pages[1] = (self.banks[3] >> 7) & 1;
+                pages[2] = (self.banks[4] >> 7) & 1;
+                pages[3] = (self.banks[5] >> 7) & 1;
+            }
+        }
+    }
+
+    fn txsrom_ciram_index(&self, addr: u16) -> Option<usize> {
+        let Mmc3NametableLayout::TxSrom { pages } = &self.nametable_layout else {
+            return None;
+        };
+        let table = ((addr >> 10) & 0x03) as usize;
+        Some(((pages[table] as usize) * 0x400) | (addr as usize & 0x03FF))
+    }
+
     /// Effective CHR bank number (1KB granularity) and the offset within that
     /// 1KB for a PPU CHR address — mirrors `chr_index`'s bank selection so the
     /// CHR-RAM (mapper 74, banks 8/9; mapper 119, banks $40-$7F) routing stays
@@ -249,7 +295,15 @@ impl Mmc3 {
                 _ => two(self.banks[1], true),
             }
         };
-        (bank, off)
+        (self.mask_chr_bank(bank), off)
+    }
+
+    fn mask_chr_bank(&self, bank: u16) -> u16 {
+        if matches!(self.nametable_layout, Mmc3NametableLayout::TxSrom { .. }) {
+            bank & 0x7F
+        } else {
+            bank
+        }
     }
 
     /// Index into mapper-owned CHR-RAM for CPU-visible PPU reads/writes.
@@ -390,7 +444,7 @@ impl MapperOps for Mmc3 {
                 _ => (self.banks[1] & 0xFE, a & 0x07FF),
             }
         };
-        let slot = self.outer_chr_bank(slot as usize);
+        let slot = self.outer_chr_bank(self.mask_chr_bank(slot as u16) as usize);
         (slot % self.chr_1k) * 0x400 + off as usize
     }
 
@@ -405,6 +459,7 @@ impl MapperOps for Mmc3 {
                     self.chr_mode = value & 0x80 != 0;
                     if old_chr_mode != self.chr_mode {
                         self.rebuild_chr_layout();
+                        self.rebuild_txsrom_nametables();
                     }
                 } else {
                     let reg = (self.bank_select & 0x07) as usize;
@@ -422,10 +477,13 @@ impl MapperOps for Mmc3 {
                             self.mapper76_chr_write(addr, value);
                         }
                     }
+                    if reg <= 5 {
+                        self.rebuild_txsrom_nametables();
+                    }
                 }
             }
             0xA000..=0xBFFF => {
-                if even {
+                if even && !matches!(self.nametable_layout, Mmc3NametableLayout::TxSrom { .. }) {
                     self.mirroring = if value & 1 == 0 {
                         Mirroring::Vertical
                     } else {
@@ -532,8 +590,29 @@ impl MapperOps for Mmc3 {
         }
     }
 
+    fn nametable_read(&mut self, addr: u16, ciram: &[u8; 0x1000]) -> Option<u8> {
+        self.peek_nametable(addr, ciram)
+    }
+
+    fn peek_nametable(&self, addr: u16, ciram: &[u8; 0x1000]) -> Option<u8> {
+        self.txsrom_ciram_index(addr).map(|i| ciram[i])
+    }
+
+    fn nametable_write(&mut self, addr: u16, value: u8, ciram: &mut [u8; 0x1000]) -> bool {
+        if let Some(i) = self.txsrom_ciram_index(addr) {
+            ciram[i] = value;
+            true
+        } else {
+            false
+        }
+    }
+
     fn mirroring(&self) -> Mirroring {
-        self.mirroring
+        if matches!(self.nametable_layout, Mmc3NametableLayout::TxSrom { .. }) {
+            Mirroring::FourScreen
+        } else {
+            self.mirroring
+        }
     }
 
     fn watches_ppu_bus(&self) -> bool {
@@ -782,6 +861,39 @@ mod tests {
             mapper.chr_read(0x1004, super::super::ChrAccess::Default),
             Some(0x55)
         );
+    }
+
+    #[test]
+    fn mapper118_uses_chr_bank_bit7_for_nametable_pages() {
+        let mut mapper = Mmc3::new_118(32, 32, Mirroring::Vertical);
+        let mut ciram = [0u8; 0x1000];
+        ciram[0x004] = 0x11;
+        ciram[0x404] = 0x22;
+
+        assert_eq!(mapper.mirroring(), Mirroring::FourScreen);
+        assert_eq!(mapper.peek_nametable(0x2004, &ciram), Some(0x11));
+        assert_eq!(mapper.peek_nametable(0x2804, &ciram), Some(0x11));
+
+        mapper.write_register(0x8000, 0);
+        mapper.write_register(0x8001, 0x82);
+        assert_eq!(mapper.chr_index(0x0004), 2 * 0x0400 + 4);
+        assert_eq!(mapper.chr_index(0x0404), 3 * 0x0400 + 4);
+        assert_eq!(mapper.peek_nametable(0x2004, &ciram), Some(0x22));
+        assert_eq!(mapper.peek_nametable(0x2404, &ciram), Some(0x22));
+        assert_eq!(mapper.peek_nametable(0x2804, &ciram), Some(0x11));
+
+        mapper.write_register(0xA000, 1);
+        assert_eq!(mapper.mirroring(), Mirroring::FourScreen);
+        assert_eq!(mapper.peek_nametable(0x2004, &ciram), Some(0x22));
+
+        mapper.write_register(0x8000, 0x80);
+        mapper.write_register(0x8001, 0x01);
+        mapper.write_register(0x8000, 0x82);
+        mapper.write_register(0x8001, 0x85);
+        assert_eq!(mapper.chr_index(0x0004), 5 * 0x0400 + 4);
+        assert_eq!(mapper.peek_nametable(0x2004, &ciram), Some(0x22));
+        assert_eq!(mapper.peek_nametable(0x2404, &ciram), Some(0x11));
+        assert_eq!(mapper.peek_nametable(0x2804, &ciram), Some(0x11));
     }
 
     #[test]

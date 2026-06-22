@@ -23,15 +23,18 @@
 - `fc-core/src/mapper/basic/jy.rs:1-133`
   - 新增 Mapper 91 / JY Company。
   - 覆盖 2KB CHR、8KB PRG、submapper 1 outer bank/mirroring latch，以及 FCEUX/FCEUmm 风格 HBlank IRQ。
+- `fc-core/src/mapper/basic/namco.rs:1-203`
+  - 新增 Mapper 95 / Namco 108 Rev. B。
+  - 覆盖 Namco108 风格高区寄存器、固定 PRG/CHR mode、CHR register bit5 到 per-nametable CIRAM A10 映射。
 - `fc-core/src/mapper/basic/sl12.rs:1-344`
   - 新增 Mapper 116 / Someri Team SL12。
   - 覆盖 VRC2/MMC3/MMC1 三模式切换、VRC2 nibble CHR、MMC3 A12 IRQ、MMC1 serial register、CHR outer bank bit。
 - `fc-core/src/mapper/basic/waixing.rs:1-295`
   - 新增 Mapper 253 / Waixing Dragon Ball pirate。
   - 覆盖 8KB PRG、1KB CHR nibble register、2KB mapper-owned CHR-RAM window、mirroring、CPU-clock IRQ。
-- `fc-core/src/mapper/mmc3.rs:9-180,248-294,322-545,604-686,728-763`
-  - 新增 Mapper 37 / 44 / 45 / 47 / 52 / 76 / 119 的 MMC3 变体布局。
-  - 复用 MMC3 PRG/IRQ 核心，扩展 outer PRG/CHR bank latch、Mapper 45 serial outer registers、Mapper 76 自定义 2KB CHR cwrap，以及 Mapper 119 TQROM CHR-ROM/CHR-RAM window。
+- `fc-core/src/mapper/mmc3.rs:9-915`
+  - 新增 Mapper 37 / 44 / 45 / 47 / 52 / 76 / 118 / 119 的 MMC3 变体布局。
+  - 复用 MMC3 PRG/IRQ 核心，扩展 outer PRG/CHR bank latch、Mapper 45 serial outer registers、Mapper 76 自定义 2KB CHR cwrap、Mapper 118 TxSROM per-nametable CIRAM A10，以及 Mapper 119 TQROM CHR-ROM/CHR-RAM window。
 - `fc-core/src/mapper/rambo1.rs:1-309`
   - 新增 Mapper 64 / Tengen RAMBO-1。
   - 覆盖 8KB PRG bank mode、2KB/1KB CHR mode、CHR A12 inversion、mapper-controlled mirroring、CPU/PPU A12 双模式 IRQ、IRQ 延迟与 CPU-mode force-clock。
@@ -108,11 +111,19 @@
 | 91 | `jy.rs:1-133` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/JyCompany/Mapper91.h` | 5-18, 25-42 | Mapper 91 PRG/CHR register decode cross-check；Mesen2 用 MMC3 IRQ 复用 |
 | 92 | `latch/discrete.rs` | `/Users/sunmeng/workspace/fc/fceux/src/boards/72.cpp` | 35-80 | Jaleco 2-in-1 mapper 92 PRG fixed-low/CHR latch 写位 |
 | 92 | `latch/discrete.rs` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/addrlatch.c` | 247-263 | address-latch 形式 cross-check；保留后续按地址高位差异精修入口 |
+| 95 | `namco.rs:34-203` | `/Users/sunmeng/workspace/fc/fceux/src/boards/80.cpp` | 106-122, 124-134, 153-184 | Mapper 95 写寄存器、CHR bit5 到 mirroring cache、PPU hook 模型 cross-check |
+| 95 | `namco.rs:34-203` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/80.c` | 106-122, 124-134, 153-184 | FCEUmm Mapper 95 与 FCEUX 同源行为 cross-check |
+| 95 | `namco.rs:34-203` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Namco/Namco108.h` | 5-23 | Namco108 固定 PRG/CHR mode 与 hardwired mirroring 行为 |
+| 95 | `namco.rs:34-203` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Namco/Namco108_95.h` | 5-18 | Mapper 95 reg0/reg1 bit5 到四个 nametable 页映射；当前实现采用此模型 |
 | 106 | `unlicensed.rs:339-431` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Unlicensed/Mapper106.h` | 14-16, 18-26, 36-73 | PRG/CHR register decode、CPU-cycle IRQ |
 | 106 | `unlicensed.rs:339-431` | `/Users/sunmeng/workspace/fc/fceux/src/boards/106.cpp` | 36-59, 81-87 | FCEUX PRG/CHR sync 和 IRQ overflow cross-check |
 | 116 | `sl12.rs:1-344` | `/Users/sunmeng/workspace/fc/fceux/src/boards/116.cpp` | 64-163, 165-260, 264-305 | SL12 VRC2/MMC3/MMC1 PRG/CHR/mirroring、mode write、MMC3 HBlank IRQ、power defaults |
 | 116 | `sl12.rs:1-344` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/116.c` | 42-73, 79-120, 122-145 | 新版 ASIC 复用设计、submapper/game 轮换记录；当前仅实现主线行为 |
 | 116 | `sl12.rs:1-344` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Unlicensed/Mapper116.h` | 31-78, 102-123, 126-291 | mapper 116 register range、A12 IRQ、三模式 PRG/CHR/mirroring 与写寄存器 |
+| 118 | `mmc3.rs:26-32,169-183,241-264,295-302,444-449,459-480,590-615,863-895` | `/Users/sunmeng/workspace/fc/fceux/src/boards/mmc3.cpp` | 828-845, 1412-1426 | TxSROM/TLSROM/TKSROM CHR bit7 到 nametable mirroring、禁用普通 A000 mirroring |
+| 118 | `mmc3.rs:26-32,169-183,241-264,295-302,444-449,459-480,590-615,863-895` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/mmc3.c` | 938-953, 1702-1717 | FCEUmm TKSPPU/TKSWRAP 与 init 注册 cross-check |
+| 118 | `mmc3.rs:26-32,169-183,241-264,295-302,444-449,459-480,590-615,863-895` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Nintendo/TxSRom.h` | 5-41 | TxSROM 在 MMC3 `8001` CHR 写时设置 nametable 页；当前实现采用此 per-page 模型 |
+| 118 | `mmc3.rs:26-32,169-183,241-264,295-302,444-449,459-480,590-615,863-895` | `/Users/sunmeng/workspace/fc/nestopia/source/core/board/NstBoardTxRom.cpp` | 38-56 | Nestopia TksRom `UpdateChr` 仅低 pattern table address 更新 nametable bank cross-check |
 | 119 | `mmc3.rs:26-30,56-64,162-181,246-259,742-773` | `/Users/sunmeng/workspace/fc/fceux/src/boards/mmc3.cpp` | 847-860, 1428-1435 | TQROM CHR bank bit 6 选择 8KB CHR-RAM mapping，低 6 位选择 CHR page |
 | 119 | `mmc3.rs:26-30,56-64,162-181,246-259,742-773` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Mmc3Variants/MMC3_ChrRam.h` | 5-24, 34-37 | 通用 MMC3 CHR-RAM bank range 机制 |
 | 119 | `mmc3.rs:26-30,56-64,162-181,246-259,742-773` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/MapperFactory.cpp` | 404 | mapper 119 使用 `MMC3_ChrRam(0x40, 0x7F, 8)` cross-check |
