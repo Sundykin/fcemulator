@@ -496,6 +496,7 @@ impl Mapper {
             193 => Mapper::Mapper193(Mapper193::new(mirroring)),
             194 => Mapper::Mmc3(Mmc3::new_194(prg_16k, chr_8k, mirroring)),
             195 => Mapper::Mmc3(Mmc3::new_195(prg_16k, chr_8k, mirroring)),
+            196 => Mapper::Mmc3(Mmc3::new_196(prg_16k, chr_8k, mirroring)),
             200 => Mapper::AddrLatch16k(AddrLatch16k::new(AddrLatchVariant::Mapper200)),
             201 => Mapper::AddrLatch16k(AddrLatch16k::new_with_mirroring(
                 AddrLatchVariant::Mapper201,
@@ -894,6 +895,7 @@ mod tests {
             (191, true),   // Mapper 191 MMC3 A12 IRQ
             (192, true),   // Mapper 192 MMC3 A12 IRQ
             (195, true),   // Mapper 195 MMC3 A12 IRQ
+            (196, true),   // Mapper 196 MMC3 A12 IRQ
             (200, false),  // Mapper 200
             (201, false),  // Mapper 201
             (202, false),  // Mapper 202
@@ -1042,6 +1044,7 @@ mod tests {
             (191, false),  // Mapper 191 uses PPU A12 edges
             (192, false),  // Mapper 192 uses PPU A12 edges
             (195, false),  // Mapper 195 uses PPU A12 edges
+            (196, false),  // Mapper 196 uses PPU A12 edges
             (200, false),  // Mapper 200
             (201, false),  // Mapper 201
             (202, false),  // Mapper 202
@@ -1193,6 +1196,7 @@ mod tests {
             (192, false),
             (194, false),
             (195, false),
+            (196, false),
             (200, false),
             (201, false),
             (202, false),

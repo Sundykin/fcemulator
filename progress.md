@@ -1018,3 +1018,13 @@
   - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 115/115 mapper tests.
   - `cargo test -p fc-core`: PASS, 156/156 fc-core tests.
   - `cargo test`: PASS, workspace tests.
+
+### Mapper 196 MMC3 Protocol Variant Batch
+- Implemented mapper 196 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs`: adds a `Mmc3OuterBank::Mapper196` PRG32 latch and remaps high-register address lines before routing writes through the shared MMC3 helper.
+- Wired mapper 196 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs`, updated capability guard tests, and refreshed mapper gap/reference docs; supported mapper count is now 149 and remaining four-reference union gap is 344.
+- Verification:
+  - `cargo fmt --check`: PASS.
+  - `git diff --check`: PASS.
+  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 116/116 mapper tests.
+  - `cargo test -p fc-core`: PASS, 157/157 fc-core tests.
+  - `cargo test`: PASS, workspace tests.

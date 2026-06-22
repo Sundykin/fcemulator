@@ -283,3 +283,4 @@
 - Mapper 193 / MEGA-SOFT War in the Gulf 是独立 discrete board：`$6000-$6003` 四个低区 register 分别控制 CHR4、CHR2、CHR2 和 `$8000` PRG8，`$A000/$C000/$E000` 固定到 `0x0D/0x0E/0x0F`。现有 low-register write hook 足够，不需要新架构。
 - Mapper 191 的第一版可直接复用 `ChrRamWindow(0x80..=0xFF, 2KB)`，与 FCEUX 和 Mesen2 的参数化 MMC3 CHR-RAM board 对齐。FCEUmm 2025 版本增加了 submapper 与低区 PRG 行为，记录为后续精修，而不阻塞基础兼容面。
 - Mapper 245 是 MMC3 thin variant：CHR bank 写只保留低 3 位，CHR register 0 的 bit1 作为 PRG outer bit 加到 8KB PRG bank bit6。现有 `Mmc3OuterBank` 可以承载，无需新 mapper 架构。
+- Mapper 196 需要的是 MMC3 write protocol remap，而不是新 mapper trait：高区地址线先折叠到普通 MMC3 register 地址，低区 `$6000-$6FFF` 写启用 PRG32 latch。现有 `write_standard_register()` helper 和 `Mmc3OuterBank` 足够表达。

@@ -130,6 +130,7 @@ Phase 17: Mapper compatibility gap closure
 - [x] Add low-risk mapper batch 156 / 166 / 167
 - [x] Add mechanical mapper batch 185 / 189 / 193
 - [x] Add MMC3 mechanical mapper batch 191 / 245
+- [x] Add MMC3 protocol variant mapper 196
 - **Status:** in_progress
 
 ### Phase 18: Mapper board compatibility layer
@@ -188,6 +189,7 @@ Phase 17: Mapper compatibility gap closure
 | New `Mmc3A12Irq` unit tests failed | First assertions expected IRQ on the reload edge instead of the next valid A12 clock, and zero-reload suppression setup never passed through counter 1 | Corrected tests to follow MMC3 reload/decrement edge order; migrated MMC3 tests remained green |
 | Cargo rejected multiple test filters | Tried to run mapper191 and mapper245 tests as two positional filters in one command | Reran `cargo test -p fc-core mapper::mmc3::tests -- --nocapture`, which covers both new tests |
 | Mapper191 test failed to resolve `ChrAccess` | Used `super::ChrAccess` inside the `mmc3.rs` test module | Imported `crate::mapper::ChrAccess` in the test module and reran MMC3 tests |
+| Mapper196 test expected ordinary `$8004/$8005` pair | First assertion used an address pair that remaps to MMC3 command writes differently than intended | Corrected the test to use `$8000/$8002`, which exercises mapper196's address-line remap into normal select/data writes |
 
 ## Notes
 - Preserve the invariant: CPU memory accesses tick the bus before the access; each CPU cycle advances PPU by 3 dots and APU by 1 cycle.
