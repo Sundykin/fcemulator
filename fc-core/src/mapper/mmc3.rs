@@ -13,6 +13,15 @@ enum Mmc3ChrLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+enum Mmc3OuterBank {
+    None,
+    Mapper37 { block: u8 },
+    Mapper44 { block: u8 },
+    Mapper47 { block: u8, submapper: u8 },
+    Mapper52 { reg: u8, locked: bool },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Mmc3 {
     prg_8k: usize,
     chr_1k: usize,
@@ -26,6 +35,8 @@ pub struct Mmc3 {
     chr_mode: bool, // bit7 of bank_select
     #[serde(default = "Mmc3::default_chr_layout")]
     chr_layout: Mmc3ChrLayout,
+    #[serde(default = "Mmc3::default_outer_bank")]
+    outer_bank: Mmc3OuterBank,
     mirroring: Mirroring,
     // scanline IRQ
     irq_latch: u8,
@@ -55,6 +66,10 @@ impl Mmc3 {
         Mmc3ChrLayout::Standard
     }
 
+    fn default_outer_bank() -> Mmc3OuterBank {
+        Mmc3OuterBank::None
+    }
+
     pub(super) fn new(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
         Mmc3 {
             prg_8k: (prg_16k * 2).max(1),
@@ -65,6 +80,7 @@ impl Mmc3 {
             prg_mode: false,
             chr_mode: false,
             chr_layout: Mmc3ChrLayout::Standard,
+            outer_bank: Mmc3OuterBank::None,
             mirroring,
             irq_latch: 0,
             irq_counter: 0,
@@ -78,6 +94,46 @@ impl Mmc3 {
             chr_ram: Vec::new(),
             low_wram: Vec::new(),
         }
+    }
+
+    /// Mapper 37 — PAL-ZZ SMB/Tetris/NWC, MMC3 with a 2-bit outer bank latch.
+    pub(super) fn new_37(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
+        let mut m = Mmc3::new(prg_16k, chr_8k, mirroring);
+        m.outer_bank = Mmc3OuterBank::Mapper37 { block: 0 };
+        m
+    }
+
+    /// Mapper 44 — BMC Super Big 7-in-1, MMC3 with an A001 outer bank select.
+    pub(super) fn new_44(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
+        let mut m = Mmc3::new(prg_16k, chr_8k, mirroring);
+        m.outer_bank = Mmc3OuterBank::Mapper44 { block: 0 };
+        m
+    }
+
+    /// Mapper 47 — NES-QJ SSVB/NWC, MMC3 with a 1-bit low-register outer bank.
+    pub(super) fn new_47(
+        prg_16k: usize,
+        chr_8k: usize,
+        mirroring: Mirroring,
+        submapper: u8,
+    ) -> Self {
+        let mut m = Mmc3::new(prg_16k, chr_8k, mirroring);
+        m.outer_bank = Mmc3OuterBank::Mapper47 {
+            block: 0,
+            submapper,
+        };
+        m
+    }
+
+    /// Mapper 52 — BMC Mario Party 7-in-1, MMC3 with a one-shot low-register
+    /// outer bank latch.
+    pub(super) fn new_52(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
+        let mut m = Mmc3::new(prg_16k, chr_8k, mirroring);
+        m.outer_bank = Mmc3OuterBank::Mapper52 {
+            reg: 0,
+            locked: false,
+        };
+        m
     }
 
     pub(super) fn new_with_low_wram(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
@@ -178,6 +234,45 @@ impl Mmc3 {
         }
     }
 
+    fn outer_prg_bank(&self, bank: usize) -> usize {
+        match &self.outer_bank {
+            Mmc3OuterBank::None => bank,
+            Mmc3OuterBank::Mapper37 { block } => {
+                let mask = if *block == 2 { 0x0F } else { 0x07 };
+                ((*block as usize) << 3) | (bank & mask)
+            }
+            Mmc3OuterBank::Mapper44 { block } => {
+                let mask = if *block >= 6 { 0x1F } else { 0x0F };
+                ((*block as usize) << 4) | (bank & mask)
+            }
+            Mmc3OuterBank::Mapper47 { block, .. } => (((block & 1) as usize) << 4) | (bank & 0x0F),
+            Mmc3OuterBank::Mapper52 { reg, .. } => {
+                let mask = 0x1F ^ (((reg & 0x08) as usize) << 1);
+                let outer = (((reg & 0x06) | ((reg >> 3) & reg & 0x01)) as usize) << 4;
+                outer | (bank & mask)
+            }
+        }
+    }
+
+    fn outer_chr_bank(&self, bank: usize) -> usize {
+        match &self.outer_bank {
+            Mmc3OuterBank::None => bank,
+            Mmc3OuterBank::Mapper37 { block } => ((*block as usize) << 6) | (bank & 0x7F),
+            Mmc3OuterBank::Mapper44 { block } => {
+                let mask = if *block < 6 { 0x7F } else { 0xFF };
+                ((*block as usize) << 7) | (bank & mask)
+            }
+            Mmc3OuterBank::Mapper47 { block, .. } => (((block & 1) as usize) << 7) | (bank & 0x7F),
+            Mmc3OuterBank::Mapper52 { reg, .. } => {
+                let mask = 0xFF ^ (((reg & 0x40) as usize) << 1);
+                let outer = ((((reg >> 4) & 0x02) | (reg & 0x04) | ((reg >> 6) & (reg >> 4) & 0x01))
+                    as usize)
+                    << 7;
+                outer | (bank & mask)
+            }
+        }
+    }
+
     /// Clock the scanline IRQ counter (on a filtered A12 rising edge).
     fn clock_irq_counter(&mut self) {
         let reset_reload = self.irq_reload;
@@ -205,16 +300,16 @@ impl Mmc3 {
 
 impl MapperOps for Mmc3 {
     fn prg_index(&self, addr: u16) -> usize {
-        let last = self.prg_8k - 1;
         let region = (addr - 0x8000) / 0x2000; // 0..=3 (8KB each)
         let bank = match (region, self.prg_mode) {
             (0, false) => self.banks[6] as usize,
-            (0, true) => last - 1,
+            (0, true) => 0xFE,
             (1, _) => self.banks[7] as usize,
-            (2, false) => last - 1,
+            (2, false) => 0xFE,
             (2, true) => self.banks[6] as usize,
-            _ => last, // region 3 always fixed to last
+            _ => 0xFF, // region 3 always fixed to last
         };
+        let bank = self.outer_prg_bank(bank);
         (bank % self.prg_8k) * 0x2000 + (addr & 0x1FFF) as usize
     }
 
@@ -249,7 +344,8 @@ impl MapperOps for Mmc3 {
                 _ => (self.banks[1] & 0xFE, a & 0x07FF),
             }
         };
-        ((slot as usize) % self.chr_1k) * 0x400 + off as usize
+        let slot = self.outer_chr_bank(slot as usize);
+        (slot % self.chr_1k) * 0x400 + off as usize
     }
 
     fn write_register(&mut self, addr: u16, value: u8) {
@@ -289,6 +385,8 @@ impl MapperOps for Mmc3 {
                     } else {
                         Mirroring::Horizontal
                     };
+                } else if let Mmc3OuterBank::Mapper44 { block } = &mut self.outer_bank {
+                    *block = value & 0x07;
                 }
                 // odd: PRG-RAM protect — ignored
             }
@@ -308,6 +406,35 @@ impl MapperOps for Mmc3 {
                 }
             }
         }
+    }
+
+    fn write_low_register(&mut self, _addr: u16, value: u8) -> bool {
+        match &mut self.outer_bank {
+            Mmc3OuterBank::Mapper37 { block } => {
+                *block = (value & 0x06) >> 1;
+                true
+            }
+            Mmc3OuterBank::Mapper47 { block, submapper } => {
+                if *submapper == 0 || (*block & 0x80) == 0 {
+                    *block = value;
+                }
+                true
+            }
+            Mmc3OuterBank::Mapper52 { reg, locked } => {
+                if *locked {
+                    false
+                } else {
+                    *reg = value;
+                    *locked = value & 0x80 != 0;
+                    true
+                }
+            }
+            _ => false,
+        }
+    }
+
+    fn low_register_write_falls_through(&self, _addr: u16) -> bool {
+        matches!(self.outer_bank, Mmc3OuterBank::Mapper47 { .. })
     }
 
     fn read_expansion(&mut self, addr: u16) -> Option<u8> {
@@ -402,6 +529,90 @@ mod tests {
         let mut mapper = Mmc3::new(4, 0, Mirroring::Horizontal);
         mapper.write_expansion(0x5462, 0x8D);
         assert_eq!(mapper.read_expansion(0x5462), None);
+    }
+
+    #[test]
+    fn mapper37_outer_bank_wraps_prg_and_chr() {
+        let mut mapper = Mmc3::new_37(32, 32, Mirroring::Vertical);
+
+        mapper.write_register(0x8000, 0x06);
+        mapper.write_register(0x8001, 0x08);
+        assert_eq!(mapper.prg_index(0x8004), 0x00 * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xE004), 0x07 * 0x2000 + 4);
+
+        mapper.write_low_register(0x6000, 0x04);
+        assert_eq!(mapper.prg_index(0x8004), 0x18 * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xE004), 0x1F * 0x2000 + 4);
+
+        mapper.write_register(0x8000, 0x02);
+        mapper.write_register(0x8001, 0x25);
+        assert_eq!(mapper.chr_index(0x1004), 0xA5 * 0x400 + 4);
+    }
+
+    #[test]
+    fn mapper44_a001_selects_large_outer_banks() {
+        let mut mapper = Mmc3::new_44(64, 128, Mirroring::Vertical);
+
+        mapper.write_register(0x8000, 0x06);
+        mapper.write_register(0x8001, 0x2A);
+        mapper.write_register(0xA001, 6);
+        assert_eq!(mapper.prg_index(0x8004), 0x6A * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xE004), 0x7F * 0x2000 + 4);
+
+        mapper.write_register(0x8000, 0x02);
+        mapper.write_register(0x8001, 0xCA);
+        assert_eq!(mapper.chr_index(0x1004), 0x3CA * 0x400 + 4);
+    }
+
+    #[test]
+    fn mapper47_low_latch_selects_outer_bank_and_can_fall_through() {
+        let mut mapper = Mmc3::new_47(32, 32, Mirroring::Vertical, 0);
+
+        mapper.write_register(0x8000, 0x06);
+        mapper.write_register(0x8001, 0x2F);
+        assert_eq!(mapper.prg_index(0x8004), 0x0F * 0x2000 + 4);
+        assert!(mapper.low_register_write_falls_through(0x6000));
+
+        mapper.write_low_register(0x6000, 0x01);
+        assert_eq!(mapper.prg_index(0x8004), 0x1F * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xE004), 0x1F * 0x2000 + 4);
+
+        mapper.write_register(0x8000, 0x02);
+        mapper.write_register(0x8001, 0xAF);
+        assert_eq!(mapper.chr_index(0x1004), 0xAF * 0x400 + 4);
+    }
+
+    #[test]
+    fn mapper47_submapper_can_lock_low_latch_after_bit7_write() {
+        let mut mapper = Mmc3::new_47(32, 32, Mirroring::Vertical, 1);
+
+        mapper.write_register(0x8000, 0x06);
+        mapper.write_register(0x8001, 0x00);
+        mapper.write_low_register(0x6000, 0x81);
+        assert_eq!(mapper.prg_index(0x8004), 0x10 * 0x2000 + 4);
+
+        mapper.write_low_register(0x6000, 0x00);
+        assert_eq!(mapper.prg_index(0x8004), 0x10 * 0x2000 + 4);
+    }
+
+    #[test]
+    fn mapper52_one_shot_latch_masks_prg_and_chr_banks() {
+        let mut mapper = Mmc3::new_52(64, 128, Mirroring::Vertical);
+
+        mapper.write_register(0x8000, 0x06);
+        mapper.write_register(0x8001, 0x3D);
+        assert_eq!(mapper.prg_index(0x8004), 0x1D * 0x2000 + 4);
+
+        assert!(mapper.write_low_register(0x6000, 0xCF));
+        assert_eq!(mapper.prg_index(0x8004), 0x7D * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xE004), 0x7F * 0x2000 + 4);
+
+        assert!(!mapper.write_low_register(0x6000, 0x00));
+        assert_eq!(mapper.prg_index(0x8004), 0x7D * 0x2000 + 4);
+
+        mapper.write_register(0x8000, 0x02);
+        mapper.write_register(0x8001, 0xD5);
+        assert_eq!(mapper.chr_index(0x1004), 0x255 * 0x400 + 4);
     }
 
     #[test]

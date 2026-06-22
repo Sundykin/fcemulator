@@ -207,10 +207,10 @@ pub use basic::{
     JalecoJf13, JalecoJf16, JalecoJfxx, Mapper103, Mapper106, Mapper107, Mapper117, Mapper120,
     Mapper15, Mapper151, Mapper170, Mapper18, Mapper183, Mapper203, Mapper212, Mapper222,
     Mapper226, Mapper230, Mapper233, Mapper234, Mapper235, Mapper240, Mapper241, Mapper244,
-    Mapper246, Mapper36, Mapper40, Mapper42, Mapper43, Mapper50, Mapper57, Mapper60, Mapper63,
-    Mapper65, Mapper67, Mapper72, Mapper73, Mapper79, Mapper83, Mapper91, Mapper92, Namco118,
-    Nina01, Nina03_06, Nrom, Ntdec112, Sunsoft184, Sunsoft89, TaitoTc0190, TaitoX1005, TaitoX1017,
-    UnlPci556, Unrom, UnromVariant, UnromVariantMapper, Vrc1,
+    Mapper246, Mapper253, Mapper36, Mapper40, Mapper42, Mapper43, Mapper50, Mapper57, Mapper60,
+    Mapper63, Mapper65, Mapper67, Mapper72, Mapper73, Mapper79, Mapper83, Mapper91, Mapper92,
+    Namco118, Nina01, Nina03_06, Nrom, Ntdec112, Sunsoft184, Sunsoft89, TaitoTc0190, TaitoX1005,
+    TaitoX1017, UnlPci556, Unrom, UnromVariant, UnromVariantMapper, Vrc1,
 };
 pub use expansion_mappers::{Fme7, Namco163, Vrc6, Vrc6Variant, Vrc7};
 pub use mmc1::Mmc1;
@@ -281,6 +281,7 @@ pub enum Mapper {
     Mapper241(Mapper241),
     Mapper244(Mapper244),
     Mapper246(Mapper246),
+    Mapper253(Mapper253),
     IremLrog017(IremLrog017),
     Namco118(Namco118),
     JalecoJf13(JalecoJf13),
@@ -333,6 +334,7 @@ impl Mapper {
             15 => Mapper::Mapper15(Mapper15::new()),
             18 => Mapper::Mapper18(Mapper18::new(prg_16k, chr_8k)),
             19 => Mapper::Namco163(Namco163::new(prg_16k, chr_8k, mirroring)),
+            21..=23 => Mapper::Vrc4(Vrc4::new(number, prg_16k, chr_8k, submapper)),
             24 => Mapper::Vrc6(Vrc6::new(prg_16k, chr_8k, Vrc6Variant::Vrc6a)),
             26 => Mapper::Vrc6(Vrc6::new(prg_16k, chr_8k, Vrc6Variant::Vrc6b)),
             32 => Mapper::IremG101(IremG101::new(prg_16k, submapper, mirroring)),
@@ -344,14 +346,18 @@ impl Mapper {
             }
             34 => Mapper::Bnrom(Bnrom::new(prg_16k, mirroring)),
             36 => Mapper::Mapper36(Mapper36::new()),
+            37 => Mapper::Mmc3(Mmc3::new_37(prg_16k, chr_8k, mirroring)),
             38 => Mapper::UnlPci556(UnlPci556::new(mirroring)),
             39 => Mapper::Mapper241(Mapper241::new(mirroring)),
             40 => Mapper::Mapper40(Mapper40::new(mirroring)),
             42 => Mapper::Mapper42(Mapper42::new(prg_16k, mirroring)),
             43 => Mapper::Mapper43(Mapper43::new()),
+            44 => Mapper::Mmc3(Mmc3::new_44(prg_16k, chr_8k, mirroring)),
             41 => Mapper::Caltron41(Caltron41::new()),
             46 => Mapper::ColorDreams46(ColorDreams46::new(mirroring)),
+            47 => Mapper::Mmc3(Mmc3::new_47(prg_16k, chr_8k, mirroring, submapper)),
             50 => Mapper::Mapper50(Mapper50::new(mirroring)),
+            52 => Mapper::Mmc3(Mmc3::new_52(prg_16k, chr_8k, mirroring)),
             57 => Mapper::Mapper57(Mapper57::new()),
             58 => Mapper::AddrLatch16k(AddrLatch16k::new(AddrLatchVariant::Mapper58)),
             59 => Mapper::AddrLatch16k(AddrLatch16k::new(AddrLatchVariant::Mapper59)),
@@ -402,7 +408,7 @@ impl Mapper {
             117 => Mapper::Mapper117(Mapper117::new(prg_16k, chr_8k, mirroring)),
             120 => Mapper::Mapper120(Mapper120::new(mirroring)),
             140 => Mapper::JalecoJf11_14(JalecoJf11_14::new(mirroring)),
-            25 => Mapper::Vrc4(Vrc4::new(prg_16k, chr_8k)),
+            25 => Mapper::Vrc4(Vrc4::new(number, prg_16k, chr_8k, submapper)),
             74 => Mapper::Mmc3(Mmc3::new_74(prg_16k, chr_8k, mirroring)),
             151 => Mapper::Mapper151(Mapper151::new(prg_16k, mirroring)),
             152 => Mapper::Bandai74161(Bandai74161::new(prg_16k, true)),
@@ -446,6 +452,7 @@ impl Mapper {
             242 => Mapper::AddrLatch16k(AddrLatch16k::new(AddrLatchVariant::Mapper242)),
             244 => Mapper::Mapper244(Mapper244::new(mirroring)),
             246 => Mapper::Mapper246(Mapper246::new(prg_16k, mirroring)),
+            253 => Mapper::Mapper253(Mapper253::new(prg_16k, chr_8k)),
             213 => Mapper::AddrLatch16k(AddrLatch16k::new_with_mirroring(
                 AddrLatchVariant::Mapper213,
                 mirroring,
@@ -522,6 +529,7 @@ macro_rules! dispatch {
             Mapper::Mapper241($m) => $body,
             Mapper::Mapper244($m) => $body,
             Mapper::Mapper246($m) => $body,
+            Mapper::Mapper253($m) => $body,
             Mapper::IremLrog017($m) => $body,
             Mapper::Namco118($m) => $body,
             Mapper::JalecoJf13($m) => $body,
@@ -691,17 +699,24 @@ mod tests {
             (15, false),   // 100-in-1 multicart
             (18, false),   // Jaleco SS88006
             (19, false),   // Namco 163
+            (21, false),   // VRC4 IRQ is CPU-clocked, not PPU-bus-clocked
+            (22, false),   // VRC2a
+            (23, false),   // VRC2/VRC4
             (24, false),   // VRC6a
             (26, false),   // VRC6b
             (32, false),   // Irem G-101
             (33, false),   // Taito TC0190
             (34, false),   // BNROM
             (36, false),   // TXC/Micro Genius simplified mapper
+            (37, true),    // Mapper 37 MMC3 A12 IRQ
             (39, false),   // Mapper 39
             (40, false),   // Mapper 40
             (42, false),   // Mapper 42
             (43, false),   // Mapper 43 IRQ is CPU-clocked, not PPU-bus-clocked
+            (44, true),    // Mapper 44 MMC3 A12 IRQ
+            (47, true),    // Mapper 47 MMC3 A12 IRQ
             (25, false),   // VRC4 IRQ is CPU-clocked, not PPU-bus-clocked
+            (52, true),    // Mapper 52 MMC3 A12 IRQ
             (66, false),   // GxROM
             (67, false),   // Sunsoft-3
             (69, false),   // FME-7 / Sunsoft 5B
@@ -767,6 +782,7 @@ mod tests {
             (242, false),  // Mapper 242
             (244, false),  // Mapper 244
             (246, false),  // Mapper 246
+            (253, false),  // Mapper 253 IRQ is CPU-clocked, not PPU-bus-clocked
             (184, false),  // Sunsoft 184
             (4, true),     // MMC3
             (5, true),     // MMC5
@@ -798,17 +814,24 @@ mod tests {
             (15, false),   // 100-in-1 multicart
             (18, true),    // Jaleco SS88006 IRQ counter clocks per CPU cycle
             (19, true),    // Namco 163 IRQ + expansion audio clock per CPU cycle
+            (21, true),    // VRC4 IRQ counter clocks per CPU cycle
+            (22, false),   // VRC2a has no IRQ
+            (23, true),    // Ambiguous VRC2/VRC4 mapper defaults to VRC4-compatible IRQs
             (24, true),    // VRC6 IRQ + expansion audio clock per CPU cycle
             (26, true),    // VRC6 IRQ + expansion audio clock per CPU cycle
             (32, false),   // Irem G-101
             (33, false),   // Taito TC0190
             (34, false),   // BNROM
             (36, false),   // TXC/Micro Genius simplified mapper
+            (37, false),   // Mapper 37 uses PPU A12 edges
             (39, false),   // Mapper 39
             (40, true),    // Mapper 40 IRQ counter clocks per CPU cycle
             (42, true),    // Mapper 42 IRQ counter clocks per CPU cycle
             (43, true),    // Mapper 43 IRQ counter clocks per CPU cycle
+            (44, false),   // Mapper 44 uses PPU A12 edges
+            (47, false),   // Mapper 47 uses PPU A12 edges
             (25, true),    // VRC4 IRQ counter clocks per CPU cycle
+            (52, false),   // Mapper 52 uses PPU A12 edges
             (66, false),   // GxROM
             (67, true),    // Sunsoft-3 IRQ counter clocks per CPU cycle
             (69, true),    // FME-7 IRQ + expansion audio clock per CPU cycle
@@ -875,6 +898,7 @@ mod tests {
             (242, false),  // Mapper 242
             (244, false),  // Mapper 244
             (246, false),  // Mapper 246
+            (253, true),   // Mapper 253 IRQ counter clocks per CPU cycle
             (184, false),  // Sunsoft 184
         ];
         for (num, expected) in cases {
@@ -902,6 +926,9 @@ mod tests {
             (15, false),
             (18, false),
             (19, false),
+            (21, false),
+            (22, false),
+            (23, false),
             (24, false),
             (26, false),
             (32, false),
@@ -909,13 +936,17 @@ mod tests {
             (34, false),
             (36, false),
             (38, false),
+            (37, false),
             (39, false),
             (40, false),
             (41, false),
             (42, false),
             (43, false),
+            (44, false),
             (46, false),
+            (47, false),
             (50, false),
+            (52, false),
             (57, false),
             (58, false),
             (59, false),
@@ -991,6 +1022,7 @@ mod tests {
             (242, false),
             (244, false),
             (246, false),
+            (253, false),
         ];
         for (num, expected) in cases {
             let submapper = if num == 34 { 2 } else { 0 };

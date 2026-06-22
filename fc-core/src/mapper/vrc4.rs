@@ -3,20 +3,27 @@ use crate::types::Mirroring;
 use serde::{Deserialize, Serialize};
 
 // ============================================================================
-// Mapper 25 — Konami VRC4 (VRC4b / VRC4d)
+// Mappers 21/22/23/25 — Konami VRC2/VRC4
 //
-// 8KB PRG banking (two switchable banks + a swap mode), 1KB CHR banking (eight
-// registers written as low/high nibbles), programmable mirroring, and the VRC
-// IRQ (8-bit counter clocked per CPU cycle, or per scanline via a prescaler).
+// 8KB PRG banking, 1KB CHR banking (eight registers written as low/high
+// nibbles), programmable mirroring, and (for VRC4) the VRC IRQ.
 //
-// iNES mapper 25 can be either VRC4b or VRC4d, which differ only in how the two
-// register-select address lines are wired. Since the header can't say which, we
-// OR the candidate CPU address bits together (A1|A3 → select bit 0, A0|A2 →
-// select bit 1); a ROM only ever drives one variant's lines, so both work.
+// These iNES mapper numbers describe PCB families more than one exact chip
+// wiring. When submapper 0 is ambiguous, we OR the candidate CPU address lines
+// together; well-behaved ROMs only drive one variant's pair.
 // ============================================================================
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+struct Vrc24Config {
+    a0_mask: u16,
+    a1_mask: u16,
+    is_vrc4: bool,
+    chr_shift: u8,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Vrc4 {
+    config: Vrc24Config,
     prg_8k: usize,
     chr_1k: usize,
     prg: [u8; 2], // $8000 / $A000 PRG select (8KB)
@@ -34,15 +41,16 @@ pub struct Vrc4 {
 }
 
 impl Vrc4 {
-    pub(super) fn new(prg_16k: usize, chr_8k: usize) -> Self {
+    pub(super) fn new(mapper: u16, prg_16k: usize, chr_8k: usize, submapper: u8) -> Self {
         let prg_8k = (prg_16k * 2).max(2);
         Vrc4 {
+            config: Self::config_for(mapper, submapper),
             prg_8k,
             chr_1k: (chr_8k * 8).max(8),
             // $8000 starts at bank 0; $A000 at bank 1 ($C000/$E000 fixed).
             prg: [0, 1],
             prg_swap: false,
-            chr: [0; 8],
+            chr: [0, 1, 2, 3, 4, 5, 6, 7],
             mirroring: Mirroring::Vertical,
             irq_latch: 0,
             irq_counter: 0,
@@ -54,12 +62,45 @@ impl Vrc4 {
         }
     }
 
-    /// Decode the 2-bit register select from the write address (mapper-25
-    /// wiring, tolerant of both the VRC4b and VRC4d line assignments).
-    fn reg_select(addr: u16) -> usize {
-        let bit0 = ((addr >> 1) & 1) | ((addr >> 3) & 1); // A1 | A3
-        let bit1 = (addr & 1) | ((addr >> 2) & 1); // A0 | A2
-        ((bit1 << 1) | bit0) as usize
+    fn config_for(mapper: u16, submapper: u8) -> Vrc24Config {
+        let (a0_mask, a1_mask, is_vrc4, chr_shift) = match mapper {
+            // VRC4a: A1/A2, VRC4c: A6/A7. Submapper 0 accepts both.
+            21 => match submapper {
+                1 => (0x02, 0x04, true, 0),
+                2 => (0x40, 0x80, true, 0),
+                _ => (0x42, 0x84, true, 0),
+            },
+            // VRC2a: CHR A10 is not controlled by the bank register, so bank
+            // numbers effectively address 2KB pairs and are shifted right.
+            22 => (0x02, 0x01, false, 1),
+            // VRC4f/VRC2b: A0/A1, VRC4e: A2/A3. Submapper 3 is definite VRC2b.
+            23 => match submapper {
+                1 => (0x01, 0x02, true, 0),
+                2 => (0x04, 0x08, true, 0),
+                3 => (0x01, 0x02, false, 0),
+                _ => (0x05, 0x0A, true, 0),
+            },
+            // VRC4b/VRC2c: A1/A0, VRC4d: A3/A2. Submapper 3 is definite VRC2c.
+            _ => match submapper {
+                1 => (0x02, 0x01, true, 0),
+                2 => (0x08, 0x04, true, 0),
+                3 => (0x02, 0x01, false, 0),
+                _ => (0x0A, 0x05, true, 0),
+            },
+        };
+        Vrc24Config {
+            a0_mask,
+            a1_mask,
+            is_vrc4,
+            chr_shift,
+        }
+    }
+
+    /// Decode the chip's 2-bit register select from the CPU write address.
+    fn reg_select(&self, addr: u16) -> usize {
+        let bit0 = usize::from(addr & self.config.a0_mask != 0);
+        let bit1 = usize::from(addr & self.config.a1_mask != 0);
+        (bit1 << 1) | bit0
     }
 
     fn clock_irq_counter(&mut self) {
@@ -89,26 +130,28 @@ impl MapperOps for Vrc4 {
 
     fn chr_index(&self, addr: u16) -> usize {
         let slot = ((addr >> 10) & 7) as usize; // 1KB slot 0..=7
-        (self.chr[slot] as usize % self.chr_1k) * 0x400 + (addr & 0x3FF) as usize
+        let bank = (self.chr[slot] >> self.config.chr_shift) as usize;
+        (bank % self.chr_1k) * 0x400 + (addr & 0x3FF) as usize
     }
 
     fn write_register(&mut self, addr: u16, value: u8) {
-        let sel = Self::reg_select(addr);
+        let sel = self.reg_select(addr);
         match addr & 0xF000 {
             0x8000 => self.prg[0] = value & 0x1F,
             0xA000 => self.prg[1] = value & 0x1F,
-            0x9000 => match sel {
-                0 | 1 => {
+            0x9000 => {
+                if !self.config.is_vrc4 || sel < 2 {
                     self.mirroring = match value & 0x03 {
                         0 => Mirroring::Vertical,
                         1 => Mirroring::Horizontal,
                         2 => Mirroring::SingleScreenLow,
                         _ => Mirroring::SingleScreenHigh,
                     };
+                } else {
+                    // $9002/$9003: bit1 = PRG swap mode (bit0 = WRAM enable, ignored).
+                    self.prg_swap = value & 0x02 != 0;
                 }
-                // $9002/$9003: bit1 = PRG swap mode (bit0 = WRAM enable, ignored).
-                _ => self.prg_swap = value & 0x02 != 0,
-            },
+            }
             0xB000 | 0xC000 | 0xD000 | 0xE000 => {
                 let reg = ((addr & 0xF000) - 0xB000) as usize / 0x1000 * 2 + (sel >> 1);
                 if sel & 1 == 0 {
@@ -119,28 +162,32 @@ impl MapperOps for Vrc4 {
                     self.chr[reg] = (self.chr[reg] & 0x00F) | ((value as u16 & 0x1F) << 4);
                 }
             }
-            _ => match sel {
-                // $F000: IRQ latch low nibble
-                0 => self.irq_latch = (self.irq_latch & 0xF0) | (value & 0x0F),
-                // $F001: IRQ latch high nibble
-                1 => self.irq_latch = (self.irq_latch & 0x0F) | ((value & 0x0F) << 4),
-                // $F002: IRQ control
-                2 => {
-                    self.irq_enable_after_ack = value & 0x01 != 0;
-                    self.irq_enable = value & 0x02 != 0;
-                    self.irq_cycle_mode = value & 0x04 != 0;
-                    if self.irq_enable {
-                        self.irq_counter = self.irq_latch;
-                        self.irq_prescaler = 0;
+            _ => {
+                if self.config.is_vrc4 {
+                    match sel {
+                        // $F000: IRQ latch low nibble
+                        0 => self.irq_latch = (self.irq_latch & 0xF0) | (value & 0x0F),
+                        // $F001: IRQ latch high nibble
+                        1 => self.irq_latch = (self.irq_latch & 0x0F) | ((value & 0x0F) << 4),
+                        // $F002: IRQ control
+                        2 => {
+                            self.irq_enable_after_ack = value & 0x01 != 0;
+                            self.irq_enable = value & 0x02 != 0;
+                            self.irq_cycle_mode = value & 0x04 != 0;
+                            if self.irq_enable {
+                                self.irq_counter = self.irq_latch;
+                                self.irq_prescaler = 0;
+                            }
+                            self.irq_pending = false;
+                        }
+                        // $F003: IRQ acknowledge
+                        _ => {
+                            self.irq_enable = self.irq_enable_after_ack;
+                            self.irq_pending = false;
+                        }
                     }
-                    self.irq_pending = false;
                 }
-                // $F003: IRQ acknowledge
-                _ => {
-                    self.irq_enable = self.irq_enable_after_ack;
-                    self.irq_pending = false;
-                }
-            },
+            }
         }
     }
 
@@ -149,7 +196,7 @@ impl MapperOps for Vrc4 {
     }
 
     fn cpu_clock(&mut self) {
-        if !self.irq_enable {
+        if !self.config.is_vrc4 || !self.irq_enable {
             return;
         }
         if self.irq_cycle_mode {
@@ -166,7 +213,7 @@ impl MapperOps for Vrc4 {
     }
 
     fn clocks_cpu(&self) -> bool {
-        true
+        self.config.is_vrc4
     }
 
     fn irq(&self) -> bool {
@@ -175,5 +222,108 @@ impl MapperOps for Vrc4 {
 
     fn clear_irq(&mut self) {
         self.irq_pending = false;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn chr_bank(mapper: &Vrc4, slot: u16) -> usize {
+        mapper.chr_index(slot * 0x400) / 0x400
+    }
+
+    #[test]
+    fn mapper_21_decodes_vrc4a_and_vrc4c_address_lines() {
+        let mut vrc4a = Vrc4::new(21, 16, 64, 1);
+        vrc4a.write_register(0xB000, 0x05);
+        vrc4a.write_register(0xB002, 0x12);
+        vrc4a.write_register(0xB004, 0x07);
+        vrc4a.write_register(0xB006, 0x03);
+        assert_eq!(chr_bank(&vrc4a, 0), 0x125);
+        assert_eq!(chr_bank(&vrc4a, 1), 0x037);
+
+        let mut vrc4c = Vrc4::new(21, 16, 64, 2);
+        vrc4c.write_register(0xB000, 0x06);
+        vrc4c.write_register(0xB040, 0x11);
+        vrc4c.write_register(0xB080, 0x08);
+        vrc4c.write_register(0xB0C0, 0x04);
+        assert_eq!(chr_bank(&vrc4c, 0), 0x116);
+        assert_eq!(chr_bank(&vrc4c, 1), 0x048);
+    }
+
+    #[test]
+    fn mapper_25_decodes_vrc4b_and_vrc4d_address_lines() {
+        let mut vrc4b = Vrc4::new(25, 16, 64, 1);
+        vrc4b.write_register(0xB000, 0x09);
+        vrc4b.write_register(0xB002, 0x01);
+        vrc4b.write_register(0xB001, 0x0A);
+        vrc4b.write_register(0xB003, 0x02);
+        assert_eq!(chr_bank(&vrc4b, 0), 0x019);
+        assert_eq!(chr_bank(&vrc4b, 1), 0x02A);
+
+        let mut vrc4d = Vrc4::new(25, 16, 64, 2);
+        vrc4d.write_register(0xB000, 0x03);
+        vrc4d.write_register(0xB008, 0x14);
+        vrc4d.write_register(0xB004, 0x0C);
+        vrc4d.write_register(0xB00C, 0x05);
+        assert_eq!(chr_bank(&vrc4d, 0), 0x143);
+        assert_eq!(chr_bank(&vrc4d, 1), 0x05C);
+    }
+
+    #[test]
+    fn mapper_23_decodes_vrc2b_and_vrc4e_address_lines() {
+        let mut vrc2b = Vrc4::new(23, 16, 64, 3);
+        vrc2b.write_register(0xB000, 0x02);
+        vrc2b.write_register(0xB001, 0x10);
+        vrc2b.write_register(0xB002, 0x0D);
+        vrc2b.write_register(0xB003, 0x06);
+        assert_eq!(chr_bank(&vrc2b, 0), 0x102);
+        assert_eq!(chr_bank(&vrc2b, 1), 0x06D);
+
+        let mut vrc4e = Vrc4::new(23, 16, 64, 2);
+        vrc4e.write_register(0xB000, 0x04);
+        vrc4e.write_register(0xB004, 0x13);
+        vrc4e.write_register(0xB008, 0x0E);
+        vrc4e.write_register(0xB00C, 0x07);
+        assert_eq!(chr_bank(&vrc4e, 0), 0x134);
+        assert_eq!(chr_bank(&vrc4e, 1), 0x07E);
+    }
+
+    #[test]
+    fn mapper_22_is_vrc2a_without_irq_or_prg_swap() {
+        let mut vrc2a = Vrc4::new(22, 16, 64, 0);
+
+        vrc2a.write_register(0xB000, 0x0F);
+        assert_eq!(chr_bank(&vrc2a, 0), 0x00F >> 1);
+
+        vrc2a.write_register(0xB001, 0x01);
+        assert_eq!(chr_bank(&vrc2a, 1), 0x001 >> 1);
+
+        vrc2a.write_register(0x9002, 0x02);
+        assert_eq!(vrc2a.prg_index(0x8000), 0);
+        assert_eq!(vrc2a.prg_index(0xC000), (vrc2a.prg_8k - 2) * 0x2000);
+
+        vrc2a.write_register(0xF000, 0xFF);
+        vrc2a.write_register(0xF002, 0x06);
+        for _ in 0..512 {
+            vrc2a.cpu_clock();
+        }
+        assert!(!vrc2a.irq());
+        assert!(!vrc2a.clocks_cpu());
+    }
+
+    #[test]
+    fn mapper_21_vrc4_irq_still_clocks_by_cpu_cycle() {
+        let mut vrc4 = Vrc4::new(21, 16, 8, 1);
+        vrc4.write_register(0xF000, 0x00);
+        vrc4.write_register(0xF004, 0x06);
+
+        for _ in 0..256 {
+            vrc4.cpu_clock();
+        }
+
+        assert!(vrc4.irq());
+        assert!(vrc4.clocks_cpu());
     }
 }

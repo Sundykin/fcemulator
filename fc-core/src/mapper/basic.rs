@@ -17,6 +17,7 @@ mod ntdec;
 mod special;
 mod taito;
 mod unlicensed;
+mod waixing;
 
 pub use ave::{Bnrom, Nina01};
 pub use core::{Axrom, Cnrom, Codemasters, ColorDreams, Gxrom, Nrom, Unrom};
@@ -40,3 +41,4 @@ pub use taito::{TaitoTc0190, TaitoX1005, TaitoX1017};
 pub use unlicensed::{
     Mapper106, Mapper183, Mapper212, Mapper222, Mapper235, Mapper43, Mapper60, Mapper83,
 };
+pub use waixing::Mapper253;

@@ -163,6 +163,20 @@
 - Wired the new mappers through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs` and added mapper behavior tests.
 - Narrow verification: `cargo test -p fc-core mapper::tests -- --nocapture` passed, 34/34.
 
+### Team-mode Mapper Pass
+- PM/integration role coordinated three parallel mapper slices:
+  - Noether: VRC/Konami mapper 21/22/23 plus refactor of mapper 25 into the same VRC2/VRC4 configuration table.
+  - Ohm: MMC3-derived mapper 37/44/47/52 via a shared `Mmc3OuterBank` mechanism.
+  - Hooke: Waixing mapper 253 with PRG/CHR/mirroring/IRQ and mapper-owned 2KB CHR-RAM window.
+- Integrated the worker WIP directly in the main worktree, then updated mapper gap and reference documents.
+- Verification:
+  - `cargo fmt --check`: PASS
+  - `git diff --check`: PASS
+  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 64/64 mapper tests.
+  - `cargo test -p fc-core`: PASS, 104/104 fc-core tests.
+  - `cargo test`: PASS, workspace tests.
+- New support count in `/Users/sunmeng/workspace/fc/docs/Mapper-适配差距清单.md`: 113 mapper numbers, with 380 remaining against the four-reference union.
+
 ### Continued Phase: PPU open-bus decay
 - Started: 2026-06-19 14:51:32 CST
 - Reproduced `ppu_open_bus/ppu_open_bus.nes` failure: subtest #3, "Decay value should become zero by one second".

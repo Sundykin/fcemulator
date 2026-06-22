@@ -113,8 +113,8 @@ Phase 17: Mapper compatibility gap closure
 - [x] Implement first low-risk common mapper batch: 72, 79, 80, 82
 - [x] Record reference source locations for the new mapper batch
 - [x] Add mapper architecture hooks and next batch: VRC1 mapper 75, MMC3-derived mapper 76, JY mapper 91 with cached HBlank IRQ clocking
-- [ ] Team-mode parallel mapper pass: Worker A VRC/Konami, Worker B MMC3-derived, Worker C mapper 253/unlicensed, PM integrates and validates
-- [ ] Continue with P0/P1 missing mapper families: 116, 253, then VRC/MMC3/Taito variants that need A12/PPU-pattern mirroring hooks
+- [x] Team-mode parallel mapper pass: Worker A VRC/Konami, Worker B MMC3-derived, Worker C mapper 253/unlicensed, PM integrates and validates
+- [ ] Continue with P0/P1 missing mapper families: 116, then VRC/MMC3/Taito variants that need A12/PPU-pattern mirroring hooks
 - **Status:** in_progress
 
 ## Key Questions
@@ -139,6 +139,7 @@ Phase 17: Mapper compatibility gap closure
 | Prioritize mapper gaps by reference-project overlap before numeric order | FCEUmm/FCEUX include a huge NES 2.0 long tail; implementing common <=255 and Mesen2-covered gaps gives better compatibility per change |
 | Add HBlank mapper clocking as a cached capability instead of a direct per-dot dispatch | Mapper 91 and similar FCEUX `GameHBIRQHook` boards need scanline-synchronous IRQs, but ordinary mappers should keep the PPU dot hot path gated by a cached bool |
 | Fold MMC3-derived mapper 76 into `Mmc3` variant layout instead of a standalone clone | Reusing MMC3 PRG/IRQ behavior keeps future MMC3 variants from copying timing-sensitive logic |
+| Run mapper team mode through disjoint ownership and PM integration | VRC/Konami, MMC3-derived, and Waixing/253 touched separable modules; PM-side docs/tests keep parallel changes from landing as unreviewed WIP |
 
 ## Errors Encountered
 | Error | Attempt | Resolution |

@@ -23,9 +23,15 @@
 - `fc-core/src/mapper/basic/jy.rs:1-133`
   - 新增 Mapper 91 / JY Company。
   - 覆盖 2KB CHR、8KB PRG、submapper 1 outer bank/mirroring latch，以及 FCEUX/FCEUmm 风格 HBlank IRQ。
-- `fc-core/src/mapper/mmc3.rs:9-135,221-281,447-470`
-  - 新增 Mapper 76 的 MMC3 变体布局。
-  - 复用 MMC3 PRG/IRQ 核心，仅扩展自定义 2KB CHR cwrap。
+- `fc-core/src/mapper/basic/waixing.rs:1-295`
+  - 新增 Mapper 253 / Waixing Dragon Ball pirate。
+  - 覆盖 8KB PRG、1KB CHR nibble register、2KB mapper-owned CHR-RAM window、mirroring、CPU-clock IRQ。
+- `fc-core/src/mapper/mmc3.rs:9-168,240-274,301-414,534-616`
+  - 新增 Mapper 37 / 44 / 47 / 52 / 76 的 MMC3 变体布局。
+  - 复用 MMC3 PRG/IRQ 核心，扩展 outer PRG/CHR bank latch 和 Mapper 76 自定义 2KB CHR cwrap。
+- `fc-core/src/mapper/vrc4.rs:1-329`
+  - 扩展 Mapper 21 / 22 / 23 / 25 的 VRC2/VRC4 共用实现。
+  - 覆盖 mapper/submapper 地址线变体、VRC2a CHR 右移、VRC2 无 IRQ、VRC4 CPU-clock IRQ。
 - `fc-core/src/bus.rs:262-268` 与 `fc-core/src/cartridge.rs:64-67,267-313,748-790`
   - 新增 mapper HBlank clock 架构钩子和缓存能力位。
 - `fc-core/src/mapper.rs:204-214, 223-305, 318-438, 490-657`
@@ -41,8 +47,24 @@
 
 | Mapper | 当前实现范围 | 参考来源 | 行号 | 主要用途 |
 |---:|---|---|---:|---|
+| 21 | `vrc4.rs:1-329` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/21_22_23_25.c` | 33-39 | VRC4a/VRC4c submapper 到地址线 mask 映射 |
+| 21 | `vrc4.rs:1-329` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Konami/VRC2_4.h` | 37-48, 223-233 | mapper 21 variant detection 与 submapper 0 OR heuristics cross-check |
+| 22 | `vrc4.rs:1-329` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/21_22_23_25.c` | 42-48 | VRC2a 地址线和 CHR bank 右移 |
+| 22 | `vrc4.rs:1-329` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Konami/VRC2_4.h` | 51, 121-130, 251-256 | VRC2a 变体识别、CHR 低位忽略、地址翻译 |
+| 23 | `vrc4.rs:1-329` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/21_22_23_25.c` | 51-58 | VRC4f/VRC4e/VRC2b submapper 地址线映射 |
+| 23 | `vrc4.rs:1-329` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Konami/VRC2_4.h` | 53-60, 235-245 | mapper 23 VRC2b/VRC4e variant detection 与 OR heuristics |
+| 25 | `vrc4.rs:1-329` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/21_22_23_25.c` | 61-67 | VRC4b/VRC4d/VRC2c submapper 地址线映射 |
+| 25 | `vrc4.rs:1-329` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Konami/VRC2_4.h` | 63-71, 210-221 | mapper 25 variant detection 与 submapper 0 OR heuristics |
 | 36 | `latch/discrete.rs` | `/Users/sunmeng/workspace/fc/fceux/src/boards/36.cpp` | 28-65 | TXC/Micro Genius 简化 mapper、PRG/CHR latch、$4100 读回、bus conflict |
 | 36 | `latch/discrete.rs` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/txcchip.c` | 177-194 | TXC mapper 36 cross-check；FCEUmm 更完整 TXC 芯片模型留作后续精修参考 |
+| 37 | `mmc3.rs:15-21,99-136,240-274,534-550` | `/Users/sunmeng/workspace/fc/fceux/src/boards/mmc3.cpp` | 418-457 | Mapper 37 outer bank PRG/CHR wrapping 与低地址 latch |
+| 37 | `mmc3.rs:15-21,99-136,240-274,534-550` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/mmc3.c` | 412-451 | Mapper 37 FCEUmm cross-check |
+| 44 | `mmc3.rs:15-21,106-110,240-274,381-390,552-565` | `/Users/sunmeng/workspace/fc/fceux/src/boards/mmc3.cpp` | 462-497 | Mapper 44 A001 outer bank select、block >=6 PRG/CHR mask |
+| 44 | `mmc3.rs:15-21,106-110,240-274,381-390,552-565` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/mmc3.c` | 456-500 | Mapper 44 reset/power cross-check；当前 block 7 按 FCEUX/FCEUmm 不 clamp |
+| 47 | `mmc3.rs:15-21,113-126,240-274,400-414,567-596` | `/Users/sunmeng/workspace/fc/fceux/src/boards/mmc3.cpp` | 570-601 | Mapper 47 1-bit outer bank latch |
+| 47 | `mmc3.rs:15-21,113-126,240-274,400-414,567-596` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/mmc3.c` | 602-644 | Mapper 47 submapper lock 与 low write fall-through |
+| 52 | `mmc3.rs:15-21,128-136,240-274,400-414,598-616` | `/Users/sunmeng/workspace/fc/fceux/src/boards/mmc3.cpp` | 652-693 | Mapper 52 one-shot low latch、outer PRG/CHR mask |
+| 52 | `mmc3.rs:15-21,128-136,240-274,400-414,598-616` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/mmc3.c` | 710-769 | Mapper 52 submapper 14/CHR-RAM alternate path 记录；当前只实现基础路径 |
 | 43 | `unlicensed.rs:5-121` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Unlicensed/Mapper43.h` | 16-20, 22-33, 49-82 | PRG/CHR page size、$5000/$6000 映射、寄存器地址译码、4096 CPU-cycle IRQ |
 | 43 | `unlicensed.rs:5-121` | `/Users/sunmeng/workspace/fc/fceux/src/boards/43.cpp` | 38-58, 72-78 | `transo` LUT、swap bank、IRQ counter cross-check |
 | 59 | `multicart.rs` | `/Users/sunmeng/workspace/fc/fceux/src/boards/addrlatch.cpp` | 164-179 | address latch PRG32/CHR/mirroring、bit8 read gate 参考 |
@@ -85,6 +107,9 @@
 | 222 | `unlicensed.rs:652-764` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/222.c` | 39-65, 67-90 | 新 VRC2-style IRQ 参考；当前实现先按 Mesen2 A12 行为 |
 | 235 | `unlicensed.rs:766-884` | `/Users/sunmeng/workspace/fc/fceux/src/boards/235.cpp` | 42-77, 80-95, 102-109 | open-bus latch、reset-selected UNROM mode、raw PRG size 比较 |
 | 235 | `unlicensed.rs:766-884` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/235.c` | 38-73, 76-89, 96-101 | mapper 235 行为 cross-check |
+| 253 | `waixing.rs:1-295` | `/Users/sunmeng/workspace/fc/fceux/src/boards/253.cpp` | 44-89, 110-145 | Mapper 253 PRG/CHR/mirroring、IRQ、2KB CHR-RAM 与 8KB WRAM |
+| 253 | `waixing.rs:1-295` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Waixing/Mapper253.h` | 17-21, 54-80, 83-130 | Mapper 253 page size、CHR-RAM window、114-cycle IRQ scaler、register decode |
+| 253 | `waixing.rs:1-295` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/252_253.c` | 37-104 | 252/253 later VRC4-style CHR-RAM mask path；当前仅作为后续精修参考 |
 
 ## 当前实现和来源的对应关系
 
@@ -101,6 +126,10 @@
 - `Mapper83` 的 PRG/CHR 译码对应 Mesen2 `Mapper83.h:71-99`，低寄存器读写对应 `Mapper83.h:102-114`，IRQ 对应 `Mapper83.h:57-68,146-154`。
 - `Mapper91::write_low_register()` / `hblank_clock()` 对应 FCEUX `91.cpp:46-57,67-74` 和 FCEUmm `91.c:63-81,97-104`。
 - `Mapper91` submapper 1 的 `outer_bank` / `mirroring_latch` 对应 FCEUmm `91.c:48-61,84-87`。
+- `Vrc4::config_for()` / `reg_select()` 对应 FCEUmm `21_22_23_25.c:33-67` 与 Mesen2 `VRC2_4.h:37-78,204-245`；submapper 0 使用参考实现中的 OR 地址线启发式。
+- `Vrc4::chr_index()` 的 mapper 22 右移对应 Mesen2 `VRC2_4.h:121-130` 与 FCEUmm `21_22_23_25.c:42-48`。
+- `Mmc3OuterBank::{Mapper37,Mapper44,Mapper47,Mapper52}` 对应 FCEUX `mmc3.cpp:418-497,570-601,652-693` 与 FCEUmm `mmc3.c:412-500,602-644,710-769`。
+- `Mapper253::write_chr_register()` / `chr_ram_index()` / `cpu_clock()` 对应 FCEUX `253.cpp:44-89,110-145` 与 Mesen2 `Mapper253.h:54-130`。
 - `Mapper92::write_register()` 对应 FCEUX `72.cpp:35-80` 的 mapper 92 变体。
 - `Mapper106::write_register()` / `cpu_clock()` 对应 Mesen2 `Mapper106.h:36-73`。
 - `Mapper183::write_any_register()` / `cpu_clock()` 对应 Mesen2 `Mapper183.h:52-83,86-105`。
@@ -115,7 +144,7 @@
 
 - 先替换 `fc-core/src/mapper/basic/unlicensed.rs:1-884`。
 - 同批替换 `fc-core/src/mapper/basic/latch/discrete.rs` 里 Mapper 36 / 72 / 79 / 92 的新增段、`fc-core/src/mapper/basic/taito.rs` 里 Mapper 80 / 82 的新增段，以及 `fc-core/src/mapper/basic/multicart.rs` 里 Mapper 59 / 63 / 201 / 217 的新增段。
-- 同批替换 `fc-core/src/mapper/basic/konami.rs` 的 VRC1 段、`fc-core/src/mapper/basic/jy.rs` 的 Mapper91 段，以及 `fc-core/src/mapper/mmc3.rs` 的 Mapper76 CHR layout 变体段。
+- 同批替换 `fc-core/src/mapper/basic/konami.rs` 的 VRC1 段、`fc-core/src/mapper/basic/jy.rs` 的 Mapper91 段、`fc-core/src/mapper/basic/waixing.rs` 的 Mapper253 段、`fc-core/src/mapper/vrc4.rs` 的 VRC2/VRC4 段，以及 `fc-core/src/mapper/mmc3.rs` 的 Mapper37/44/47/52/76 变体段。
 - 再处理 `fc-core/src/mapper.rs` 里 Mapper 43/60/75/76/83/91/106/183/212/222/235 的导出、枚举、构造和 dispatch 分支。
 - 若替换 Mapper91，请同步检查 `MapperOps::hblank_clock`、`Cartridge::mapper_clocks_hblank` 与 `Bus::clock_ppu_dot()` 的 HBlank hook 是否仍有使用者。
 - 最后检查 `fc-core/src/cartridge.rs` 的 open-bus aware 读钩子是否仍被其他 mapper 使用；如果无使用者，可收窄接口。
