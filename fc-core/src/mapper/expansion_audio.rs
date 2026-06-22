@@ -423,6 +423,17 @@ impl Namco163Audio {
     }
 }
 
+// VRC7/OPLL provenance marker:
+// - Register select/data routing and mute/reset behavior are cross-checked
+//   against libretro-fceumm/src/boards/vrc7.c:133-176,249-253 and
+//   Mesen2/Core/NES/Mappers/Audio/Vrc7Audio.h:23-90.
+// - Full OPLL save-state coverage is cross-checked against
+//   libretro-fceumm/src/boards/vrc7.c:223-246,
+//   Mesen2/Core/Shared/Utilities/Emu2413Serializer.h:8-90, and
+//   nestopia/source/core/board/NstBoardKonamiVrc7.cpp:379-470.
+// - Detailed reference map: docs/VRC7-OPLL-引用记录.md.
+// For a closed-source fork, replace this whole Vrc7Audio block and remove
+// the oxideav-nsf dependency instead of retaining reference-derived code.
 pub struct Vrc7Audio {
     addr: u8,
     regs: [u8; 0x40],
