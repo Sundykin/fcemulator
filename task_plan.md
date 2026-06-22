@@ -124,7 +124,8 @@ Phase 17: Mapper compatibility gap closure
 - [x] Add low-risk mapper batch 192 / 195 / 228 / 232 / 255
 - [x] Add mapper 68 / Sunsoft-4 with nametable-to-CHR architecture hook
 - [x] Add low-risk mapper batch 122 / 133 / 149
-- [ ] Continue with MMC3 protocol variants 49/114/115/121 and low-risk latch batch 146/148/144
+- [x] Add low-risk mapper batch 144 / 146 / 148
+- [ ] Continue with MMC3 protocol variants 49/114/115/121 and low-risk latch batch 154/155/108
 - **Status:** in_progress
 
 ## Key Questions
@@ -165,6 +166,7 @@ Phase 17: Mapper compatibility gap closure
 |-------|---------|------------|
 | Mapper91 unit test expected fixed banks 62/63 | First mapper91 test assumed FCEUX `~1/~0` fixed PRG banks for all paths | Corrected the test to match the implemented FCEUmm submapper-aware sync path: fixed `0x0E/0x0F` plus outer bank |
 | Cargo rejected multiple test filters | Tried to run three mapper capability tests as separate positional filters in one command | Reran `cargo test -p fc-core mapper::tests -- --nocapture`, which covers all mapper facade/capability tests |
+| Duplicate `tests` module in `basic/core.rs` | Added ColorDreams tests next to an existing BF9096 test module | Moved ColorDreams tests into the existing module and reran targeted mapper tests |
 
 ## Notes
 - Preserve the invariant: CPU memory accesses tick the bus before the access; each CPU cycle advances PPU by 3 dots and APU by 1 cycle.

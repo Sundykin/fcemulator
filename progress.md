@@ -820,3 +820,20 @@
   - `git diff --check`: PASS.
   - `cargo test -p fc-core`: PASS, 130/130 fc-core tests.
   - `cargo test`: PASS, workspace tests.
+
+### Mapper 144 / 146 / 148 Low-risk Latch Batch
+- Implemented mapper 144 as a Color Dreams variant in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/core.rs`: odd-address high writes only, shared 4-bit PRG/CHR latch, and mapper-specific bit0-only bus conflict behavior.
+- Extended `MapperOps` with `apply_bus_conflict()` so mapper 144 can customize conflict resolution while existing bus-conflict mappers keep the default AND behavior.
+- Implemented mapper 146 / Sachen SA016-1M and mapper 148 / Sachen SA0037 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/latch/sachen.rs` using shared SA016-1M PRG32/CHR8 decoding.
+- Fixed the Sachen low-write path for mapper 133/146 by handling `$4100-$5FFF` through `write_expansion()`, matching the current Cartridge routing.
+- Wired 144/146/148 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs` and updated capability guard tables.
+- Updated mapper gap and reference documents. Supported mapper count is now 133; remaining four-reference union gap is 360.
+- Verification so far:
+  - `cargo fmt`: PASS.
+  - `cargo test -p fc-core mapper::basic::core::tests -- --nocapture`: initially failed due duplicate `tests` module, fixed by merging tests; PASS, 4/4.
+  - `cargo test -p fc-core mapper::basic::latch::sachen::tests -- --nocapture`: PASS, 4/4.
+  - `cargo fmt --check`: PASS.
+  - `git diff --check`: PASS.
+  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 38/38 mapper facade tests.
+  - `cargo test -p fc-core`: PASS, 134/134 fc-core tests.
+  - `cargo test`: PASS, workspace tests.

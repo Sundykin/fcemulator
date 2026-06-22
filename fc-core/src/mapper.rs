@@ -77,6 +77,17 @@ pub trait MapperOps {
     fn has_bus_conflicts(&self) -> bool {
         false
     }
+    /// Transform a high-register write value when a board has bus conflicts.
+    /// Most boards use the standard open-collector AND with the currently
+    /// mapped PRG-ROM byte, but a few discrete boards only conflict on some
+    /// lines.
+    fn apply_bus_conflict(&self, value: u8, prg_value: u8) -> u8 {
+        if self.has_bus_conflicts() {
+            value & prg_value
+        } else {
+            value
+        }
+    }
     /// Optional mapper register write inside `$6000..=$7FFF`. Some boards (e.g.
     /// NINA-001) decode a few PRG-RAM addresses as bank registers while still
     /// allowing the write to fall through to PRG-RAM. Returns `true` when the
@@ -221,8 +232,9 @@ pub use basic::{
     Mapper235, Mapper240, Mapper241, Mapper244, Mapper246, Mapper253, Mapper36, Mapper40, Mapper42,
     Mapper43, Mapper50, Mapper57, Mapper60, Mapper63, Mapper65, Mapper67, Mapper72, Mapper73,
     Mapper79, Mapper83, Mapper91, Mapper92, Namco108Mapper206, Namco108Mapper95, Namco118, Nina01,
-    Nina03_06, Nrom, Ntdec112, Sachen133, Sachen149, Sunsoft184, Sunsoft4, Sunsoft89, TaitoTc0190,
-    TaitoX1005, TaitoX1017, UnlPci556, Unrom, UnromVariant, UnromVariantMapper, Vrc1,
+    Nina03_06, Nrom, Ntdec112, Sachen133, Sachen149, SachenSa0161m, Sunsoft184, Sunsoft4,
+    Sunsoft89, TaitoTc0190, TaitoX1005, TaitoX1017, UnlPci556, Unrom, UnromVariant,
+    UnromVariantMapper, Vrc1,
 };
 pub use expansion_mappers::{Fme7, Namco163, Vrc6, Vrc6Variant, Vrc7};
 pub use mmc1::Mmc1;
@@ -286,6 +298,7 @@ pub enum Mapper {
     Mapper120(Mapper120),
     Mapper122(Mapper122),
     Sachen133(Sachen133),
+    SachenSa0161m(SachenSa0161m),
     Sachen149(Sachen149),
     Mapper170(Mapper170),
     Mapper183(Mapper183),
@@ -440,6 +453,9 @@ impl Mapper {
             122 => Mapper::Mapper122(Mapper122::new(mirroring)),
             133 => Mapper::Sachen133(Sachen133::new(prg_16k, mirroring)),
             140 => Mapper::JalecoJf11_14(JalecoJf11_14::new(mirroring)),
+            144 => Mapper::ColorDreams(ColorDreams::new_144(mirroring)),
+            146 => Mapper::SachenSa0161m(SachenSa0161m::new(mirroring, false)),
+            148 => Mapper::SachenSa0161m(SachenSa0161m::new(mirroring, true)),
             149 => Mapper::Sachen149(Sachen149::new(mirroring)),
             25 => Mapper::Vrc4(Vrc4::new(number, prg_16k, chr_8k, submapper)),
             74 => Mapper::Mmc3(Mmc3::new_74(prg_16k, chr_8k, mirroring)),
@@ -561,6 +577,7 @@ macro_rules! dispatch {
             Mapper::Mapper120($m) => $body,
             Mapper::Mapper122($m) => $body,
             Mapper::Sachen133($m) => $body,
+            Mapper::SachenSa0161m($m) => $body,
             Mapper::Sachen149($m) => $body,
             Mapper::Mapper170($m) => $body,
             Mapper::Mapper183($m) => $body,
@@ -647,6 +664,9 @@ impl MapperOps for Mapper {
     }
     fn has_bus_conflicts(&self) -> bool {
         dispatch!(self, m => m.has_bus_conflicts())
+    }
+    fn apply_bus_conflict(&self, value: u8, prg_value: u8) -> u8 {
+        dispatch!(self, m => m.apply_bus_conflict(value, prg_value))
     }
     fn write_low_register(&mut self, addr: u16, value: u8) -> bool {
         dispatch!(self, m => m.write_low_register(addr, value))
@@ -817,6 +837,9 @@ mod tests {
             (120, false),  // Mapper 120
             (122, false),  // Mapper 122
             (133, false),  // Sachen SA72008
+            (144, false),  // Mapper 144 ColorDreams variant
+            (146, false),  // Sachen SA016-1M
+            (148, false),  // Sachen SA0037
             (149, false),  // Sachen SA0036
             (112, false),  // NTDEC ASDER
             (116, true),   // Mapper 116 can switch into MMC3 A12 IRQ mode
@@ -949,6 +972,9 @@ mod tests {
             (120, false),  // Mapper 120
             (122, false),  // Mapper 122
             (133, false),  // Sachen SA72008
+            (144, false),  // Mapper 144 ColorDreams variant
+            (146, false),  // Sachen SA016-1M
+            (148, false),  // Sachen SA0037
             (149, false),  // Sachen SA0036
             (112, false),  // NTDEC ASDER
             (116, false),  // Mapper 116 uses PPU A12 edges only in MMC3 mode
@@ -1087,6 +1113,9 @@ mod tests {
             (120, false),
             (122, false),
             (133, false),
+            (144, false),
+            (146, false),
+            (148, false),
             (149, false),
             (140, false),
             (151, false),

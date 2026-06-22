@@ -160,7 +160,7 @@ impl MapperOps for Axrom {
 }
 
 // ============================================================================
-// Mapper 11 — Color Dreams (32KB PRG + 8KB CHR bank)
+// Mapper 11/144 — Color Dreams (32KB PRG + 8KB CHR bank)
 // ============================================================================
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -168,6 +168,7 @@ pub struct ColorDreams {
     prg_bank: usize,
     chr_bank: usize,
     mirroring: Mirroring,
+    mapper144: bool,
 }
 impl ColorDreams {
     pub(in crate::mapper) fn new(mirroring: Mirroring) -> Self {
@@ -175,6 +176,14 @@ impl ColorDreams {
             prg_bank: 0,
             chr_bank: 0,
             mirroring,
+            mapper144: false,
+        }
+    }
+
+    pub(in crate::mapper) fn new_144(mirroring: Mirroring) -> Self {
+        ColorDreams {
+            mapper144: true,
+            ..Self::new(mirroring)
         }
     }
 }
@@ -185,9 +194,22 @@ impl MapperOps for ColorDreams {
     fn chr_index(&self, addr: u16) -> usize {
         self.chr_bank * 0x2000 + (addr & 0x1FFF) as usize
     }
-    fn write_register(&mut self, _addr: u16, value: u8) {
-        self.prg_bank = (value & 0x03) as usize;
+    fn write_register(&mut self, addr: u16, value: u8) {
+        if self.mapper144 && addr & 1 == 0 {
+            return;
+        }
+        self.prg_bank = (value & 0x0F) as usize;
         self.chr_bank = ((value >> 4) & 0x0F) as usize;
+    }
+    fn has_bus_conflicts(&self) -> bool {
+        true
+    }
+    fn apply_bus_conflict(&self, value: u8, prg_value: u8) -> u8 {
+        if self.mapper144 {
+            value | (prg_value & 0x01)
+        } else {
+            value & prg_value
+        }
     }
     fn mirroring(&self) -> Mirroring {
         self.mirroring
@@ -330,6 +352,32 @@ impl MapperOps for Bf9096 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn color_dreams_uses_four_prg_bits_and_chr_nibble() {
+        let mut mapper = ColorDreams::new(Mirroring::Horizontal);
+
+        mapper.write_register(0x8000, 0x2B);
+        assert_eq!(mapper.prg_index(0x8004), 0x0B * 0x8000 + 4);
+        assert_eq!(mapper.chr_index(0x1004), 0x02 * 0x2000 + 0x1004);
+        assert!(mapper.has_bus_conflicts());
+        assert_eq!(mapper.apply_bus_conflict(0xFF, 0x0F), 0x0F);
+    }
+
+    #[test]
+    fn mapper144_ignores_even_writes_and_conflicts_only_on_bit0() {
+        let mut mapper = ColorDreams::new_144(Mirroring::Vertical);
+
+        mapper.write_register(0x8000, 0x2B);
+        assert_eq!(mapper.prg_index(0x8004), 0x0004);
+        assert_eq!(mapper.chr_index(0x1004), 0x1004);
+
+        mapper.write_register(0x8001, 0x2B);
+        assert_eq!(mapper.prg_index(0x8004), 0x0B * 0x8000 + 4);
+        assert_eq!(mapper.chr_index(0x1004), 0x02 * 0x2000 + 0x1004);
+        assert_eq!(mapper.apply_bus_conflict(0x20, 0x01), 0x21);
+        assert_eq!(mapper.mirroring(), Mirroring::Vertical);
+    }
 
     #[test]
     fn mapper232_selects_codemasters_block_and_page() {

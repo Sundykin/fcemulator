@@ -12,8 +12,11 @@
   - 新增 Mapper 36 / 72 / 79 / 92 / 122。
   - 覆盖 TXC/Micro Genius 简化 latch、$4100 读回、bus conflict、Jaleco 2-in-1/JF-17 PRG/CHR 写位规则、NINA-003/006 扩展区 latch，以及 Mapper 122 双 4KB CHR latch。
 - `fc-core/src/mapper/basic/latch/sachen.rs:1-135`
-  - 新增 Mapper 133 / Sachen SA72008 与 Mapper 149 / Sachen SA0036。
-  - 覆盖 SA72008 PRG32/CHR8 latch 和 SA0036 CHR bit7 latch。
+  - 新增 Mapper 133 / Sachen SA72008、Mapper 146 / Sachen SA016-1M、Mapper 148 / Sachen SA0037 与 Mapper 149 / Sachen SA0036。
+  - 覆盖 SA72008 PRG32/CHR8 latch、SA016-1M/SA0037 PRG32/CHR8 latch 和 SA0036 CHR bit7 latch。
+- `fc-core/src/mapper/basic/core.rs:163-217,373-403`
+  - 扩展 Mapper 11 / Color Dreams，并新增 Mapper 144 / AGCI 50282 变体。
+  - 覆盖 Color Dreams 4-bit PRG/CHR latch、bus conflict，以及 Mapper 144 奇地址写窗口与 bit0-only conflict 规则。
 - `fc-core/src/mapper/basic/taito.rs:81-222,305-335`
   - 新增 Mapper 80 / 207 / 82。
   - 覆盖 Taito X1-005/X1-017 的低地址寄存器、8KB PRG、混合 2KB/1KB CHR、mirroring、Mapper 80 的 256B gated WRAM，以及 Mapper 207 的 CHR register bit7 到 per-nametable CIRAM A10 映射。
@@ -147,6 +150,14 @@
 | 119 | `mmc3.rs:26-30,56-64,162-181,246-259,742-773` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Mmc3Variants/MMC3_ChrRam.h` | 5-24, 34-37 | 通用 MMC3 CHR-RAM bank range 机制 |
 | 119 | `mmc3.rs:26-30,56-64,162-181,246-259,742-773` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/MapperFactory.cpp` | 404 | mapper 119 使用 `MMC3_ChrRam(0x40, 0x7F, 8)` cross-check |
 | 122 | `latch/discrete.rs:259-316` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/122.c` | 23-55 | 固定 PRG32、地址 A0 选择两个 4KB CHR latch |
+| 144 | `core.rs:163-217,373-403` | `/Users/sunmeng/workspace/fc/fceux/src/boards/datalatch.cpp` | 222-233 | Mapper 144 复用 Mapper 11 sync，写窗口从 `$8001-$FFFF` 开始 |
+| 144 | `core.rs:163-217,373-403` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/datalatch.c` | 157-167 | FCEUmm Mapper 144 cross-check |
+| 144 | `core.rs:163-217,373-403` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Unlicensed/ColorDreams.h` | 5-29 | ColorDreams 4-bit PRG/CHR latch；mapper 144 只让 ROM bit0 参与 bus conflict |
+| 146 | `latch/sachen.rs:70-135,218-251` | `/Users/sunmeng/workspace/fc/fceux/src/boards/sachen.cpp` | 258-284 | SA016-1M PRG32=`value>>3`、CHR8=`value&7`，低区 `$4100-$5FFF` 写 |
+| 146 | `latch/sachen.rs:70-135,218-251` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/sachen.c` | 165-190 | FCEUmm SA016-1M cross-check |
+| 146 | `latch/sachen.rs:70-135,218-251` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Unlicensed/Nina03_06.h` | 5-35 | mapper 146 归入非 multicart Nina03_06：`(addr & 0xE100) == 0x4100` gate |
+| 148 | `latch/sachen.rs:70-135,253-271` | `/Users/sunmeng/workspace/fc/fceux/src/boards/sachen.cpp` | 258-264, 306-316 | SA0037 复用 SA016-1M bank sync，但高区 `$8000-$FFFF` 写 |
+| 148 | `latch/sachen.rs:70-135,253-271` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/sachen.c` | 165-171, 213-222 | FCEUmm SA0037 cross-check |
 | 133 | `latch/sachen.rs:1-62,105-121` | `/Users/sunmeng/workspace/fc/fceux/src/boards/sachen.cpp` | 273-296 | SA72008 PRG32=`value>>2`、CHR8=`value&3` |
 | 133 | `latch/sachen.rs:1-62,105-121` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/sachen.c` | 180-203 | FCEUmm SA72008 cross-check |
 | 133 | `latch/sachen.rs:1-62,105-121` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Sachen/Sachen_133.h` | 10-25 | `$4100-$FFFF` 写窗口与 `(addr & 0x6100) == 0x4100` 门控 |
@@ -216,7 +227,10 @@
 - `Mapper253::write_chr_register()` / `chr_ram_index()` / `cpu_clock()` 对应 FCEUX `253.cpp:44-89,110-145` 与 Mesen2 `Mapper253.h:54-130`。
 - `Mapper92::write_register()` 对应 FCEUX `72.cpp:35-80` 的 mapper 92 变体。
 - `Mapper122::write_register()` 对应 FCEUmm `122.c:25-33` 的 A0 选择两个 4KB CHR latch。
+- `ColorDreams::write_register()` / `apply_bus_conflict()` 对应 FCEUX/FCEUmm `datalatch.cpp`/`datalatch.c:222-233,157-167` 与 Mesen2 `ColorDreams.h:5-29`；mapper 144 只接受奇地址写并使用 bit0-only conflict。
+- `MapperOps::apply_bus_conflict()` 是为 mapper 144 增加的 bus-conflict 细分钩子；默认仍保持原有 AND 语义。
 - `Sachen133::write_low_register()` / `write_register()` 对应 Mesen2 `Sachen_133.h:19-25` 与 FCEUX/FCEUmm `sachen.cpp`/`sachen.c:273-296,180-203`。
+- `SachenSa0161m::write_expansion()` / `write_register()` 对应 FCEUX/FCEUmm `sachen.cpp`/`sachen.c:258-284,306-316,165-190,213-222` 与 Mesen2 `Nina03_06.h:5-35`。
 - `Sachen149::write_register()` 对应 Mesen2 `Sachen_149.h:16-19` 与 FCEUX/FCEUmm SA0036 的 SA72007 sync 路径。
 - `Mapper106::write_register()` / `cpu_clock()` 对应 Mesen2 `Mapper106.h:36-73`。
 - `Mapper116::write_expansion()` / `write_low_register()` 的 mode select 对应 FCEUX `116.cpp:165-181` 与 Mesen2 `Mapper116.h:282-291`。
@@ -241,7 +255,7 @@
 ## 以后替换时的删除边界
 
 - 先替换 `fc-core/src/mapper/basic/unlicensed.rs:1-884`。
-- 同批替换 `fc-core/src/mapper/basic/latch/discrete.rs` 里 Mapper 36 / 72 / 79 / 92 / 122 的新增段、`fc-core/src/mapper/basic/latch/sachen.rs` 的新增段、`fc-core/src/mapper/basic/taito.rs` 里 Mapper 80 / 207 / 82 的新增段，以及 `fc-core/src/mapper/basic/multicart.rs` 里 Mapper 59 / 63 / 201 / 217 / 228 / 255 的新增段。
+- 同批替换 `fc-core/src/mapper/basic/latch/discrete.rs` 里 Mapper 36 / 72 / 79 / 92 / 122 的新增段、`fc-core/src/mapper/basic/latch/sachen.rs` 的新增段、`fc-core/src/mapper/basic/core.rs` 里 ColorDreams/Mapper144 的扩展段、`fc-core/src/mapper/basic/taito.rs` 里 Mapper 80 / 207 / 82 的新增段，以及 `fc-core/src/mapper/basic/multicart.rs` 里 Mapper 59 / 63 / 201 / 217 / 228 / 255 的新增段。
 - 同批替换 `fc-core/src/mapper/basic/latch/sunsoft.rs` 里 Mapper 68 的新增段，并同步检查 `MapperOps::nametable_chr_index` 与 `Cartridge::mapper_has_nametable_chr_mapping` 是否仍有其他使用者。
 - 同批替换 `fc-core/src/mapper/basic/core.rs` 里 Mapper 232 的新增段。
 - 同批替换 `fc-core/src/mapper/basic/konami.rs` 的 VRC1 段、`fc-core/src/mapper/basic/jy.rs` 的 Mapper91 段、`fc-core/src/mapper/basic/sl12.rs` 的 Mapper116 段、`fc-core/src/mapper/basic/waixing.rs` 的 Mapper253 段、`fc-core/src/mapper/vrc4.rs` 的 VRC2/VRC4 段、`fc-core/src/mapper/rambo1.rs` 的 Mapper64 段，以及 `fc-core/src/mapper/mmc3.rs` 的 Mapper37/44/45/47/52/76/119 变体段。

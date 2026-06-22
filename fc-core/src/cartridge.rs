@@ -466,12 +466,12 @@ impl Cartridge {
             }
             0x8000..=0xFFFF => {
                 let value = if self.mapper.has_bus_conflicts() {
-                    value
-                        & read_wrapped(
-                            &self.prg_rom,
-                            self.mapper.prg_index(addr),
-                            self.prg_rom_mask,
-                        )
+                    let prg_value = read_wrapped(
+                        &self.prg_rom,
+                        self.mapper.prg_index(addr),
+                        self.prg_rom_mask,
+                    );
+                    self.mapper.apply_bus_conflict(value, prg_value)
                 } else {
                     value
                 };
