@@ -852,6 +852,23 @@
   - Clean up MMC3 variant layer.
   - Add expansion audio interface for FME7/N163/VRC6/VRC7.
 
+### Phase 18 CPU Address Handler Helper Pass
+- Refactored `/Users/sunmeng/workspace/fc/fc-core/src/cartridge.rs` CPU access handling into private helpers:
+  - expansion range: `cpu_read_expansion_with_open_bus`, `cpu_peek_expansion_with_open_bus`, `cpu_write_expansion`.
+  - low range: `cpu_read_low`, `cpu_peek_low`, `cpu_write_low`.
+  - high range: `cpu_read_high_with_open_bus`, `cpu_peek_high_with_open_bus`, `cpu_write_high`.
+- Preserved existing behavior while making priority/order explicit:
+  - expansion mapper read, expansion PRG-ROM mapping, otherwise open bus.
+  - low PRG-RAM backing with mapper low-register override, optional low PRG-ROM mapping, and write fall-through.
+  - high PRG-ROM backing with mapper register read side effects, cheat patches after readback, and bus conflicts before register writes.
+- Verification so far:
+  - `cargo fmt --check`: PASS.
+  - `cargo test -p fc-core cartridge::tests -- --nocapture`: PASS, 9/9.
+  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 105/105.
+  - `git diff --check`: PASS.
+  - `cargo test -p fc-core`: PASS, 146/146.
+  - `cargo test`: PASS, workspace tests.
+
 ### Mapper 49 / 114 / 115 / 121 MMC3 Protocol Variant Batch
 - Refactored MMC3 writes in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs` into `write_bank_select()`, `write_bank_data()`, and `write_standard_register()`.
 - Added mapper 49 / 114 / 115 / 121 as MMC3 variants:

@@ -356,45 +356,9 @@ impl Cartridge {
 
     pub(crate) fn cpu_read_with_open_bus(&mut self, addr: u16, open_bus: u8) -> u8 {
         match addr {
-            0x4018..=0x5FFF => self
-                .mapper
-                .read_expansion(addr)
-                .or_else(|| {
-                    self.mapper
-                        .expansion_prg_index(addr)
-                        .map(|i| read_wrapped(&self.prg_rom, i, self.prg_rom_mask))
-                })
-                .unwrap_or(open_bus),
-            0x6000..=0x7FFF => {
-                let prg_ram_value =
-                    read_wrapped(&self.prg_ram, (addr - 0x6000) as usize, self.prg_ram_mask);
-                if let Some(b) = self
-                    .mapper
-                    .read_low_register_with_prg_ram(addr, prg_ram_value)
-                {
-                    return b;
-                }
-                if let Some(i) = self.mapper.low_prg_index(addr) {
-                    return read_wrapped(&self.prg_rom, i, self.prg_rom_mask);
-                }
-                prg_ram_value
-            }
-            0x8000..=0xFFFF => {
-                let i = self.mapper.prg_index(addr);
-                let v = read_wrapped(&self.prg_rom, i, self.prg_rom_mask);
-                let v = self
-                    .mapper
-                    .read_register_with_open_bus(addr, v, open_bus)
-                    .unwrap_or(v);
-                if !self.patches.is_empty() {
-                    if let Some(&(patch, compare)) = self.patches.get(&addr) {
-                        if compare.map_or(true, |c| c == v) {
-                            return patch;
-                        }
-                    }
-                }
-                v
-            }
+            0x4018..=0x5FFF => self.cpu_read_expansion_with_open_bus(addr, open_bus),
+            0x6000..=0x7FFF => self.cpu_read_low(addr),
+            0x8000..=0xFFFF => self.cpu_read_high_with_open_bus(addr, open_bus),
             _ => self.cpu_peek(addr),
         }
     }
@@ -405,81 +369,137 @@ impl Cartridge {
 
     pub(crate) fn cpu_peek_with_open_bus(&self, addr: u16, open_bus: u8) -> u8 {
         match addr {
-            0x4018..=0x5FFF => self
-                .mapper
-                .peek_expansion(addr)
-                .or_else(|| {
-                    self.mapper
-                        .expansion_prg_index(addr)
-                        .map(|i| read_wrapped(&self.prg_rom, i, self.prg_rom_mask))
-                })
-                .unwrap_or(open_bus),
-            0x6000..=0x7FFF => {
-                let prg_ram_value =
-                    read_wrapped(&self.prg_ram, (addr - 0x6000) as usize, self.prg_ram_mask);
-                if let Some(b) = self
-                    .mapper
-                    .peek_low_register_with_prg_ram(addr, prg_ram_value)
-                {
-                    return b;
-                }
-                if let Some(i) = self.mapper.low_prg_index(addr) {
-                    return read_wrapped(&self.prg_rom, i, self.prg_rom_mask);
-                }
-                prg_ram_value
-            }
-            0x8000..=0xFFFF => {
-                let i = self.mapper.prg_index(addr);
-                let v = read_wrapped(&self.prg_rom, i, self.prg_rom_mask);
-                let v = self
-                    .mapper
-                    .peek_register_with_open_bus(addr, v, open_bus)
-                    .unwrap_or(v);
-                if !self.patches.is_empty() {
-                    if let Some(&(patch, compare)) = self.patches.get(&addr) {
-                        if compare.map_or(true, |c| c == v) {
-                            return patch;
-                        }
-                    }
-                }
-                v
-            }
+            0x4018..=0x5FFF => self.cpu_peek_expansion_with_open_bus(addr, open_bus),
+            0x6000..=0x7FFF => self.cpu_peek_low(addr),
+            0x8000..=0xFFFF => self.cpu_peek_high_with_open_bus(addr, open_bus),
             _ => 0,
         }
     }
 
     pub fn cpu_write(&mut self, addr: u16, value: u8) -> bool {
         match addr {
-            0x4018..=0x5FFF => {
-                self.mapper.write_expansion(addr, value);
-                true
-            }
-            0x6000..=0x7FFF => {
-                let mapper_register = self.mapper.write_low_register(addr, value);
-                if !mapper_register || self.mapper.low_register_write_falls_through(addr) {
-                    let i = (addr - 0x6000) as usize;
-                    if let Some(b) = self.prg_ram.get_mut(i) {
-                        *b = value;
-                    }
-                }
-                mapper_register
-            }
-            0x8000..=0xFFFF => {
-                let value = if self.mapper.has_bus_conflicts() {
-                    let prg_value = read_wrapped(
-                        &self.prg_rom,
-                        self.mapper.prg_index(addr),
-                        self.prg_rom_mask,
-                    );
-                    self.mapper.apply_bus_conflict(value, prg_value)
-                } else {
-                    value
-                };
-                self.mapper.write_register(addr, value);
-                true
-            }
+            0x4018..=0x5FFF => self.cpu_write_expansion(addr, value),
+            0x6000..=0x7FFF => self.cpu_write_low(addr, value),
+            0x8000..=0xFFFF => self.cpu_write_high(addr, value),
             _ => false,
         }
+    }
+
+    fn cpu_read_expansion_with_open_bus(&mut self, addr: u16, open_bus: u8) -> u8 {
+        self.mapper
+            .read_expansion(addr)
+            .or_else(|| self.expansion_prg_rom_value(addr))
+            .unwrap_or(open_bus)
+    }
+
+    fn cpu_peek_expansion_with_open_bus(&self, addr: u16, open_bus: u8) -> u8 {
+        self.mapper
+            .peek_expansion(addr)
+            .or_else(|| self.expansion_prg_rom_value(addr))
+            .unwrap_or(open_bus)
+    }
+
+    fn expansion_prg_rom_value(&self, addr: u16) -> Option<u8> {
+        self.mapper
+            .expansion_prg_index(addr)
+            .map(|i| read_wrapped(&self.prg_rom, i, self.prg_rom_mask))
+    }
+
+    fn cpu_read_low(&mut self, addr: u16) -> u8 {
+        let prg_ram_value = self.low_prg_ram_value(addr);
+        if let Some(b) = self
+            .mapper
+            .read_low_register_with_prg_ram(addr, prg_ram_value)
+        {
+            return b;
+        }
+        self.low_prg_rom_value(addr).unwrap_or(prg_ram_value)
+    }
+
+    fn cpu_peek_low(&self, addr: u16) -> u8 {
+        let prg_ram_value = self.low_prg_ram_value(addr);
+        if let Some(b) = self
+            .mapper
+            .peek_low_register_with_prg_ram(addr, prg_ram_value)
+        {
+            return b;
+        }
+        self.low_prg_rom_value(addr).unwrap_or(prg_ram_value)
+    }
+
+    fn low_prg_ram_value(&self, addr: u16) -> u8 {
+        read_wrapped(&self.prg_ram, (addr - 0x6000) as usize, self.prg_ram_mask)
+    }
+
+    fn low_prg_rom_value(&self, addr: u16) -> Option<u8> {
+        self.mapper
+            .low_prg_index(addr)
+            .map(|i| read_wrapped(&self.prg_rom, i, self.prg_rom_mask))
+    }
+
+    fn cpu_read_high_with_open_bus(&mut self, addr: u16, open_bus: u8) -> u8 {
+        let prg_value = self.high_prg_rom_value(addr);
+        let value = self
+            .mapper
+            .read_register_with_open_bus(addr, prg_value, open_bus)
+            .unwrap_or(prg_value);
+        self.apply_cpu_patch(addr, value)
+    }
+
+    fn cpu_peek_high_with_open_bus(&self, addr: u16, open_bus: u8) -> u8 {
+        let prg_value = self.high_prg_rom_value(addr);
+        let value = self
+            .mapper
+            .peek_register_with_open_bus(addr, prg_value, open_bus)
+            .unwrap_or(prg_value);
+        self.apply_cpu_patch(addr, value)
+    }
+
+    fn high_prg_rom_value(&self, addr: u16) -> u8 {
+        read_wrapped(
+            &self.prg_rom,
+            self.mapper.prg_index(addr),
+            self.prg_rom_mask,
+        )
+    }
+
+    fn apply_cpu_patch(&self, addr: u16, value: u8) -> u8 {
+        if self.patches.is_empty() {
+            return value;
+        }
+        if let Some(&(patch, compare)) = self.patches.get(&addr) {
+            if compare.map_or(true, |c| c == value) {
+                return patch;
+            }
+        }
+        value
+    }
+
+    fn cpu_write_expansion(&mut self, addr: u16, value: u8) -> bool {
+        self.mapper.write_expansion(addr, value);
+        true
+    }
+
+    fn cpu_write_low(&mut self, addr: u16, value: u8) -> bool {
+        let mapper_register = self.mapper.write_low_register(addr, value);
+        if !mapper_register || self.mapper.low_register_write_falls_through(addr) {
+            let i = (addr - 0x6000) as usize;
+            if let Some(b) = self.prg_ram.get_mut(i) {
+                *b = value;
+            }
+        }
+        mapper_register
+    }
+
+    fn cpu_write_high(&mut self, addr: u16, value: u8) -> bool {
+        let value = if self.mapper.has_bus_conflicts() {
+            let prg_value = self.high_prg_rom_value(addr);
+            self.mapper.apply_bus_conflict(value, prg_value)
+        } else {
+            value
+        };
+        self.mapper.write_register(addr, value);
+        true
     }
 
     // ---- PPU bus ($0000-$1FFF) ----

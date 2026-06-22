@@ -134,7 +134,7 @@ Phase 17: Mapper compatibility gap closure
 - [x] Design a reference-emulator-style board layer for fast mapper translation
 - [x] Add initial reusable bank mapping helpers for PRG/CHR page index translation
 - [x] Extend bank mapping helpers for mixed ROM/RAM windows
-- [ ] Add CPU address handler helpers for expansion, low, and high mapper ranges
+- [x] Add CPU address handler helpers for expansion, low, and high mapper ranges
 - [ ] Extract reusable IRQ units: MMC3 A12, CPU counter, HBlank, VRC/RAMBO-style counters
 - [ ] Standardize reset/power hooks, mapper register reads, side effects, and open-bus paths
 - [ ] Route expansion audio boards through a shared mapper audio interface
@@ -174,6 +174,7 @@ Phase 17: Mapper compatibility gap closure
 | Split mapper expansion into low-risk batches and architecture batches | 192/195/228/232/255 fit existing hooks, while 68 needs nametable-to-CHR access and 114/115/121 should follow MMC3 helper refactoring |
 | Use team-mode research to choose the next mapper batch | Low-risk latch candidates start with 149/122/133; MMC3 candidates should start with helper refactoring then 49; external-device boards such as 99/111/157/188/209/211 should wait for dedicated peripheral hooks |
 | Build a board compatibility layer before pushing the long tail | Reference mapper code is short because mature emulators hide handler registration, bank setup, IRQ units, reset hooks, and side-effect reads in their board framework; reproducing that layer should make future mapper work mostly mechanical |
+| Start CPU handler work as private `Cartridge` helpers | The existing `MapperOps` methods already cover expansion, low, and high ranges; centralizing priority/order first reduces later mapper glue without widening the public trait too early |
 
 ## Errors Encountered
 | Error | Attempt | Resolution |

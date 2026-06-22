@@ -266,6 +266,7 @@
 - 当前 `MapperOps` 的 `prg_index()` / `chr_index()` 模型适合性能和普通 mapper，但对低地址 PRG-ROM、mapper register read、reset-selected bank、A12/CPU/HBlank 多时钟 IRQ、CHR-ROM/CHR-RAM 混合窗口和复合 ASIC 需要大量板卡局部胶水。
 - 后续应先建设 BankMap helper、CPU address handler helper、IRQ 单元库、MMC3 variant layer、reset/power/side-effect 标准层和 expansion audio 接口，再进入更大规模 mapper 机械翻译。
 - 规划文档已新增到 `docs/Mapper-架构优化计划.md`，作为 Phase 18 的执行依据。
+- CPU 地址 handler 第一层已落在 `Cartridge` 私有 helper：`$4018-$5FFF` expansion、`$6000-$7FFF` low、`$8000-$FFFF` high 的 read/peek/write 路由现在集中表达 PRG-RAM、低地址 PRG-ROM、mapper register read、open-bus、patch 和 bus-conflict 顺序。这个阶段刻意不新增公开 trait API，先把后续 mapper 103/120、170/234、230/233 需要的行为入口收拢到一个地方。
 - MMC3 写协议 helper 已拆成 `write_bank_select()` / `write_bank_data()` / `write_standard_register()`，并以 mapper 49/114/115/121 作为第一批协议变体验证：49 使用 outer latch，114 使用高区写重映射与 cmd_pending，115 使用低区 PRG/CHR/protection regs，121 使用 protection LUT、scramble 与 override regs。
 - `fc-core/src/mapper/bank.rs` 已作为 BankMap 初版落地，先提供无状态 PRG/CHR page index helper，避免 serde 状态迁移风险；ColorDreams/GxROM 与 Sachen 小家族已迁移，用来验证 helper 不改变现有 mapper 行为。
 - Mapper 108 是 FDS 转换类低区 PRG-ROM 窗口板：`$6000-$7FFF` 映射一个可切换 8KB PRG-ROM bank，`$8000-$FFFF` 固定到最后 32KB，`$8000-$8FFF` 和 `$F000-$FFFF` 写入选择低区 bank。
