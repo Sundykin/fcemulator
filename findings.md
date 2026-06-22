@@ -218,6 +218,9 @@
 
 ## Mapper Mechanical Pass Findings 2026-06-22
 - Mechanical mapper rollout is feasible for pure PRG/CHR/mirroring latch boards: mapper 75 is a direct VRC1 register translation and only needs existing `MapperOps` methods.
+- Mapper 206 is a small Namco108 subset: FCEUX/FCEUmm mask high writes with `addr & 0x8001`, use command/data registers only, initialize PRG regs 6/7 to 0/1, mask CHR regs 0/1 as 2KB banks and regs 2-5 as 1KB banks, and fix the last two PRG 8KB pages. Existing `MapperOps` is sufficient.
+- Mapper 207 reuses the Taito X1-005 register window but enables alternate nametable mirroring: `7EF0` bit7 controls nametables 0/1 and `7EF1` bit7 controls nametables 2/3; ordinary mirroring writes are ignored. Existing CIRAM nametable hooks are sufficient.
+- Mapper support count after adding 206/207 is 121 against the four-reference union, leaving 372 mapper numbers missing by the current broad-counting checklist.
 - Mapper 76 is an MMC3-derived board with custom CHR wrapping. It can be implemented as a small standalone MMC3-like mapper, but repeated MMC3 derivatives would benefit from a configurable MMC3 wrapper/variant interface.
 - Mapper 91 differs by reference: FCEUX/FCEUmm model an HBlank IRQ hook, while Mesen2 uses MMC3 IRQ machinery through low-register writes. Exact support should avoid a CPU-cycle approximation unless tests prove it is acceptable.
 - Mapper 116 multiplexes VRC2/MMC3/MMC1 modes and needs A12 IRQ behavior; it is possible with current hooks but large enough to implement after simpler mapper batches.

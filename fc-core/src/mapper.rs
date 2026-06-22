@@ -210,8 +210,9 @@ pub use basic::{
     Mapper222, Mapper226, Mapper230, Mapper233, Mapper234, Mapper235, Mapper240, Mapper241,
     Mapper244, Mapper246, Mapper253, Mapper36, Mapper40, Mapper42, Mapper43, Mapper50, Mapper57,
     Mapper60, Mapper63, Mapper65, Mapper67, Mapper72, Mapper73, Mapper79, Mapper83, Mapper91,
-    Mapper92, Namco108Mapper95, Namco118, Nina01, Nina03_06, Nrom, Ntdec112, Sunsoft184, Sunsoft89,
-    TaitoTc0190, TaitoX1005, TaitoX1017, UnlPci556, Unrom, UnromVariant, UnromVariantMapper, Vrc1,
+    Mapper92, Namco108Mapper206, Namco108Mapper95, Namco118, Nina01, Nina03_06, Nrom, Ntdec112,
+    Sunsoft184, Sunsoft89, TaitoTc0190, TaitoX1005, TaitoX1017, UnlPci556, Unrom, UnromVariant,
+    UnromVariantMapper, Vrc1,
 };
 pub use expansion_mappers::{Fme7, Namco163, Vrc6, Vrc6Variant, Vrc7};
 pub use mmc1::Mmc1;
@@ -288,6 +289,7 @@ pub enum Mapper {
     Mapper253(Mapper253),
     IremLrog017(IremLrog017),
     Namco108Mapper95(Namco108Mapper95),
+    Namco108Mapper206(Namco108Mapper206),
     Namco118(Namco118),
     JalecoJf13(JalecoJf13),
     Sunsoft89(Sunsoft89),
@@ -441,6 +443,8 @@ impl Mapper {
             202 => Mapper::AddrLatch16k(AddrLatch16k::new(AddrLatchVariant::Mapper202)),
             203 => Mapper::Mapper203(Mapper203::new(mirroring)),
             204 => Mapper::AddrLatch16k(AddrLatch16k::new(AddrLatchVariant::Mapper204)),
+            206 => Mapper::Namco108Mapper206(Namco108Mapper206::new(prg_16k, mirroring)),
+            207 => Mapper::TaitoX1005(TaitoX1005::new_207(prg_16k)),
             212 => Mapper::Mapper212(Mapper212::new()),
             216 => Mapper::AddrLatch16k(AddrLatch16k::new_with_mirroring(
                 AddrLatchVariant::Mapper216,
@@ -545,6 +549,7 @@ macro_rules! dispatch {
             Mapper::Mapper253($m) => $body,
             Mapper::IremLrog017($m) => $body,
             Mapper::Namco108Mapper95($m) => $body,
+            Mapper::Namco108Mapper206($m) => $body,
             Mapper::Namco118($m) => $body,
             Mapper::JalecoJf13($m) => $body,
             Mapper::Sunsoft89($m) => $body,
@@ -786,6 +791,8 @@ mod tests {
             (201, false),  // Mapper 201
             (202, false),  // Mapper 202
             (204, false),  // Mapper 204
+            (206, false),  // Namco 108 mapper 206
+            (207, false),  // Taito X1-005 mapper 207
             (212, false),  // Mapper 212
             (213, false),  // Mapper 213
             (214, false),  // Mapper 214
@@ -908,6 +915,8 @@ mod tests {
             (201, false),  // Mapper 201
             (202, false),  // Mapper 202
             (204, false),  // Mapper 204
+            (206, false),  // Namco 108 mapper 206
+            (207, false),  // Taito X1-005 mapper 207
             (212, false),  // Mapper 212
             (213, false),  // Mapper 213
             (214, false),  // Mapper 214
@@ -1034,6 +1043,8 @@ mod tests {
             (202, false),
             (203, false),
             (204, false),
+            (206, false),
+            (207, false),
             (212, false),
             (213, false),
             (214, false),

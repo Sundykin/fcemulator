@@ -753,3 +753,18 @@
   - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 49 tests
 - Notes:
   - Initial mapper91 test incorrectly expected fixed banks to resolve as the last two physical PRG pages; corrected to `0x0E/0x0F` per current FCEUmm-style mapper91 path.
+
+### Mapper 206 / 207 Namco-Taito Batch
+- Implemented mapper 206 / Namco108 subset in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/namco.rs`.
+- Extended mapper 80's Taito X1-005 implementation for mapper 207 alternate mirroring in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/taito.rs` without changing mapper 80 default behavior.
+- Wired mapper 206/207 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs` and updated capability guard tables.
+- Updated mapper gap and reference documents. Supported mapper count is now 121; remaining four-reference union gap is 372.
+- Verification so far:
+  - `cargo test -p fc-core mapper::basic::namco::tests::mapper206 -- --nocapture`: PASS.
+  - `cargo test -p fc-core mapper::basic::taito::tests::mapper207 -- --nocapture`: PASS.
+  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 38/38 mapper facade tests.
+  - `cargo fmt --check`: PASS.
+  - `git diff --check`: PASS.
+  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 78/78 mapper tests.
+  - `cargo test -p fc-core`: PASS, 118/118 fc-core tests.
+  - `cargo test`: PASS, workspace tests.

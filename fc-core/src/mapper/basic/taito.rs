@@ -84,17 +84,31 @@ pub struct TaitoX1005 {
     prg_8k: [usize; 3],
     chr_1k: [usize; 8],
     mirroring: Mirroring,
+    #[serde(default)]
+    alternate_mirroring: bool,
+    #[serde(default)]
+    nt: [u8; 4],
     wram_enable: u8,
     wram: Vec<u8>,
 }
 
 impl TaitoX1005 {
     pub(in crate::mapper) fn new(prg_16k: usize) -> Self {
+        Self::new_with_alternate_mirroring(prg_16k, false)
+    }
+
+    pub(in crate::mapper) fn new_207(prg_16k: usize) -> Self {
+        Self::new_with_alternate_mirroring(prg_16k, true)
+    }
+
+    fn new_with_alternate_mirroring(prg_16k: usize, alternate_mirroring: bool) -> Self {
         TaitoX1005 {
             prg_8k_total: (prg_16k * 2).max(1),
             prg_8k: [0; 3],
             chr_1k: [0; 8],
             mirroring: Mirroring::Vertical,
+            alternate_mirroring,
+            nt: [0; 4],
             wram_enable: 0xFF,
             wram: vec![0; 0x100],
         }
@@ -112,14 +126,30 @@ impl TaitoX1005 {
         let bank = ((value >> 1) & 0x3F) as usize;
         self.chr_1k[slot] = bank * 2;
         self.chr_1k[slot + 1] = bank * 2 + 1;
+        if self.alternate_mirroring {
+            let nt = (value >> 7) & 1;
+            self.nt[slot] = nt;
+            self.nt[slot + 1] = nt;
+        }
     }
 
     fn set_mirroring(&mut self, value: u8) {
+        if self.alternate_mirroring {
+            return;
+        }
         self.mirroring = if value & 0x01 != 0 {
             Mirroring::Horizontal
         } else {
             Mirroring::Vertical
         };
+    }
+
+    fn ciram_index(&self, addr: u16) -> Option<usize> {
+        if !self.alternate_mirroring {
+            return None;
+        }
+        let table = ((addr >> 10) & 0x03) as usize;
+        Some(((self.nt[table] as usize) * 0x400) | (addr as usize & 0x03FF))
     }
 }
 
@@ -168,8 +198,26 @@ impl MapperOps for TaitoX1005 {
             None
         }
     }
+    fn nametable_read(&mut self, addr: u16, ciram: &[u8; 0x1000]) -> Option<u8> {
+        self.peek_nametable(addr, ciram)
+    }
+    fn peek_nametable(&self, addr: u16, ciram: &[u8; 0x1000]) -> Option<u8> {
+        self.ciram_index(addr).map(|i| ciram[i])
+    }
+    fn nametable_write(&mut self, addr: u16, value: u8, ciram: &mut [u8; 0x1000]) -> bool {
+        if let Some(i) = self.ciram_index(addr) {
+            ciram[i] = value;
+            true
+        } else {
+            false
+        }
+    }
     fn mirroring(&self) -> Mirroring {
-        self.mirroring
+        if self.alternate_mirroring {
+            Mirroring::FourScreen
+        } else {
+            self.mirroring
+        }
     }
 }
 
@@ -251,5 +299,37 @@ impl MapperOps for TaitoX1017 {
         } else {
             Mirroring::Vertical
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mapper207_uses_x1005_banks_with_chr_controlled_nametables() {
+        let mut mapper = TaitoX1005::new_207(8);
+        let mut ciram = [0u8; 0x1000];
+        ciram[0x004] = 0x11;
+        ciram[0x404] = 0x22;
+
+        assert_eq!(mapper.mirroring(), Mirroring::FourScreen);
+        assert_eq!(mapper.peek_nametable(0x2004, &ciram), Some(0x11));
+
+        assert!(mapper.write_low_register(0x7EF0, 0x85));
+        assert_eq!(mapper.chr_index(0x0004), 0x04 * 0x0400 + 4);
+        assert_eq!(mapper.chr_index(0x0404), 0x05 * 0x0400 + 4);
+        assert_eq!(mapper.peek_nametable(0x2004, &ciram), Some(0x22));
+        assert_eq!(mapper.peek_nametable(0x2404, &ciram), Some(0x22));
+        assert_eq!(mapper.peek_nametable(0x2804, &ciram), Some(0x11));
+
+        assert!(mapper.write_low_register(0x7EF1, 0x06));
+        assert_eq!(mapper.peek_nametable(0x2804, &ciram), Some(0x11));
+        assert!(mapper.write_low_register(0x7EF1, 0x86));
+        assert_eq!(mapper.peek_nametable(0x2804, &ciram), Some(0x22));
+        assert_eq!(mapper.peek_nametable(0x2C04, &ciram), Some(0x22));
+
+        assert!(mapper.write_low_register(0x7EF6, 1));
+        assert_eq!(mapper.mirroring(), Mirroring::FourScreen);
     }
 }
