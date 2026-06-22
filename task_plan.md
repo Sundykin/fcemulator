@@ -122,7 +122,8 @@ Phase 17: Mapper compatibility gap closure
 - [x] Add mapper 118 / TxSROM with MMC3 IRQ plus CHR bit7 nametable pages
 - [x] Add mapper 206 / Namco 108 subset and mapper 207 / Taito X1-005 alternate mirroring
 - [x] Add low-risk mapper batch 192 / 195 / 228 / 232 / 255
-- [ ] Continue with architecture work for 68 and MMC3 protocol variants 114/115/121
+- [x] Add mapper 68 / Sunsoft-4 with nametable-to-CHR architecture hook
+- [ ] Continue with MMC3 protocol variants 49/114/115/121 and low-risk latch batch 149/122/133
 - **Status:** in_progress
 
 ## Key Questions
@@ -150,12 +151,13 @@ Phase 17: Mapper compatibility gap closure
 | Run mapper team mode through disjoint ownership and PM integration | VRC/Konami, MMC3-derived, and Waixing/253 touched separable modules; PM-side docs/tests keep parallel changes from landing as unreviewed WIP |
 | Model Mapper 45 as an MMC3 outer-bank variant | References agree its PRG/CHR wrapping and low-register serial latch sit above normal MMC3 IRQ/register behavior, so reusing the existing MMC3 core keeps A12 timing centralized |
 | Implement Mapper 64 as an independent RAMBO-1 ASIC | It has MMC3-like PRG/CHR banking, but its register set and selectable CPU/A12 IRQ source differ enough that a standalone module is cleaner and can later host mapper 158 |
-| Defer Mapper 68 until nametable-to-CHR architecture exists | Sunsoft-4 maps nametable fetches to CHR backing memory, and the current mapper nametable hook only receives CIRAM |
+| Add a nametable-to-CHR mapper hook for Mapper 68 | Sunsoft-4 maps nametable fetches to CHR backing memory, so `MapperOps::nametable_chr_index` lets mappers return a CHR byte index while `Cartridge` still owns CHR-ROM/RAM access |
 | Generalize MMC3 CHR-RAM windows for mapper 119 | TQROM needs a bank range mapped to 8KB CHR-RAM; this also prepares later MMC3_ChrRam variants while preserving mapper 74/194 behavior |
 | Implement Mapper 95 with a small Namco108 variant instead of overloading Namco118 | Mapper 95 masks CHR registers differently and uses CHR register high bits for nametable pages, while mapper 88 keeps fixed header mirroring |
 | Implement Mapper 118 as an MMC3 nametable-layout variant | TxSROM keeps normal MMC3 PRG and A12 IRQ behavior, but disables ordinary A000 mirroring and routes CHR bank bit7 into per-nametable CIRAM A10 |
 | Land mapper 206/207 before deeper architecture work | Both boards reuse already-local Namco108/Taito X1-005 shapes and do not require new CPU/PPU/Cartridge hooks, so they are a clean stable batch before 68 and MMC3 protocol variants |
 | Split mapper expansion into low-risk batches and architecture batches | 192/195/228/232/255 fit existing hooks, while 68 needs nametable-to-CHR access and 114/115/121 should follow MMC3 helper refactoring |
+| Use team-mode research to choose the next mapper batch | Low-risk latch candidates start with 149/122/133; MMC3 candidates should start with helper refactoring then 49; external-device boards such as 99/111/157/188/209/211 should wait for dedicated peripheral hooks |
 
 ## Errors Encountered
 | Error | Attempt | Resolution |

@@ -784,3 +784,22 @@
   - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 84/84 mapper tests.
   - `cargo test -p fc-core`: PASS, 124/124 fc-core tests.
   - `cargo test`: PASS, workspace tests.
+
+### Mapper 68 Sunsoft-4 Architecture Batch
+- Implemented `MapperOps::nametable_chr_index()` and cached `Cartridge::mapper_has_nametable_chr_mapping` so mappers can route nametable fetches to CHR-ROM/CHR-RAM without putting backing storage inside mapper logic.
+- Implemented mapper 68 / Sunsoft-4 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/latch/sunsoft.rs` with 16KB PRG banking, four 2KB CHR banks, mirroring control, and CHR-backed nametable page selection.
+- Wired mapper 68 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs` and added capability guard coverage.
+- Added a Cartridge-level mapper 68 test proving nametable writes/readbacks go through CHR-RAM and leave CIRAM untouched.
+- Updated mapper gap and reference documents. Supported mapper count is now 127; remaining four-reference union gap is 366.
+- Team-mode research results for the next work queue:
+  - Low-risk latch/discrete order: `149,122,133`, then `146,148,144`, then `154,155,108`, then `166/167`, `156`.
+  - MMC3 variant order: helper refactor, `49`, `115`, `114`, `121`.
+  - Mechanical A-grade later batch: `185,187,189,191,193,196,208,245,254`; external-device/PPU-read-hook boards should wait.
+- Verification so far:
+  - `cargo test -p fc-core mapper::basic::latch::sunsoft::tests -- --nocapture`: PASS, 2/2.
+  - `cargo test -p fc-core mapper68_nametable_chr_mapping_cache_and_chr_ram_bridge -- --nocapture`: PASS, 1/1.
+  - `cargo fmt --check`: PASS after formatting export order.
+  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 38/38 mapper facade tests.
+  - `git diff --check`: PASS.
+  - `cargo test -p fc-core`: PASS, 127/127 fc-core tests.
+  - `cargo test`: PASS, workspace tests.

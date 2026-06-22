@@ -29,7 +29,7 @@ pub use konami::Vrc1;
 pub use latch::{
     Bandai74161, Caltron41, ColorDreams46, Cprom, IremTamS1, JalecoJf11_14, JalecoJf13, JalecoJf16,
     JalecoJfxx, Mapper107, Mapper151, Mapper203, Mapper36, Mapper72, Mapper79, Mapper92, Nina03_06,
-    Sunsoft184, Sunsoft89, UnlPci556, UnromVariant, UnromVariantMapper,
+    Sunsoft184, Sunsoft4, Sunsoft89, UnlPci556, UnromVariant, UnromVariantMapper,
 };
 pub use multicart::{
     ActionEnterprises, AddrLatch16k, AddrLatchVariant, Mapper15, Mapper226, Mapper240, Mapper241,

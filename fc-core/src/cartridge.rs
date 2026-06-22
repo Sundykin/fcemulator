@@ -73,6 +73,10 @@ pub struct Cartridge {
     /// PPU hot path can skip probing `chr_read` on every pattern fetch.
     #[serde(skip)]
     mapper_has_chr_read: bool,
+    /// Cached `mapper.has_nametable_chr_mapping()` — almost all boards source
+    /// nametables from CIRAM or mapper-owned RAM, not CHR ROM/RAM.
+    #[serde(skip)]
+    mapper_has_nametable_chr_mapping: bool,
     /// Power-of-two wrap masks for the backing memories. `None` keeps the
     /// generic modulo path for odd-sized dumps.
     #[serde(skip)]
@@ -269,6 +273,7 @@ impl Cartridge {
         let mapper_clocks_hblank = mapper.clocks_hblank();
         let mapper_has_expansion_audio = mapper.has_expansion_audio();
         let mapper_has_chr_read = mapper.has_chr_read();
+        let mapper_has_nametable_chr_mapping = mapper.has_nametable_chr_mapping();
         let prg_rom_mask = pow2_mask(prg_rom.len());
         let chr_rom_mask = pow2_mask(chr_rom.len());
         let chr_ram_mask = pow2_mask(chr_ram.len());
@@ -293,6 +298,7 @@ impl Cartridge {
             mapper_clocks_hblank,
             mapper_has_expansion_audio,
             mapper_has_chr_read,
+            mapper_has_nametable_chr_mapping,
             prg_rom_mask,
             chr_rom_mask,
             chr_ram_mask,
@@ -312,6 +318,7 @@ impl Cartridge {
         self.mapper_clocks_hblank = self.mapper.clocks_hblank();
         self.mapper_has_expansion_audio = self.mapper.has_expansion_audio();
         self.mapper_has_chr_read = self.mapper.has_chr_read();
+        self.mapper_has_nametable_chr_mapping = self.mapper.has_nametable_chr_mapping();
         self.prg_rom_mask = pow2_mask(self.prg_rom.len());
         self.chr_rom_mask = pow2_mask(self.chr_rom.len());
         self.chr_ram_mask = pow2_mask(self.chr_ram.len());
@@ -515,14 +522,41 @@ impl Cartridge {
     }
 
     pub fn nametable_read(&mut self, addr: u16, ciram: &[u8; 0x1000]) -> Option<u8> {
+        if self.mapper_has_nametable_chr_mapping {
+            if let Some(i) = self.mapper.nametable_chr_index(addr) {
+                return Some(if self.uses_chr_ram {
+                    read_wrapped(&self.chr_ram, i, self.chr_ram_mask)
+                } else {
+                    read_wrapped(&self.chr_rom, i, self.chr_rom_mask)
+                });
+            }
+        }
         self.mapper.nametable_read(addr, ciram)
     }
 
     pub fn peek_nametable(&self, addr: u16, ciram: &[u8; 0x1000]) -> Option<u8> {
+        if self.mapper_has_nametable_chr_mapping {
+            if let Some(i) = self.mapper.nametable_chr_index(addr) {
+                return Some(if self.uses_chr_ram {
+                    read_wrapped(&self.chr_ram, i, self.chr_ram_mask)
+                } else {
+                    read_wrapped(&self.chr_rom, i, self.chr_rom_mask)
+                });
+            }
+        }
         self.mapper.peek_nametable(addr, ciram)
     }
 
     pub fn nametable_write(&mut self, addr: u16, value: u8, ciram: &mut [u8; 0x1000]) -> bool {
+        if self.mapper_has_nametable_chr_mapping {
+            if let Some(i) = self.mapper.nametable_chr_index(addr) {
+                if self.uses_chr_ram && !self.chr_ram.is_empty() {
+                    let i = wrap_index(i, self.chr_ram.len(), self.chr_ram_mask);
+                    self.chr_ram[i] = value;
+                }
+                return true;
+            }
+        }
         self.mapper.nametable_write(addr, value, ciram)
     }
 
@@ -756,6 +790,17 @@ mod tests {
         rom
     }
 
+    /// Build a minimal mapper-68 (Sunsoft-4) iNES image: 2×16K PRG + CHR-RAM.
+    fn mapper68_rom() -> Vec<u8> {
+        let mut rom = vec![0u8; 16 + 2 * 0x4000];
+        rom[0..4].copy_from_slice(&INES_MAGIC);
+        rom[4] = 2;
+        rom[5] = 0;
+        rom[6] = 0x40; // mapper low nibble = 4
+        rom[7] = 0x40; // mapper high nibble = 4 => mapper 68
+        rom
+    }
+
     #[test]
     fn mapper_watches_ppu_bus_cache_set_and_refreshed() {
         let cart = Cartridge::from_bytes(&mmc3_rom()).expect("mmc3 rom");
@@ -764,6 +809,7 @@ mod tests {
         assert!(!cart.mapper_clocks_cpu);
         assert!(!cart.mapper_clocks_hblank);
         assert!(!cart.mapper_has_chr_read);
+        assert!(!cart.mapper_has_nametable_chr_mapping);
 
         // Simulate a load-state: the #[serde(skip)] cache deserializes to false;
         // refresh_mapper_caps must restore it from the (correct) mapper so the
@@ -773,11 +819,13 @@ mod tests {
         loaded.mapper_clocks_cpu = false;
         loaded.mapper_clocks_hblank = true;
         loaded.mapper_has_chr_read = false;
+        loaded.mapper_has_nametable_chr_mapping = true;
         loaded.refresh_mapper_caps();
         assert!(loaded.mapper_watches_ppu_bus);
         assert!(!loaded.mapper_clocks_cpu);
         assert!(!loaded.mapper_clocks_hblank);
         assert!(!loaded.mapper_has_chr_read);
+        assert!(!loaded.mapper_has_nametable_chr_mapping);
 
         // NROM does not hook the bus.
         let empty = Cartridge::empty();
@@ -785,6 +833,31 @@ mod tests {
         assert!(!empty.mapper_clocks_cpu);
         assert!(!empty.mapper_clocks_hblank);
         assert!(!empty.mapper_has_chr_read);
+        assert!(!empty.mapper_has_nametable_chr_mapping);
+    }
+
+    #[test]
+    fn mapper68_nametable_chr_mapping_cache_and_chr_ram_bridge() {
+        let mut cart = Cartridge::from_bytes(&mapper68_rom()).expect("mapper68 rom");
+        assert!(cart.mapper_has_nametable_chr_mapping);
+
+        let mut ciram = [0u8; 0x1000];
+        assert_eq!(cart.nametable_read(0x2004, &ciram), None);
+
+        assert!(cart.cpu_write(0xC000, 0x05));
+        assert!(cart.cpu_write(0xD000, 0x06));
+        assert!(cart.cpu_write(0xE000, 0x10));
+
+        assert!(cart.nametable_write(0x2004, 0xA5, &mut ciram));
+        assert_eq!(cart.peek_nametable(0x2004, &ciram), Some(0xA5));
+        assert_eq!(cart.nametable_read(0x2004, &ciram), Some(0xA5));
+        assert_eq!(ciram, [0; 0x1000]);
+
+        let mut loaded = cart;
+        loaded.mapper_has_nametable_chr_mapping = false;
+        loaded.refresh_mapper_caps();
+        assert!(loaded.mapper_has_nametable_chr_mapping);
+        assert_eq!(loaded.peek_nametable(0x2004, &ciram), Some(0xA5));
     }
 
     #[test]

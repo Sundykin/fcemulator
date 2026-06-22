@@ -10,5 +10,5 @@ pub use discrete::{
     Mapper36, Mapper72, Mapper79, Mapper92, Nina03_06, UnlPci556,
 };
 pub use jaleco::{JalecoJf13, JalecoJf16, JalecoJfxx};
-pub use sunsoft::{Sunsoft184, Sunsoft89};
+pub use sunsoft::{Sunsoft184, Sunsoft4, Sunsoft89};
 pub use variants::{IremTamS1, UnromVariant, UnromVariantMapper};

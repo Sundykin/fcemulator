@@ -130,6 +130,16 @@ pub trait MapperOps {
     fn nametable_read(&mut self, _addr: u16, _ciram: &[u8; 0x1000]) -> Option<u8> {
         None
     }
+    /// Optional nametable-to-CHR mapping (`$2000..=$3EFF`). Boards such as
+    /// Sunsoft-4 can source nametable bytes from CHR ROM/RAM 1KB pages instead
+    /// of CIRAM; the cartridge resolves the returned CHR byte index.
+    fn nametable_chr_index(&self, _addr: u16) -> Option<usize> {
+        None
+    }
+    /// Whether [`MapperOps::nametable_chr_index`] can ever return `Some`.
+    fn has_nametable_chr_mapping(&self) -> bool {
+        false
+    }
     /// Optional mapper-owned nametable peek without side effects.
     fn peek_nametable(&self, _addr: u16, _ciram: &[u8; 0x1000]) -> Option<u8> {
         None
@@ -211,8 +221,8 @@ pub use basic::{
     Mapper240, Mapper241, Mapper244, Mapper246, Mapper253, Mapper36, Mapper40, Mapper42, Mapper43,
     Mapper50, Mapper57, Mapper60, Mapper63, Mapper65, Mapper67, Mapper72, Mapper73, Mapper79,
     Mapper83, Mapper91, Mapper92, Namco108Mapper206, Namco108Mapper95, Namco118, Nina01, Nina03_06,
-    Nrom, Ntdec112, Sunsoft184, Sunsoft89, TaitoTc0190, TaitoX1005, TaitoX1017, UnlPci556, Unrom,
-    UnromVariant, UnromVariantMapper, Vrc1,
+    Nrom, Ntdec112, Sunsoft184, Sunsoft4, Sunsoft89, TaitoTc0190, TaitoX1005, TaitoX1017,
+    UnlPci556, Unrom, UnromVariant, UnromVariantMapper, Vrc1,
 };
 pub use expansion_mappers::{Fme7, Namco163, Vrc6, Vrc6Variant, Vrc7};
 pub use mmc1::Mmc1;
@@ -258,6 +268,7 @@ pub enum Mapper {
     Rambo1(Rambo1),
     Mapper65(Mapper65),
     Mapper67(Mapper67),
+    Sunsoft4(Sunsoft4),
     Mapper72(Mapper72),
     Mapper73(Mapper73),
     Mapper79(Mapper79),
@@ -379,6 +390,7 @@ impl Mapper {
             65 => Mapper::Mapper65(Mapper65::new(prg_16k, chr_8k)),
             66 => Mapper::Gxrom(Gxrom::new(mirroring)),
             67 => Mapper::Mapper67(Mapper67::new(prg_16k, chr_8k, mirroring)),
+            68 => Mapper::Sunsoft4(Sunsoft4::new(prg_16k, mirroring)),
             69 => Mapper::Fme7(Fme7::new(prg_16k, chr_8k)),
             70 => Mapper::Bandai74161(Bandai74161::new(prg_16k, false)),
             71 => Mapper::Codemasters(Codemasters::new(prg_16k, mirroring)),
@@ -525,6 +537,7 @@ macro_rules! dispatch {
             Mapper::Rambo1($m) => $body,
             Mapper::Mapper65($m) => $body,
             Mapper::Mapper67($m) => $body,
+            Mapper::Sunsoft4($m) => $body,
             Mapper::Mapper72($m) => $body,
             Mapper::Mapper73($m) => $body,
             Mapper::Mapper79($m) => $body,
@@ -662,6 +675,12 @@ impl MapperOps for Mapper {
     fn nametable_read(&mut self, addr: u16, ciram: &[u8; 0x1000]) -> Option<u8> {
         dispatch!(self, m => m.nametable_read(addr, ciram))
     }
+    fn nametable_chr_index(&self, addr: u16) -> Option<usize> {
+        dispatch!(self, m => m.nametable_chr_index(addr))
+    }
+    fn has_nametable_chr_mapping(&self) -> bool {
+        dispatch!(self, m => m.has_nametable_chr_mapping())
+    }
     fn peek_nametable(&self, addr: u16, ciram: &[u8; 0x1000]) -> Option<u8> {
         dispatch!(self, m => m.peek_nametable(addr, ciram))
     }
@@ -748,6 +767,7 @@ mod tests {
             (52, true),    // Mapper 52 MMC3 A12 IRQ
             (66, false),   // GxROM
             (67, false),   // Sunsoft-3
+            (68, false),   // Sunsoft-4 nametable CHR mapping does not need A12 notify
             (69, false),   // FME-7 / Sunsoft 5B
             (41, false),   // Caltron 6-in-1
             (46, false),   // Color Dreams 46
@@ -876,6 +896,7 @@ mod tests {
             (52, false),   // Mapper 52 uses PPU A12 edges
             (66, false),   // GxROM
             (67, true),    // Sunsoft-3 IRQ counter clocks per CPU cycle
+            (68, false),   // Sunsoft-4 has no CPU-cycle IRQ hook
             (69, true),    // FME-7 IRQ + expansion audio clock per CPU cycle
             (41, false),   // Caltron 6-in-1
             (46, false),   // Color Dreams 46
@@ -1013,6 +1034,7 @@ mod tests {
             (65, false),
             (66, false),
             (67, false),
+            (68, false),
             (69, false),
             (70, false),
             (71, false),

@@ -23,6 +23,9 @@
 - `fc-core/src/mapper/basic/konami.rs:1-74`
   - 新增 Mapper 75 / VRC1。
   - 覆盖 8KB PRG、4KB CHR、CHR 高位模式和 mirroring。
+- `fc-core/src/mapper/basic/latch/sunsoft.rs:1-159`
+  - 新增 Mapper 68 / Sunsoft-4。
+  - 覆盖 16KB PRG、四个 2KB CHR、mirroring 控制，以及 nametable 到 CHR-ROM/CHR-RAM 1KB page 的映射。
 - `fc-core/src/mapper/basic/jy.rs:1-133`
   - 新增 Mapper 91 / JY Company。
   - 覆盖 2KB CHR、8KB PRG、submapper 1 outer bank/mirroring latch，以及 FCEUX/FCEUmm 风格 HBlank IRQ。
@@ -46,10 +49,12 @@
   - 覆盖 mapper/submapper 地址线变体、VRC2a CHR 右移、VRC2 无 IRQ、VRC4 CPU-clock IRQ。
 - `fc-core/src/bus.rs:262-268` 与 `fc-core/src/cartridge.rs:64-67,267-313,748-790`
   - 新增 mapper HBlank clock 架构钩子和缓存能力位。
-- `fc-core/src/mapper.rs:204-214, 223-305, 318-438, 490-657`
+- `fc-core/src/mapper.rs:129-141, 215-225, 236-322, 335-482, 504-690`
   - mapper facade 的导出、枚举、构造表和 dispatch 接入。
 - `fc-core/src/mapper.rs:680-998, 1373-1961`
   - mapper capability 快路径守门测试和新增 unlicensed mapper 行为测试。
+- `fc-core/src/cartridge.rs:76-79, 269-321, 524-560, 840-860`
+  - 新增 nametable-to-CHR 映射缓存与 Cartridge 侧 CHR-ROM/CHR-RAM 解析。
 - `fc-core/src/cartridge.rs:343-430`
   - CPU 读路径新增 open-bus aware high-register read、低区 PRG-RAM 合成读、扩展区 PRG-ROM 映射。
 - `fc-core/src/bus.rs:478-479`
@@ -94,6 +99,10 @@
 | 64 | `rambo1.rs:1-309` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/A12Watcher.h` | 26-54 | PPU A12 low-time filter semantics |
 | 64 | `rambo1.rs:1-309` | `/Users/sunmeng/workspace/fc/nestopia/source/core/board/NstBoardTengenRambo1.cpp` | 75-96, 190-225, 233-344 | RAMBO-1 register map、IRQ unit、PRG/CHR update、write handlers |
 | 64 | `rambo1.rs:1-309` | `/Users/sunmeng/workspace/fc/nestopia/source/core/board/NstBoardTengenRambo1.hpp` | 82-106 | CPU M2 divisor、A12 filter、IRQ delay/source constants |
+| 68 | `latch/sunsoft.rs:1-159; mapper.rs:129-141; cartridge.rs:524-560` | `/Users/sunmeng/workspace/fc/fceux/src/boards/68.cpp` | 41-76, 96-119, 130-134 | Sunsoft-4 nametable CHR mapping、四个 2KB CHR register、16KB PRG register、mirroring/control 写窗口 |
+| 68 | `latch/sunsoft.rs:1-159; mapper.rs:129-141; cartridge.rs:524-560` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/68.c` | 41-76, 96-119, 130-134 | FCEUmm mapper 68 cross-check；记录同源 PRG/CHR/NT 译码 |
+| 68 | `latch/sunsoft.rs:1-159; mapper.rs:129-141; cartridge.rs:524-560` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Sunsoft/Sunsoft4.h` | 17-35, 106-132 | `UpdateNametables()` 的 CHR-backed nametable page 选择、control bit4、C/D/E/F 寄存器写入 |
+| 68 | `latch/sunsoft.rs:1-159; mapper.rs:129-141; cartridge.rs:524-560` | `/Users/sunmeng/workspace/fc/nestopia/source/core/board/NstBoardSunsoft4.cpp` | 102-129 | `CTRL_CROM` nametable source 与 V/H/单屏 page select cross-check |
 | 83 | `unlicensed.rs:165-337` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Unlicensed/Mapper83.h` | 18-23, 57-68, 71-108, 111-156 | YOKO/30-in-1 PRG/CHR 模式、低寄存器、CPU IRQ |
 | 83 | `unlicensed.rs:165-337` | `/Users/sunmeng/workspace/fc/fceux/src/boards/yoko.cpp` | 73-99, 118-139, 164-176, 197-204 | FCEUX 旧 mapper 83 译码和 IRQ cross-check |
 | 83 | `unlicensed.rs:165-337` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/83_264.c` | 41-117, 130-157, 159-189, 219-231 | 新 submapper 设计参考；当前仅落地基础 mapper 83 行为 |
@@ -183,6 +192,8 @@
 - `Mapper79::write_expansion()` 对应 FCEUmm `79.c:37-42`；高区 `write_register()` 兼容 FCEUX `79.cpp:37-49` 的 register write 路径。
 - `AddrLatchVariant::Mapper59` 对应 FCEUX `addrlatch.cpp:164-179` 的 M59Sync/M59Read，包括 bit8 置位时高区读返回 0。
 - `Rambo1::write_register()` / `prg_index()` / `chr_index()` 对应 Mesen2 `Rambo1.h:96-167` 与 Nestopia `NstBoardTengenRambo1.cpp:233-344`；CPU-mode IRQ 每 4 CPU cycle、PPU-mode IRQ 走 A12 filter，分别对应 Mesen2 `Rambo1.h:55-75,170-177` 和 Nestopia `NstBoardTengenRambo1.hpp:82-106`。
+- `MapperOps::nametable_chr_index()` 与 `Cartridge::nametable_read/peek/write()` 的 CHR 解析对应 Mesen2 `Sunsoft4.h:17-35` / Nestopia `NstBoardSunsoft4.cpp:102-119` 这类“nametable source = CHR”模型；该接口保持 mapper 只返回索引，实际 CHR-ROM/RAM 仍由 Cartridge 负责。
+- `Sunsoft4::write_register()` / `nametable_chr_index()` 对应 FCEUX/FCEUmm `68.cpp`/`68.c:41-76,96-119` 与 Mesen2 `Sunsoft4.h:106-132`；外部 PRG licensing timer 暂未落地，留作后续 mapper 68 精修。
 - `Mapper60::reset()` 对应 Mesen2 `Mapper60.h:22-30` 与 FCEUmm `60.c:32-35`。
 - `Mapper63::set_from_addr()` / open-bus high read 对应 FCEUmm `addrlatch.c:203-235`。
 - `Mapper83` 的 PRG/CHR 译码对应 Mesen2 `Mapper83.h:71-99`，低寄存器读写对应 `Mapper83.h:102-114`，IRQ 对应 `Mapper83.h:57-68,146-154`。
@@ -218,6 +229,7 @@
 
 - 先替换 `fc-core/src/mapper/basic/unlicensed.rs:1-884`。
 - 同批替换 `fc-core/src/mapper/basic/latch/discrete.rs` 里 Mapper 36 / 72 / 79 / 92 的新增段、`fc-core/src/mapper/basic/taito.rs` 里 Mapper 80 / 207 / 82 的新增段，以及 `fc-core/src/mapper/basic/multicart.rs` 里 Mapper 59 / 63 / 201 / 217 / 228 / 255 的新增段。
+- 同批替换 `fc-core/src/mapper/basic/latch/sunsoft.rs` 里 Mapper 68 的新增段，并同步检查 `MapperOps::nametable_chr_index` 与 `Cartridge::mapper_has_nametable_chr_mapping` 是否仍有其他使用者。
 - 同批替换 `fc-core/src/mapper/basic/core.rs` 里 Mapper 232 的新增段。
 - 同批替换 `fc-core/src/mapper/basic/konami.rs` 的 VRC1 段、`fc-core/src/mapper/basic/jy.rs` 的 Mapper91 段、`fc-core/src/mapper/basic/sl12.rs` 的 Mapper116 段、`fc-core/src/mapper/basic/waixing.rs` 的 Mapper253 段、`fc-core/src/mapper/vrc4.rs` 的 VRC2/VRC4 段、`fc-core/src/mapper/rambo1.rs` 的 Mapper64 段，以及 `fc-core/src/mapper/mmc3.rs` 的 Mapper37/44/45/47/52/76/119 变体段。
 - 再处理 `fc-core/src/mapper.rs` 里 Mapper 43/60/75/76/83/91/106/183/212/222/235 的导出、枚举、构造和 dispatch 分支。
