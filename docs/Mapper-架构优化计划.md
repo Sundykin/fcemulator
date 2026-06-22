@@ -136,3 +136,7 @@
   - `cargo test -p fc-core mapper::`
   - `cargo test -p fc-core`
 - 参考来源继续记录具体文件和行号，便于开源致谢或闭源替换。
+
+## 落地记录
+
+- 2026-06-22：新增 `fc-core/src/mapper/bank.rs`，先提供无状态 PRG/CHR page index helper，并迁移 ColorDreams/GxROM 与 Sachen 133/146/148/149 作为第一批验证。混合 ROM/RAM window 和 handler 层仍留在后续阶段。

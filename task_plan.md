@@ -130,14 +130,15 @@ Phase 17: Mapper compatibility gap closure
 - **Status:** in_progress
 
 ### Phase 18: Mapper board compatibility layer
-- [ ] Design a reference-emulator-style board layer for fast mapper translation
-- [ ] Add reusable bank mapping helpers for PRG/CHR page setup and mixed ROM/RAM windows
+- [x] Design a reference-emulator-style board layer for fast mapper translation
+- [x] Add initial reusable bank mapping helpers for PRG/CHR page index translation
+- [ ] Extend bank mapping helpers for mixed ROM/RAM windows
 - [ ] Add CPU address handler helpers for expansion, low, and high mapper ranges
 - [ ] Extract reusable IRQ units: MMC3 A12, CPU counter, HBlank, VRC/RAMBO-style counters
 - [ ] Standardize reset/power hooks, mapper register reads, side effects, and open-bus paths
 - [ ] Route expansion audio boards through a shared mapper audio interface
 - [ ] Convert the next mapper batch through the new layer before expanding the long tail
-- **Status:** planned
+- **Status:** in_progress
 
 ## Key Questions
 1. Which repository test ROMs currently fail deterministically?
@@ -179,6 +180,7 @@ Phase 17: Mapper compatibility gap closure
 | Mapper91 unit test expected fixed banks 62/63 | First mapper91 test assumed FCEUX `~1/~0` fixed PRG banks for all paths | Corrected the test to match the implemented FCEUmm submapper-aware sync path: fixed `0x0E/0x0F` plus outer bank |
 | Cargo rejected multiple test filters | Tried to run three mapper capability tests as separate positional filters in one command | Reran `cargo test -p fc-core mapper::tests -- --nocapture`, which covers all mapper facade/capability tests |
 | Duplicate `tests` module in `basic/core.rs` | Added ColorDreams tests next to an existing BF9096 test module | Moved ColorDreams tests into the existing module and reran targeted mapper tests |
+| Cargo rejected multiple test filters | Tried to run `mapper::bank`, `mapper::basic::core::tests`, and `mapper::basic::latch::sachen::tests` in one command | Split into three `cargo test` invocations; all passed |
 
 ## Notes
 - Preserve the invariant: CPU memory accesses tick the bus before the access; each CPU cycle advances PPU by 3 dots and APU by 1 cycle.

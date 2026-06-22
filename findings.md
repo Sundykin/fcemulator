@@ -267,3 +267,4 @@
 - 后续应先建设 BankMap helper、CPU address handler helper、IRQ 单元库、MMC3 variant layer、reset/power/side-effect 标准层和 expansion audio 接口，再进入更大规模 mapper 机械翻译。
 - 规划文档已新增到 `docs/Mapper-架构优化计划.md`，作为 Phase 18 的执行依据。
 - MMC3 写协议 helper 已拆成 `write_bank_select()` / `write_bank_data()` / `write_standard_register()`，并以 mapper 49/114/115/121 作为第一批协议变体验证：49 使用 outer latch，114 使用高区写重映射与 cmd_pending，115 使用低区 PRG/CHR/protection regs，121 使用 protection LUT、scramble 与 override regs。
+- `fc-core/src/mapper/bank.rs` 已作为 BankMap 初版落地，先提供无状态 PRG/CHR page index helper，避免 serde 状态迁移风险；ColorDreams/GxROM 与 Sachen 小家族已迁移，用来验证 helper 不改变现有 mapper 行为。

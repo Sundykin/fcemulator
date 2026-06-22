@@ -1,3 +1,4 @@
+use crate::mapper::bank::{chr_8k, prg_32k};
 use crate::mapper::MapperOps;
 use crate::types::Mirroring;
 use serde::{Deserialize, Serialize};
@@ -189,10 +190,10 @@ impl ColorDreams {
 }
 impl MapperOps for ColorDreams {
     fn prg_index(&self, addr: u16) -> usize {
-        self.prg_bank * 0x8000 + (addr - 0x8000) as usize
+        prg_32k(self.prg_bank, addr)
     }
     fn chr_index(&self, addr: u16) -> usize {
-        self.chr_bank * 0x2000 + (addr & 0x1FFF) as usize
+        chr_8k(self.chr_bank, addr)
     }
     fn write_register(&mut self, addr: u16, value: u8) {
         if self.mapper144 && addr & 1 == 0 {
@@ -237,10 +238,10 @@ impl Gxrom {
 }
 impl MapperOps for Gxrom {
     fn prg_index(&self, addr: u16) -> usize {
-        self.prg_bank * 0x8000 + (addr - 0x8000) as usize
+        prg_32k(self.prg_bank, addr)
     }
     fn chr_index(&self, addr: u16) -> usize {
-        self.chr_bank * 0x2000 + (addr & 0x1FFF) as usize
+        chr_8k(self.chr_bank, addr)
     }
     fn write_register(&mut self, _addr: u16, value: u8) {
         self.prg_bank = ((value >> 4) & 0x03) as usize;

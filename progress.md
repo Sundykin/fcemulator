@@ -868,3 +868,21 @@
   - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 38/38.
   - `cargo test -p fc-core`: PASS, 138/138.
   - `cargo test`: PASS.
+
+### Mapper Bank Helper Architecture Step
+- Added `/Users/sunmeng/workspace/fc/fc-core/src/mapper/bank.rs` with stateless helper functions mirroring board-style PRG/CHR page setup vocabulary:
+  - `prg_8k_at`, `prg_16k_at`, `prg_32k`
+  - `chr_1k_at`, `chr_2k_at`, `chr_4k_at`, `chr_8k`
+- Migrated `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/core.rs` ColorDreams/GxROM and `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/latch/sachen.rs` Sachen 133/146/148/149 to the helper.
+- This is intentionally a no-state first step so save-state compatibility and hot-path behavior stay simple while future mappers can read closer to reference `setprg`/`setchr` logic.
+- Verification so far:
+  - `cargo fmt --check`: PASS.
+  - `cargo test -p fc-core mapper::bank -- --nocapture`: PASS, 2/2.
+  - `cargo test -p fc-core mapper::basic::core::tests -- --nocapture`: PASS, 4/4.
+  - `cargo test -p fc-core mapper::basic::latch::sachen::tests -- --nocapture`: PASS, 4/4.
+  - `git diff --check`: PASS.
+  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 99/99.
+  - `cargo test -p fc-core`: PASS, 140/140.
+  - `cargo test`: PASS.
+- Error note:
+  - Tried to pass three test filters in one Cargo command; Cargo accepts one filter, so tests were split and rerun.

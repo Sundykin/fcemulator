@@ -212,6 +212,7 @@ pub trait MapperOps {
     fn reset(&mut self, _soft: bool) {}
 }
 
+mod bank;
 mod basic;
 mod expansion_audio;
 mod expansion_mappers;

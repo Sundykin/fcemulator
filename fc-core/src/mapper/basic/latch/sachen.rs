@@ -1,3 +1,4 @@
+use crate::mapper::bank::{chr_8k, prg_32k};
 use crate::mapper::MapperOps;
 use crate::types::Mirroring;
 use serde::{Deserialize, Serialize};
@@ -36,11 +37,11 @@ impl Sachen133 {
 
 impl MapperOps for Sachen133 {
     fn prg_index(&self, addr: u16) -> usize {
-        (self.prg_bank % self.prg_32k) * 0x8000 + (addr as usize & 0x7FFF)
+        prg_32k(self.prg_bank % self.prg_32k, addr)
     }
 
     fn chr_index(&self, addr: u16) -> usize {
-        self.chr_bank * 0x2000 + (addr as usize & 0x1FFF)
+        chr_8k(self.chr_bank, addr)
     }
 
     fn write_register(&mut self, _addr: u16, value: u8) {
@@ -101,11 +102,11 @@ impl SachenSa0161m {
 
 impl MapperOps for SachenSa0161m {
     fn prg_index(&self, addr: u16) -> usize {
-        self.prg_bank * 0x8000 + (addr as usize & 0x7FFF)
+        prg_32k(self.prg_bank, addr)
     }
 
     fn chr_index(&self, addr: u16) -> usize {
-        self.chr_bank * 0x2000 + (addr as usize & 0x1FFF)
+        chr_8k(self.chr_bank, addr)
     }
 
     fn write_register(&mut self, _addr: u16, value: u8) {
@@ -155,11 +156,11 @@ impl Sachen149 {
 
 impl MapperOps for Sachen149 {
     fn prg_index(&self, addr: u16) -> usize {
-        (addr as usize - 0x8000) & 0x7FFF
+        prg_32k(0, addr)
     }
 
     fn chr_index(&self, addr: u16) -> usize {
-        self.chr_bank * 0x2000 + (addr as usize & 0x1FFF)
+        chr_8k(self.chr_bank, addr)
     }
 
     fn write_register(&mut self, _addr: u16, value: u8) {
