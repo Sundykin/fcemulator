@@ -48,9 +48,11 @@ export const openRomId = (id: string) => invoke<RomInfo>("open_rom_id", { id });
 export const listStates = () => invoke<SlotInfo[]>("list_states");
 export const deleteState = (slot: string) => invoke("delete_state", { slot });
 export const listLibrary = () => invoke<LibItem[]>("list_library");
+export const gameCover = (id: string) => invoke<string | null>("game_cover", { id });
 export const scanLibrary = (dir: string) => invoke<number>("scan_library", { dir });
 export const setFavorite = (id: string, fav: boolean) => invoke("set_favorite", { id, fav });
 export const removeFromLibrary = (id: string) => invoke("remove_from_library", { id });
+export const removeFromLibraryBatch = (ids: string[]) => invoke("remove_from_library_batch", { ids });
 
 export const openRomPath = (path: string) => invoke<RomInfo>("open_rom", { path });
 export const setInput = (p1: number, p2: number, seq: number) => invoke("set_input", { p1, p2, seq });

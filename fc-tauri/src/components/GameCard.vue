@@ -1,25 +1,43 @@
 <script setup lang="ts">
+import { computed, onMounted } from "vue";
 import type { LibItem } from "../emu";
+import { useLibraryStore } from "../stores/library";
 
-withDefaults(defineProps<{ item: LibItem; removable?: boolean }>(), { removable: false });
-const emit = defineEmits<{ (e: "play"): void; (e: "favorite"): void; (e: "remove"): void }>();
+const props = withDefaults(
+  defineProps<{ item: LibItem; removable?: boolean; selectable?: boolean; selected?: boolean }>(),
+  { removable: false, selectable: false, selected: false }
+);
+const emit = defineEmits<{
+  (e: "play"): void;
+  (e: "favorite"): void;
+  (e: "remove"): void;
+  (e: "toggleselect"): void;
+}>();
+
+const library = useLibraryStore();
+// Reactive lazy cover: load on mount, re-render when the store fills it in.
+const cover = computed(() => library.covers[props.item.id] || "");
+onMounted(() => library.ensureCover(props.item.id));
+
+function onClick() {
+  if (props.selectable) emit("toggleselect");
+  else emit("play");
+}
 </script>
 
 <template>
-  <div class="card" @click="emit('play')">
+  <div class="card" :class="{ selecting: selectable, selected }" @click="onClick">
     <div class="cover">
-      <img v-if="item.cover" :src="item.cover" />
+      <img v-if="cover" :src="cover" loading="lazy" />
       <div v-else class="nocover pixel">NES</div>
-      <button
-        v-if="removable"
-        class="act remove"
-        title="从库中移除"
-        @click.stop="emit('remove')"
-      >
-        🗑
-      </button>
-      <button class="act fav" :class="{ on: item.favorite }" title="收藏" @click.stop="emit('favorite')">★</button>
-      <div class="badge">▶</div>
+      <template v-if="selectable">
+        <div class="check" :class="{ on: selected }">✓</div>
+      </template>
+      <template v-else>
+        <button v-if="removable" class="act remove" title="从库中移除" @click.stop="emit('remove')">🗑</button>
+        <button class="act fav" :class="{ on: item.favorite }" title="收藏" @click.stop="emit('favorite')">★</button>
+        <div class="badge">▶</div>
+      </template>
     </div>
     <div class="title" :title="item.title">{{ item.title }}</div>
   </div>
@@ -117,5 +135,37 @@ const emit = defineEmits<{ (e: "play"): void; (e: "favorite"): void; (e: "remove
 }
 .card:hover .title {
   color: var(--text);
+}
+/* selection mode */
+.card.selecting .cover {
+  cursor: pointer;
+}
+.card.selected .cover {
+  border-color: var(--accent);
+  box-shadow: var(--shadow-glow);
+}
+.check {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  background: rgba(0, 0, 0, 0.5);
+  color: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+}
+.check.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.card.selected .badge {
+  opacity: 0;
 }
 </style>

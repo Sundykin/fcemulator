@@ -674,28 +674,44 @@ pub struct LibItem {
 pub fn list_library(app: AppHandle) -> Vec<LibItem> {
     let dir = data_dir(&app);
     let lib = Library::load(&dir);
-    let cdir = storage::covers_dir(&dir);
+    // Covers are NOT inlined here (no base64 of N images on every refresh) — the
+    // frontend lazy-loads each visible cover via `game_cover`. This keeps the
+    // list payload tiny and the refresh instant even for thousands of ROMs.
     let mut items: Vec<LibItem> = lib
         .entries
         .into_iter()
-        .map(|e| {
-            let cover = std::fs::read(cdir.join(format!("{}.png", e.id)))
-                .map(|p| storage::data_url_png(&p))
-                .unwrap_or_default();
-            LibItem {
-                id: e.id,
-                title: e.title,
-                mapper: e.mapper,
-                region: e.region,
-                favorite: e.favorite,
-                cover,
-                last_played: e.last_played,
-                added: e.added,
-            }
+        .map(|e| LibItem {
+            id: e.id,
+            title: e.title,
+            mapper: e.mapper,
+            region: e.region,
+            favorite: e.favorite,
+            cover: String::new(),
+            last_played: e.last_played,
+            added: e.added,
         })
         .collect();
     items.sort_by(|a, b| b.favorite.cmp(&a.favorite).then(a.title.cmp(&b.title)));
     items
+}
+
+/// Lazy per-ROM cover: returns the cached thumbnail as a data URL, generating it
+/// on first request (render the title screen, cache the PNG). Called per visible
+/// card so scanning stays instant and only on-screen covers are produced.
+#[tauri::command]
+pub fn game_cover(id: String, app: AppHandle) -> Option<String> {
+    let dir = data_dir(&app);
+    let path = storage::covers_dir(&dir).join(format!("{id}.png"));
+    if let Ok(png) = std::fs::read(&path) {
+        return Some(storage::data_url_png(&png));
+    }
+    // Not cached → generate from the ROM, cache, return.
+    let lib = Library::load(&dir);
+    let rom_path = lib.get(&id)?.path.clone();
+    let bytes = std::fs::read(&rom_path).ok()?;
+    let png = storage::generate_cover(&bytes, 120)?;
+    let _ = std::fs::write(&path, &png);
+    Some(storage::data_url_png(&png))
 }
 
 fn collect_nes(dir: &std::path::Path, out: &mut Vec<PathBuf>) {
@@ -715,7 +731,6 @@ fn collect_nes(dir: &std::path::Path, out: &mut Vec<PathBuf>) {
 pub fn scan_library(dir: String, app: AppHandle) -> Result<usize, String> {
     let data = data_dir(&app);
     let mut lib = Library::load(&data);
-    let cdir = storage::covers_dir(&data);
     let mut roms = vec![];
     collect_nes(std::path::Path::new(&dir), &mut roms);
     let mut added = 0;
@@ -732,9 +747,9 @@ pub fn scan_library(dir: String, app: AppHandle) -> Result<usize, String> {
             Ok(c) => c,
             Err(_) => continue,
         };
-        if let Some(png) = storage::generate_cover(&bytes, 120) {
-            let _ = std::fs::write(cdir.join(format!("{id}.png")), png);
-        }
+        // Covers are generated lazily on first view (see `game_cover`), so a scan
+        // just registers metadata — no per-ROM emulation here. This is what makes
+        // "add folder" instant instead of rendering N title screens synchronously.
         lib.entries.push(RomEntry {
             id,
             title: path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default(),
@@ -761,6 +776,16 @@ pub fn set_favorite(id: String, fav: bool, app: AppHandle) {
     if let Some(e) = lib.entries.iter_mut().find(|e| e.id == id) {
         e.favorite = fav;
     }
+    lib.save(&dir);
+}
+
+/// Remove many ROMs from the library in one pass (one load/save, not N).
+#[tauri::command]
+pub fn remove_from_library_batch(ids: Vec<String>, app: AppHandle) {
+    let dir = data_dir(&app);
+    let set: std::collections::HashSet<&str> = ids.iter().map(|s| s.as_str()).collect();
+    let mut lib = Library::load(&dir);
+    lib.entries.retain(|e| !set.contains(e.id.as_str()));
     lib.save(&dir);
 }
 
