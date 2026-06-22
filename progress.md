@@ -641,3 +641,17 @@
   - `cargo build --manifest-path fc-tauri/src-tauri/Cargo.toml`: PASS, existing dead-code warning only.
 - Blocked check:
   - `(cd fc-tauri && npx vue-tsc --noEmit)` failed because npm could not resolve `registry.npmmirror.com` while trying to fetch `vue-tsc`; no local `fc-tauri/node_modules` vue-tsc binary was available.
+
+### Continued Phase: mapper compatibility gap closure — architecture-first batch
+- Started: 2026-06-22
+- Implemented:
+  - Added Mapper 75 / VRC1 in `fc-core/src/mapper/basic/konami.rs`.
+  - Added Mapper 76 as an MMC3 CHR-layout variant in `fc-core/src/mapper/mmc3.rs`.
+  - Added `MapperOps::hblank_clock()` / `clocks_hblank()` plus cached `Cartridge::mapper_clocks_hblank` and a Bus HBlank call site for FCEUX-style scanline IRQ boards.
+  - Added Mapper 91 / JY Company in `fc-core/src/mapper/basic/jy.rs`, including submapper 1 outer bank and mirroring latch behavior.
+  - Updated mapper gap checklist and mapper reference records for 75/76/91 and the HBlank architecture hook.
+- Verification so far:
+  - `cargo fmt`: PASS
+  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 49 tests
+- Notes:
+  - Initial mapper91 test incorrectly expected fixed banks to resolve as the last two physical PRG pages; corrected to `0x0E/0x0F` per current FCEUmm-style mapper91 path.

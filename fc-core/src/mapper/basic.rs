@@ -8,6 +8,8 @@ mod ave;
 mod core;
 mod irem;
 mod irq;
+mod jy;
+mod konami;
 mod latch;
 mod multicart;
 mod namco;
@@ -20,6 +22,8 @@ pub use ave::{Bnrom, Nina01};
 pub use core::{Axrom, Cnrom, Codemasters, ColorDreams, Gxrom, Nrom, Unrom};
 pub use irem::{IremG101, IremLrog017};
 pub use irq::{Mapper117, Mapper18, Mapper40, Mapper42, Mapper50, Mapper65, Mapper67, Mapper73};
+pub use jy::Mapper91;
+pub use konami::Vrc1;
 pub use latch::{
     Bandai74161, Caltron41, ColorDreams46, Cprom, IremTamS1, JalecoJf11_14, JalecoJf13, JalecoJf16,
     JalecoJfxx, Mapper107, Mapper151, Mapper203, Mapper36, Mapper72, Mapper79, Mapper92, Nina03_06,

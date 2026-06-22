@@ -215,3 +215,14 @@
 - Mapper 72 is a Jaleco PRG16 fixed-high + CHR8 latch. FCEUmm accepts `$6000-$FFFF` writes, while FCEUX wires high writes; the implementation supports both low and high paths.
 - Mapper 79 is a NINA-style PRG32/CHR8 latch. FCEUmm gates expansion writes by `addr & 0x100`; FCEUX also wires high writes, so the implementation supports both.
 - Mapper 80 and 82 use Taito low registers around `$7EF0`. Mapper 80 owns a gated 256-byte WRAM window at `$7F00-$7FFF`; mapper 82 swaps pattern halves when `ctrl&2` is set.
+
+## Mapper Mechanical Pass Findings 2026-06-22
+- Mechanical mapper rollout is feasible for pure PRG/CHR/mirroring latch boards: mapper 75 is a direct VRC1 register translation and only needs existing `MapperOps` methods.
+- Mapper 76 is an MMC3-derived board with custom CHR wrapping. It can be implemented as a small standalone MMC3-like mapper, but repeated MMC3 derivatives would benefit from a configurable MMC3 wrapper/variant interface.
+- Mapper 91 differs by reference: FCEUX/FCEUmm model an HBlank IRQ hook, while Mesen2 uses MMC3 IRQ machinery through low-register writes. Exact support should avoid a CPU-cycle approximation unless tests prove it is acceptable.
+- Mapper 116 multiplexes VRC2/MMC3/MMC1 modes and needs A12 IRQ behavior; it is possible with current hooks but large enough to implement after simpler mapper batches.
+- Mapper 253 uses VRC-like CHR nibble registers, a 2KB CHR-RAM window selected by CHR bank values, and CPU-clocked scanline-ish IRQ. It fits current hooks better than mapper 91 but is not a pure latch mapper.
+- Mapper 76 is now implemented as an MMC3 variant via a dedicated `Mmc3ChrLayout::Mapper76` instead of duplicating MMC3 PRG/IRQ logic. This is the preferred pattern for later MMC3-derived mappers such as 37/44/45/47/52/114 where possible.
+- Mapper 91 required a new scanline-synchronous architecture hook: `MapperOps::hblank_clock()` plus a cached `Cartridge::mapper_clocks_hblank` gate. The bus calls it at visible scanline dot 260, matching FCEUX/FCEUmm `GameHBIRQHook` style without adding per-dot enum dispatch for ordinary mappers.
+- Mapper 91 fixed PRG banks are `0x0E/0x0F` plus optional FCEUmm submapper-1 outer bank, not “last two physical banks” for all PRG sizes. The unit test now locks this to avoid conflating FCEUX's `~1/~0` notation with the newer submapper path.
+- The mapper gap checklist now counts 105 supported mapper numbers after adding 75, 76, and 91; remaining <=255 priority shifts to 116/253 and then mapper 95/207 or the VRC/MMC3-derived batch.

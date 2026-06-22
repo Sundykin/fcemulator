@@ -112,7 +112,8 @@ Phase 17: Mapper compatibility gap closure
 - [x] Write a prioritized mapper gap checklist
 - [x] Implement first low-risk common mapper batch: 72, 79, 80, 82
 - [x] Record reference source locations for the new mapper batch
-- [ ] Continue with P0/P1 missing mapper families: 91, 116, 253, then VRC/MMC3/Taito variants
+- [x] Add mapper architecture hooks and next batch: VRC1 mapper 75, MMC3-derived mapper 76, JY mapper 91 with cached HBlank IRQ clocking
+- [ ] Continue with P0/P1 missing mapper families: 116, 253, then VRC/MMC3/Taito variants that need A12/PPU-pattern mirroring hooks
 - **Status:** in_progress
 
 ## Key Questions
@@ -135,10 +136,13 @@ Phase 17: Mapper compatibility gap closure
 | Split mapper implementations by chip/family behind the existing `Mapper` enum | `mapper.rs` has grown to ~1300 lines; keeping the public facade stable while moving implementations to submodules makes future mapper additions localized |
 | Treat sprite flicker reduction as an optional video enhancement, not a core accuracy change | NES hardware selects only the first 8 sprites per scanline and games/tests can rely on this; enhanced display must default off and avoid changing CPU-visible PPU status/timing |
 | Prioritize mapper gaps by reference-project overlap before numeric order | FCEUmm/FCEUX include a huge NES 2.0 long tail; implementing common <=255 and Mesen2-covered gaps gives better compatibility per change |
+| Add HBlank mapper clocking as a cached capability instead of a direct per-dot dispatch | Mapper 91 and similar FCEUX `GameHBIRQHook` boards need scanline-synchronous IRQs, but ordinary mappers should keep the PPU dot hot path gated by a cached bool |
+| Fold MMC3-derived mapper 76 into `Mmc3` variant layout instead of a standalone clone | Reusing MMC3 PRG/IRQ behavior keeps future MMC3 variants from copying timing-sensitive logic |
 
 ## Errors Encountered
 | Error | Attempt | Resolution |
 |-------|---------|------------|
+| Mapper91 unit test expected fixed banks 62/63 | First mapper91 test assumed FCEUX `~1/~0` fixed PRG banks for all paths | Corrected the test to match the implemented FCEUmm submapper-aware sync path: fixed `0x0E/0x0F` plus outer bank |
 
 ## Notes
 - Preserve the invariant: CPU memory accesses tick the bus before the access; each CPU cycle advances PPU by 3 dots and APU by 1 cycle.

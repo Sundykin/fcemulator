@@ -261,6 +261,11 @@ impl Bus {
     #[inline]
     fn clock_ppu_dot(&mut self) -> bool {
         self.ppu.tick(&mut self.cartridge);
+        if self.cartridge.mapper_clocks_hblank && self.ppu.scanline < 240 && self.ppu.dot == 260 {
+            self.cartridge
+                .mapper
+                .hblank_clock(self.ppu.scanline, self.ppu.dot);
+        }
         let nmi = self.ppu.take_nmi();
         if nmi {
             self.nmi_latch = true;

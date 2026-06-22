@@ -171,6 +171,14 @@ pub trait MapperOps {
     fn clocks_cpu(&self) -> bool {
         false
     }
+    /// Clock a mapper once at the PPU's horizontal blanking point. Some older
+    /// FCEUX-style boards expose IRQ hooks as `GameHBIRQHook`; this gives those
+    /// mappers a scanline-synchronous path without approximating with CPU cycles.
+    fn hblank_clock(&mut self, _scanline: u16, _dot: u16) {}
+    /// Whether [`MapperOps::hblank_clock`] has work to do.
+    fn clocks_hblank(&self) -> bool {
+        false
+    }
     /// Whether a mapper IRQ is currently asserted.
     fn irq(&self) -> bool {
         false
@@ -200,9 +208,9 @@ pub use basic::{
     Mapper15, Mapper151, Mapper170, Mapper18, Mapper183, Mapper203, Mapper212, Mapper222,
     Mapper226, Mapper230, Mapper233, Mapper234, Mapper235, Mapper240, Mapper241, Mapper244,
     Mapper246, Mapper36, Mapper40, Mapper42, Mapper43, Mapper50, Mapper57, Mapper60, Mapper63,
-    Mapper65, Mapper67, Mapper72, Mapper73, Mapper79, Mapper83, Mapper92, Namco118, Nina01,
-    Nina03_06, Nrom, Ntdec112, Sunsoft184, Sunsoft89, TaitoTc0190, TaitoX1005, TaitoX1017,
-    UnlPci556, Unrom, UnromVariant, UnromVariantMapper,
+    Mapper65, Mapper67, Mapper72, Mapper73, Mapper79, Mapper83, Mapper91, Mapper92, Namco118,
+    Nina01, Nina03_06, Nrom, Ntdec112, Sunsoft184, Sunsoft89, TaitoTc0190, TaitoX1005, TaitoX1017,
+    UnlPci556, Unrom, UnromVariant, UnromVariantMapper, Vrc1,
 };
 pub use expansion_mappers::{Fme7, Namco163, Vrc6, Vrc6Variant, Vrc7};
 pub use mmc1::Mmc1;
@@ -251,7 +259,9 @@ pub enum Mapper {
     Mapper79(Mapper79),
     TaitoX1005(TaitoX1005),
     TaitoX1017(TaitoX1017),
+    Vrc1(Vrc1),
     Mapper83(Mapper83),
+    Mapper91(Mapper91),
     Mapper92(Mapper92),
     AddrLatch16k(AddrLatch16k),
     Mapper103(Mapper103),
@@ -357,6 +367,8 @@ impl Mapper {
             71 => Mapper::Codemasters(Codemasters::new(prg_16k, mirroring)),
             72 => Mapper::Mapper72(Mapper72::new(prg_16k, mirroring)),
             73 => Mapper::Mapper73(Mapper73::new(prg_16k, mirroring)),
+            75 => Mapper::Vrc1(Vrc1::new(prg_16k)),
+            76 => Mapper::Mmc3(Mmc3::new_76(prg_16k, chr_8k, mirroring)),
             77 => Mapper::IremLrog017(IremLrog017::new(mirroring)),
             78 => Mapper::JalecoJf16(JalecoJf16::new(prg_16k, submapper)),
             79 => Mapper::Mapper79(Mapper79::new(mirroring)),
@@ -368,6 +380,7 @@ impl Mapper {
             87 => Mapper::JalecoJfxx(JalecoJfxx::new(false, mirroring)),
             88 => Mapper::Namco118(Namco118::new(prg_16k, mirroring)),
             89 => Mapper::Sunsoft89(Sunsoft89::new(prg_16k)),
+            91 => Mapper::Mapper91(Mapper91::new(prg_16k, chr_8k, submapper, mirroring)),
             92 => Mapper::Mapper92(Mapper92::new(mirroring)),
             93 => Mapper::UnromVariant(UnromVariantMapper::new(
                 prg_16k,
@@ -487,7 +500,9 @@ macro_rules! dispatch {
             Mapper::Mapper79($m) => $body,
             Mapper::TaitoX1005($m) => $body,
             Mapper::TaitoX1017($m) => $body,
+            Mapper::Vrc1($m) => $body,
             Mapper::Mapper83($m) => $body,
+            Mapper::Mapper91($m) => $body,
             Mapper::Mapper92($m) => $body,
             Mapper::AddrLatch16k($m) => $body,
             Mapper::Mapper103($m) => $body,
@@ -635,6 +650,12 @@ impl MapperOps for Mapper {
     fn has_expansion_audio(&self) -> bool {
         dispatch!(self, m => m.has_expansion_audio())
     }
+    fn hblank_clock(&mut self, scanline: u16, dot: u16) {
+        dispatch!(self, m => m.hblank_clock(scanline, dot))
+    }
+    fn clocks_hblank(&self) -> bool {
+        dispatch!(self, m => m.clocks_hblank())
+    }
     fn clocks_cpu(&self) -> bool {
         dispatch!(self, m => m.clocks_cpu())
     }
@@ -699,6 +720,8 @@ mod tests {
             (71, false),   // Codemasters
             (72, false),   // Mapper 72
             (73, false),   // VRC3
+            (75, false),   // VRC1
+            (76, true),    // Mapper 76 MMC3 A12 IRQ
             (77, false),   // Irem LROG017
             (78, false),   // Jaleco JF-16
             (79, false),   // Mapper 79
@@ -708,6 +731,7 @@ mod tests {
             (85, false),   // VRC7
             (87, false),   // Jaleco JF-xx
             (88, false),   // Namco 118
+            (91, false),   // Mapper 91 IRQ is HBlank-clocked
             (92, false),   // Mapper 92
             (101, false),  // Jaleco JF-xx ordered bits
             (103, false),  // Mapper 103
@@ -803,6 +827,8 @@ mod tests {
             (71, false),   // Codemasters
             (72, false),   // Mapper 72
             (73, true),    // VRC3 IRQ counter clocks per CPU cycle
+            (75, false),   // VRC1
+            (76, false),   // Mapper 76 uses PPU A12 edges
             (77, false),   // Irem LROG017
             (78, false),   // Jaleco JF-16
             (79, false),   // Mapper 79
@@ -812,6 +838,7 @@ mod tests {
             (85, true),    // VRC7 IRQ + expansion audio clock per CPU cycle
             (87, false),   // Jaleco JF-xx
             (88, false),   // Namco 118
+            (91, false),   // Mapper 91 IRQ is HBlank-clocked
             (92, false),   // Mapper 92
             (101, false),  // Jaleco JF-xx ordered bits
             (103, false),  // Mapper 103
@@ -854,6 +881,121 @@ mod tests {
             let submapper = if num == 34 { 2 } else { 0 };
             let m = Mapper::new(num, 2, 1, mir, submapper).expect("construct mapper");
             assert_eq!(m.clocks_cpu(), expected, "mapper {num}");
+        }
+    }
+
+    #[test]
+    fn clocks_hblank_matches_hblank_clock_overrides() {
+        let mir = Mirroring::Horizontal;
+        let cases = [
+            (0u16, false),
+            (1, false),
+            (2, false),
+            (3, false),
+            (4, false),
+            (5, false),
+            (7, false),
+            (9, false),
+            (10, false),
+            (11, false),
+            (13, false),
+            (15, false),
+            (18, false),
+            (19, false),
+            (24, false),
+            (26, false),
+            (32, false),
+            (33, false),
+            (34, false),
+            (36, false),
+            (38, false),
+            (39, false),
+            (40, false),
+            (41, false),
+            (42, false),
+            (43, false),
+            (46, false),
+            (50, false),
+            (57, false),
+            (58, false),
+            (59, false),
+            (60, false),
+            (61, false),
+            (62, false),
+            (63, false),
+            (65, false),
+            (66, false),
+            (67, false),
+            (69, false),
+            (70, false),
+            (71, false),
+            (72, false),
+            (73, false),
+            (75, false),
+            (76, false),
+            (77, false),
+            (78, false),
+            (79, false),
+            (80, false),
+            (82, false),
+            (83, false),
+            (85, false),
+            (86, false),
+            (87, false),
+            (88, false),
+            (89, false),
+            (91, true),
+            (92, false),
+            (93, false),
+            (94, false),
+            (97, false),
+            (101, false),
+            (103, false),
+            (106, false),
+            (107, false),
+            (112, false),
+            (113, false),
+            (117, false),
+            (120, false),
+            (140, false),
+            (151, false),
+            (152, false),
+            (170, false),
+            (174, false),
+            (180, false),
+            (183, false),
+            (184, false),
+            (194, false),
+            (200, false),
+            (201, false),
+            (202, false),
+            (203, false),
+            (204, false),
+            (212, false),
+            (213, false),
+            (214, false),
+            (216, false),
+            (217, false),
+            (222, false),
+            (225, false),
+            (226, false),
+            (227, false),
+            (229, false),
+            (230, false),
+            (231, false),
+            (233, false),
+            (234, false),
+            (235, false),
+            (240, false),
+            (241, false),
+            (242, false),
+            (244, false),
+            (246, false),
+        ];
+        for (num, expected) in cases {
+            let submapper = if num == 34 { 2 } else { 0 };
+            let m = Mapper::new(num, 2, 1, mir, submapper).expect("construct mapper");
+            assert_eq!(m.clocks_hblank(), expected, "mapper {num}");
         }
     }
 
@@ -1741,6 +1883,81 @@ mod tests {
         assert_eq!(m203.prg_index(0x8000), 3 * 0x4000);
         assert_eq!(m203.prg_index(0xC000), 3 * 0x4000);
         assert_eq!(m203.chr_index(0x0010), 0x2000 + 0x10);
+    }
+
+    #[test]
+    fn vrc1_mapper75_switches_prg_chr_and_mirroring() {
+        let mut m75 = Mapper::new(75, 16, 32, Mirroring::Vertical, 0).expect("mapper 75");
+        m75.write_register(0x8000, 3);
+        m75.write_register(0xA000, 4);
+        m75.write_register(0xC000, 5);
+        assert_eq!(m75.prg_index(0x8004), 3 * 0x2000 + 4);
+        assert_eq!(m75.prg_index(0xA004), 4 * 0x2000 + 4);
+        assert_eq!(m75.prg_index(0xC004), 5 * 0x2000 + 4);
+        assert_eq!(m75.prg_index(0xE004), 31 * 0x2000 + 4);
+
+        m75.write_register(0xE000, 0x07);
+        m75.write_register(0xF000, 0x09);
+        assert_eq!(m75.chr_index(0x0004), 7 * 0x1000 + 4);
+        assert_eq!(m75.chr_index(0x1004), 9 * 0x1000 + 4);
+        assert_eq!(m75.mirroring(), Mirroring::Horizontal);
+
+        m75.write_register(0x9000, 0x07);
+        assert_eq!(m75.chr_index(0x0004), 0x17 * 0x1000 + 4);
+        assert_eq!(m75.chr_index(0x1004), 0x19 * 0x1000 + 4);
+        assert_eq!(m75.mirroring(), Mirroring::Vertical);
+    }
+
+    #[test]
+    fn mapper91_switches_jy_banks_and_hblank_irq() {
+        let mut m91 = Mapper::new(91, 64, 128, Mirroring::Horizontal, 0).expect("mapper 91");
+        assert!(m91.clocks_hblank());
+        assert!(!m91.clocks_cpu());
+        assert!(!m91.watches_ppu_bus());
+
+        assert!(m91.write_low_register(0x6000, 3));
+        assert!(m91.write_low_register(0x6001, 4));
+        assert!(m91.write_low_register(0x6002, 5));
+        assert!(m91.write_low_register(0x6003, 6));
+        assert_eq!(m91.chr_index(0x0004), 3 * 0x0800 + 4);
+        assert_eq!(m91.chr_index(0x0804), 4 * 0x0800 + 4);
+        assert_eq!(m91.chr_index(0x1004), 5 * 0x0800 + 4);
+        assert_eq!(m91.chr_index(0x1804), 6 * 0x0800 + 4);
+
+        assert!(m91.write_low_register(0x7000, 7));
+        assert!(m91.write_low_register(0x7001, 8));
+        assert_eq!(m91.prg_index(0x8004), 7 * 0x2000 + 4);
+        assert_eq!(m91.prg_index(0xA004), 8 * 0x2000 + 4);
+        assert_eq!(m91.prg_index(0xC004), 0x0E * 0x2000 + 4);
+        assert_eq!(m91.prg_index(0xE004), 0x0F * 0x2000 + 4);
+
+        assert!(m91.write_low_register(0x7003, 0));
+        for _ in 0..7 {
+            m91.hblank_clock(0, 260);
+            assert!(!m91.irq());
+        }
+        m91.hblank_clock(7, 260);
+        assert!(m91.irq());
+
+        assert!(m91.write_low_register(0x7002, 0));
+        assert!(!m91.irq());
+        m91.hblank_clock(8, 260);
+        assert!(!m91.irq());
+    }
+
+    #[test]
+    fn mapper91_submapper1_selects_outer_bank_and_mirroring_latch() {
+        let mut m91 = Mapper::new(91, 128, 512, Mirroring::Vertical, 1).expect("mapper 91 sub1");
+        assert!(m91.write_low_register(0x6000, 2));
+        assert!(m91.write_low_register(0x7000, 3));
+        m91.write_register(0x8005, 0);
+        assert_eq!(m91.prg_index(0x8004), (3 | 0x20) * 0x2000 + 4);
+        assert_eq!(m91.chr_index(0x0004), (2 | 0x100) * 0x0800 + 4);
+
+        assert!(m91.write_low_register(0x6004, 0));
+        assert_eq!(m91.mirroring(), Mirroring::Vertical);
+        assert!(m91.write_low_register(0x6005, 1));
+        assert_eq!(m91.mirroring(), Mirroring::Horizontal);
     }
 
     #[test]

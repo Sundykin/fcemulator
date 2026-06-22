@@ -61,6 +61,10 @@ pub struct Cartridge {
     /// counter, so `Bus::tick` can skip an empty dispatch.
     #[serde(skip)]
     pub mapper_clocks_cpu: bool,
+    /// Cached `mapper.clocks_hblank()` — most mappers have no FCEUX-style
+    /// HBlank IRQ hook, so the PPU dot path can skip an empty mapper dispatch.
+    #[serde(skip)]
+    pub mapper_clocks_hblank: bool,
     /// Cached `mapper.has_expansion_audio()` — most mappers are silent beyond
     /// the 2A03 APU, so `Bus::tick` can skip probing expansion audio.
     #[serde(skip)]
@@ -262,6 +266,7 @@ impl Cartridge {
             .map_err(CartridgeError::UnsupportedMapper)?;
         let mapper_watches_ppu_bus = mapper.watches_ppu_bus();
         let mapper_clocks_cpu = mapper.clocks_cpu();
+        let mapper_clocks_hblank = mapper.clocks_hblank();
         let mapper_has_expansion_audio = mapper.has_expansion_audio();
         let mapper_has_chr_read = mapper.has_chr_read();
         let prg_rom_mask = pow2_mask(prg_rom.len());
@@ -285,6 +290,7 @@ impl Cartridge {
             mapper,
             mapper_watches_ppu_bus,
             mapper_clocks_cpu,
+            mapper_clocks_hblank,
             mapper_has_expansion_audio,
             mapper_has_chr_read,
             prg_rom_mask,
@@ -303,6 +309,7 @@ impl Cartridge {
     pub fn refresh_mapper_caps(&mut self) {
         self.mapper_watches_ppu_bus = self.mapper.watches_ppu_bus();
         self.mapper_clocks_cpu = self.mapper.clocks_cpu();
+        self.mapper_clocks_hblank = self.mapper.clocks_hblank();
         self.mapper_has_expansion_audio = self.mapper.has_expansion_audio();
         self.mapper_has_chr_read = self.mapper.has_chr_read();
         self.prg_rom_mask = pow2_mask(self.prg_rom.len());
@@ -738,12 +745,24 @@ mod tests {
         rom
     }
 
+    /// Build a minimal mapper-91 iNES image: 2×16K PRG + 1×8K CHR.
+    fn mapper91_rom() -> Vec<u8> {
+        let mut rom = vec![0u8; 16 + 2 * 0x4000 + 0x2000];
+        rom[0..4].copy_from_slice(&INES_MAGIC);
+        rom[4] = 2;
+        rom[5] = 1;
+        rom[6] = 0xB0; // mapper low nibble = $B
+        rom[7] = 0x50; // mapper high nibble = $5
+        rom
+    }
+
     #[test]
     fn mapper_watches_ppu_bus_cache_set_and_refreshed() {
         let cart = Cartridge::from_bytes(&mmc3_rom()).expect("mmc3 rom");
         // MMC3 hooks the PPU bus → cache must be set at construction.
         assert!(cart.mapper_watches_ppu_bus);
         assert!(!cart.mapper_clocks_cpu);
+        assert!(!cart.mapper_clocks_hblank);
         assert!(!cart.mapper_has_chr_read);
 
         // Simulate a load-state: the #[serde(skip)] cache deserializes to false;
@@ -752,16 +771,32 @@ mod tests {
         let mut loaded = cart;
         loaded.mapper_watches_ppu_bus = false;
         loaded.mapper_clocks_cpu = false;
+        loaded.mapper_clocks_hblank = true;
         loaded.mapper_has_chr_read = false;
         loaded.refresh_mapper_caps();
         assert!(loaded.mapper_watches_ppu_bus);
         assert!(!loaded.mapper_clocks_cpu);
+        assert!(!loaded.mapper_clocks_hblank);
         assert!(!loaded.mapper_has_chr_read);
 
         // NROM does not hook the bus.
         let empty = Cartridge::empty();
         assert!(!empty.mapper_watches_ppu_bus);
         assert!(!empty.mapper_clocks_cpu);
+        assert!(!empty.mapper_clocks_hblank);
         assert!(!empty.mapper_has_chr_read);
+    }
+
+    #[test]
+    fn mapper_hblank_clock_cache_set_and_refreshed() {
+        let cart = Cartridge::from_bytes(&mapper91_rom()).expect("mapper91 rom");
+        assert!(!cart.mapper_watches_ppu_bus);
+        assert!(!cart.mapper_clocks_cpu);
+        assert!(cart.mapper_clocks_hblank);
+
+        let mut loaded = cart;
+        loaded.mapper_clocks_hblank = false;
+        loaded.refresh_mapper_caps();
+        assert!(loaded.mapper_clocks_hblank);
     }
 }
