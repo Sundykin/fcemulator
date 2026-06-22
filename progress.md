@@ -221,6 +221,23 @@
 - Error note:
   - Attempted to pass multiple test filters to one `cargo test` command; cargo accepts one filter, so reran mapper-wide tests instead.
 
+### Mapper 119 TQROM Pass
+- Implemented mapper 119 / TQROM by generalizing MMC3 mapper-owned CHR-RAM routing in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs`.
+- Replaced the single `chr_ram_bank_base` active path with `Mmc3ChrRamWindow { first, last }`, keeping the old field as a serde fallback for mapper 74/194 save-state compatibility.
+- Added `Mmc3::new_119()` with CHR bank range `$40..=$7F` mapped to 8KB CHR-RAM, matching FCEUX `TQWRAP` and Mesen2 `MMC3_ChrRam(0x40, 0x7F, 8)`.
+- Wired mapper 119 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs` and updated capability guard tables.
+- Updated mapper gap checklist and reference records. Supported mapper count is now 117; remaining union gap is 376.
+- Verification so far:
+  - `cargo fmt --check`: PASS.
+  - `cargo test -p fc-core mapper::mmc3::tests::mapper119 -- --nocapture`: PASS, 1/1.
+  - `cargo test -p fc-core mapper::tests::watches_ppu_bus_matches_notify_a12_overrides -- --nocapture`: PASS.
+  - `cargo test -p fc-core mapper::tests::clocks_cpu_matches_cpu_clock_overrides -- --nocapture`: PASS.
+  - `cargo test -p fc-core mapper::tests::clocks_hblank_matches_hblank_clock_overrides -- --nocapture`: PASS.
+  - `git diff --check`: PASS.
+  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 74/74 mapper tests.
+  - `cargo test -p fc-core`: PASS, 114/114 fc-core tests.
+  - `cargo test`: PASS, workspace tests.
+
 ### Continued Phase: PPU open-bus decay
 - Started: 2026-06-19 14:51:32 CST
 - Reproduced `ppu_open_bus/ppu_open_bus.nes` failure: subtest #3, "Decay value should become zero by one second".

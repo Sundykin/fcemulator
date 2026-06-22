@@ -117,7 +117,8 @@ Phase 17: Mapper compatibility gap closure
 - [x] Add mapper 116 / Someri Team SL12 composite VRC2/MMC3/MMC1 board
 - [x] Add mapper 45 / BMC-Hero as an MMC3 outer-bank serial-register variant
 - [x] Add mapper 64 / Tengen RAMBO-1 with CPU/PPU IRQ modes
-- [ ] Continue with P0/P1 missing mapper families: 119/95/118 next, then architecture work for 68 and MMC3 protocol variants
+- [x] Add mapper 119 / TQROM with MMC3 CHR-ROM/CHR-RAM bank selection
+- [ ] Continue with P0/P1 missing mapper families: 95/118 next, then architecture work for 68 and MMC3 protocol variants
 - **Status:** in_progress
 
 ## Key Questions
@@ -146,6 +147,7 @@ Phase 17: Mapper compatibility gap closure
 | Model Mapper 45 as an MMC3 outer-bank variant | References agree its PRG/CHR wrapping and low-register serial latch sit above normal MMC3 IRQ/register behavior, so reusing the existing MMC3 core keeps A12 timing centralized |
 | Implement Mapper 64 as an independent RAMBO-1 ASIC | It has MMC3-like PRG/CHR banking, but its register set and selectable CPU/A12 IRQ source differ enough that a standalone module is cleaner and can later host mapper 158 |
 | Defer Mapper 68 until nametable-to-CHR architecture exists | Sunsoft-4 maps nametable fetches to CHR backing memory, and the current mapper nametable hook only receives CIRAM |
+| Generalize MMC3 CHR-RAM windows for mapper 119 | TQROM needs a bank range mapped to 8KB CHR-RAM; this also prepares later MMC3_ChrRam variants while preserving mapper 74/194 behavior |
 
 ## Errors Encountered
 | Error | Attempt | Resolution |

@@ -241,3 +241,4 @@
 - Mapper 64 IRQ precision should follow Mesen2/Nestopia/FCEUmm's modern trigger-on-reach-zero model with IRQ assertion delay, not old FCEUX underflow-only behavior. CPU mode clocks every four CPU cycles; PPU mode clocks on filtered A12 rises.
 - Mapper 68 / Sunsoft-4 should remain deferred until the nametable path can resolve CHR-backed nametable fetches in `Cartridge`; the existing `MapperOps::nametable_read` hook only sees CIRAM and cannot access CHR ROM/RAM backing memory.
 - Next low-risk mapper order after 64 is `119`, then `95` / `118`: these reuse existing MMC3/CHR-RAM or nametable hook machinery. `114/115/121` should wait for a stronger internal MMC3 variant/write-remap layer.
+- Mapper 119 / TQROM fits a generalized MMC3 CHR-RAM window: bank numbers `$40..$7F` select an 8KB mapper-owned CHR-RAM region, while other bank numbers continue to select CHR-ROM. The same internal `Mmc3ChrRamWindow` shape can later cover Mesen2's mapper 191/192/195 variants.

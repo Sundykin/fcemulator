@@ -22,6 +22,12 @@ enum Mmc3OuterBank {
     Mapper52 { reg: u8, locked: bool },
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+struct Mmc3ChrRamWindow {
+    first: u16,
+    last: u16,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Mmc3 {
     prg_8k: usize,
@@ -53,7 +59,9 @@ pub struct Mmc3 {
     // Some TW MMC3+VRAM boards route a small CHR-RAM window through selected
     // CHR bank numbers instead of CHR-ROM (used for dynamic text/map tiles).
     #[serde(default)]
-    chr_ram_bank_base: Option<u8>,
+    chr_ram_bank_base: Option<u8>, // legacy save-state field, superseded by chr_ram_window
+    #[serde(default)]
+    chr_ram_window: Option<Mmc3ChrRamWindow>,
     #[serde(default)]
     chr_ram: Vec<u8>,
     // Some MMC3 clone boards used by large Chinese RPG translations expose
@@ -92,6 +100,7 @@ impl Mmc3 {
             a12_prev: false,
             a12_low_since: 0,
             chr_ram_bank_base: None,
+            chr_ram_window: None,
             chr_ram: Vec::new(),
             low_wram: Vec::new(),
         }
@@ -153,21 +162,29 @@ impl Mmc3 {
         m
     }
 
+    fn with_chr_ram_window(mut self, first: u16, last: u16, bytes: usize) -> Self {
+        if bytes == 0x800 && last == first + 1 && first <= u8::MAX as u16 {
+            self.chr_ram_bank_base = Some(first as u8);
+        }
+        self.chr_ram_window = Some(Mmc3ChrRamWindow { first, last });
+        self.chr_ram = vec![0u8; bytes];
+        self
+    }
+
     /// Mapper 74 — MMC3 with a 2KB CHR-RAM addressed by CHR bank numbers 8/9.
     pub(super) fn new_74(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
-        let mut m = Mmc3::new(prg_16k, chr_8k, mirroring);
-        m.chr_ram_bank_base = Some(8);
-        m.chr_ram = vec![0u8; 0x800]; // 2KB
-        m
+        Mmc3::new(prg_16k, chr_8k, mirroring).with_chr_ram_window(8, 9, 0x800)
+    }
+
+    /// Mapper 119 — TQROM, MMC3 with CHR bank bit 6 selecting 8KB CHR-RAM.
+    pub(super) fn new_119(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
+        Mmc3::new(prg_16k, chr_8k, mirroring).with_chr_ram_window(0x40, 0x7F, 0x2000)
     }
 
     /// Mapper 194 — TW MMC3+VRAM Rev. C, with the 2KB CHR-RAM window addressed
     /// by CHR bank numbers 0/1.
     pub(super) fn new_194(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
-        let mut m = Mmc3::new(prg_16k, chr_8k, mirroring);
-        m.chr_ram_bank_base = Some(0);
-        m.chr_ram = vec![0u8; 0x800]; // 2KB
-        m
+        Mmc3::new(prg_16k, chr_8k, mirroring).with_chr_ram_window(0, 1, 0x800)
     }
 
     /// Mapper 76 — Namco 109 / MMC3 command and IRQ core with custom CHR cwrap.
@@ -204,7 +221,8 @@ impl Mmc3 {
 
     /// Effective CHR bank number (1KB granularity) and the offset within that
     /// 1KB for a PPU CHR address — mirrors `chr_index`'s bank selection so the
-    /// CHR-RAM (mapper 74, banks 8/9) routing stays consistent with CHR-ROM.
+    /// CHR-RAM (mapper 74, banks 8/9; mapper 119, banks $40-$7F) routing stays
+    /// consistent with CHR-ROM.
     fn chr_1k_bank(&self, a: u16) -> (u16, u16) {
         let off = a & 0x03FF;
         let two = |b: u8, hi: bool| (b & 0xFE) as u16 | hi as u16; // 1KB half of a 2KB reg
@@ -234,12 +252,19 @@ impl Mmc3 {
         (bank, off)
     }
 
-    /// Index into the mapper's 2KB CHR-RAM for CPU-visible PPU reads/writes.
+    /// Index into mapper-owned CHR-RAM for CPU-visible PPU reads/writes.
     fn chr_ram_read_index(&self, a: u16) -> Option<usize> {
-        let base = self.chr_ram_bank_base?;
+        let window = self.chr_ram_window.or_else(|| {
+            let first = self.chr_ram_bank_base? as u16;
+            Some(Mmc3ChrRamWindow {
+                first,
+                last: first + 1,
+            })
+        })?;
         let (bank, off) = self.chr_1k_bank(a);
-        if bank == base as u16 || bank == base as u16 + 1 {
-            Some(((bank - base as u16) as usize) * 0x400 + off as usize)
+        if (window.first..=window.last).contains(&bank) {
+            let i = ((bank - window.first) as usize) * 0x400 + off as usize;
+            Some(i % self.chr_ram.len().max(1))
         } else {
             None
         }
@@ -722,6 +747,40 @@ mod tests {
         assert_eq!(
             mapper.chr_read(0x1000, super::super::ChrAccess::Default),
             None
+        );
+    }
+
+    #[test]
+    fn mapper119_routes_bank_bit6_to_8k_chr_ram() {
+        let mut mapper = Mmc3::new_119(32, 64, Mirroring::Vertical);
+
+        mapper.write_register(0x8000, 0x02);
+        mapper.write_register(0x8001, 0x00);
+        assert_eq!(mapper.chr_write(0x1000, 0xAA), false);
+        assert_eq!(
+            mapper.chr_read(0x1000, super::super::ChrAccess::Default),
+            None
+        );
+        assert_eq!(mapper.chr_index(0x1004), 0x00 * 0x0400 + 4);
+
+        mapper.write_register(0x8001, 0x40);
+        assert_eq!(mapper.chr_write(0x1004, 0x55), true);
+        assert_eq!(
+            mapper.chr_read(0x1004, super::super::ChrAccess::Default),
+            Some(0x55)
+        );
+        assert_eq!(mapper.chr_index(0x1004), 0x40 * 0x0400 + 4);
+
+        mapper.write_register(0x8001, 0x41);
+        assert_eq!(mapper.chr_write(0x1004, 0x66), true);
+        assert_eq!(
+            mapper.chr_read(0x1004, super::super::ChrAccess::Default),
+            Some(0x66)
+        );
+        mapper.write_register(0x8001, 0x40);
+        assert_eq!(
+            mapper.chr_read(0x1004, super::super::ChrAccess::Default),
+            Some(0x55)
         );
     }
 

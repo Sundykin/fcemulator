@@ -413,6 +413,7 @@ impl Mapper {
             113 => Mapper::Nina03_06(Nina03_06::new()),
             116 => Mapper::Mapper116(Mapper116::new(prg_16k, chr_8k)),
             117 => Mapper::Mapper117(Mapper117::new(prg_16k, chr_8k, mirroring)),
+            119 => Mapper::Mmc3(Mmc3::new_119(prg_16k, chr_8k, mirroring)),
             120 => Mapper::Mapper120(Mapper120::new(mirroring)),
             140 => Mapper::JalecoJf11_14(JalecoJf11_14::new(mirroring)),
             25 => Mapper::Vrc4(Vrc4::new(number, prg_16k, chr_8k, submapper)),
@@ -763,6 +764,7 @@ mod tests {
             (103, false),  // Mapper 103
             (106, false),  // Mapper 106 IRQ is CPU-clocked, not PPU-bus-clocked
             (117, true),   // Mapper 117 A12 IRQ
+            (119, true),   // Mapper 119 MMC3 A12 IRQ
             (120, false),  // Mapper 120
             (112, false),  // NTDEC ASDER
             (116, true),   // Mapper 116 can switch into MMC3 A12 IRQ mode
@@ -881,6 +883,7 @@ mod tests {
             (103, false),  // Mapper 103
             (106, true),   // Mapper 106 IRQ counter clocks per CPU cycle
             (117, false),  // Mapper 117 uses PPU A12 edges
+            (119, false),  // Mapper 119 uses PPU A12 edges
             (120, false),  // Mapper 120
             (112, false),  // NTDEC ASDER
             (116, false),  // Mapper 116 uses PPU A12 edges only in MMC3 mode
@@ -1005,6 +1008,7 @@ mod tests {
             (113, false),
             (116, false),
             (117, false),
+            (119, false),
             (120, false),
             (140, false),
             (151, false),
