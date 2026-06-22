@@ -125,8 +125,19 @@ Phase 17: Mapper compatibility gap closure
 - [x] Add mapper 68 / Sunsoft-4 with nametable-to-CHR architecture hook
 - [x] Add low-risk mapper batch 122 / 133 / 149
 - [x] Add low-risk mapper batch 144 / 146 / 148
-- [ ] Continue with MMC3 protocol variants 49/114/115/121 and low-risk latch batch 154/155/108
+- [x] Refactor MMC3 write helpers and add first-pass MMC3 protocol variants 49/114/115/121
+- [ ] Continue low-risk latch batch 154/155/108 after current MMC3 variant verification
 - **Status:** in_progress
+
+### Phase 18: Mapper board compatibility layer
+- [ ] Design a reference-emulator-style board layer for fast mapper translation
+- [ ] Add reusable bank mapping helpers for PRG/CHR page setup and mixed ROM/RAM windows
+- [ ] Add CPU address handler helpers for expansion, low, and high mapper ranges
+- [ ] Extract reusable IRQ units: MMC3 A12, CPU counter, HBlank, VRC/RAMBO-style counters
+- [ ] Standardize reset/power hooks, mapper register reads, side effects, and open-bus paths
+- [ ] Route expansion audio boards through a shared mapper audio interface
+- [ ] Convert the next mapper batch through the new layer before expanding the long tail
+- **Status:** planned
 
 ## Key Questions
 1. Which repository test ROMs currently fail deterministically?
@@ -160,6 +171,7 @@ Phase 17: Mapper compatibility gap closure
 | Land mapper 206/207 before deeper architecture work | Both boards reuse already-local Namco108/Taito X1-005 shapes and do not require new CPU/PPU/Cartridge hooks, so they are a clean stable batch before 68 and MMC3 protocol variants |
 | Split mapper expansion into low-risk batches and architecture batches | 192/195/228/232/255 fit existing hooks, while 68 needs nametable-to-CHR access and 114/115/121 should follow MMC3 helper refactoring |
 | Use team-mode research to choose the next mapper batch | Low-risk latch candidates start with 149/122/133; MMC3 candidates should start with helper refactoring then 49; external-device boards such as 99/111/157/188/209/211 should wait for dedicated peripheral hooks |
+| Build a board compatibility layer before pushing the long tail | Reference mapper code is short because mature emulators hide handler registration, bank setup, IRQ units, reset hooks, and side-effect reads in their board framework; reproducing that layer should make future mapper work mostly mechanical |
 
 ## Errors Encountered
 | Error | Attempt | Resolution |

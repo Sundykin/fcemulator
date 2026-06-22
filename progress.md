@@ -837,3 +837,34 @@
   - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 38/38 mapper facade tests.
   - `cargo test -p fc-core`: PASS, 134/134 fc-core tests.
   - `cargo test`: PASS, workspace tests.
+
+### Mapper Board Compatibility Layer Planning
+- User asked why mapper translation cannot simply copy every few-hundred-line reference implementation and whether the current difficulty is architectural.
+- Decision: yes, the main scaling bottleneck is missing board-framework affordances, not mapper theory itself.
+- Added `/Users/sunmeng/workspace/fc/docs/Mapper-架构优化计划.md`.
+- Updated `/Users/sunmeng/workspace/fc/task_plan.md` with Phase 18: Mapper board compatibility layer.
+- Updated `/Users/sunmeng/workspace/fc/findings.md` with the architectural diagnosis.
+- Planned execution order:
+  - Finish and commit current 49/114/115/121 WIP.
+  - Add `BankMap` helper.
+  - Add CPU address handler helpers.
+  - Extract reusable IRQ units.
+  - Clean up MMC3 variant layer.
+  - Add expansion audio interface for FME7/N163/VRC6/VRC7.
+
+### Mapper 49 / 114 / 115 / 121 MMC3 Protocol Variant Batch
+- Refactored MMC3 writes in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs` into `write_bank_select()`, `write_bank_data()`, and `write_standard_register()`.
+- Added mapper 49 / 114 / 115 / 121 as MMC3 variants:
+  - 49: outer latch with PRG32/MMC3 mode and CHR high-bit extension.
+  - 114: remapped high-register write protocol, command pending gate, forced PRG modes, and CHR extension bit.
+  - 115: PRG/CHR extension low registers and protection readback.
+  - 121: protection LUT/readback, scrambled extension register, PRG/CHR override behavior.
+- Wired all four through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs` and updated mapper capability guard tables.
+- Updated `/Users/sunmeng/workspace/fc/docs/Mapper-适配差距清单.md` and `/Users/sunmeng/workspace/fc/docs/Mapper-适配引用记录.md`; supported mapper count is now 137 and remaining four-reference union gap is 356.
+- Verification:
+  - `cargo fmt --check`: PASS.
+  - `git diff --check`: PASS.
+  - `cargo test -p fc-core mapper::mmc3::tests -- --nocapture`: PASS, 20/20.
+  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 38/38.
+  - `cargo test -p fc-core`: PASS, 138/138.
+  - `cargo test`: PASS.

@@ -393,6 +393,7 @@ impl Mapper {
             41 => Mapper::Caltron41(Caltron41::new()),
             46 => Mapper::ColorDreams46(ColorDreams46::new(mirroring)),
             47 => Mapper::Mmc3(Mmc3::new_47(prg_16k, chr_8k, mirroring, submapper)),
+            49 => Mapper::Mmc3(Mmc3::new_49(prg_16k, chr_8k, mirroring, submapper)),
             50 => Mapper::Mapper50(Mapper50::new(mirroring)),
             52 => Mapper::Mmc3(Mmc3::new_52(prg_16k, chr_8k, mirroring)),
             57 => Mapper::Mapper57(Mapper57::new()),
@@ -445,11 +446,14 @@ impl Mapper {
             107 => Mapper::Mapper107(Mapper107::new(mirroring)),
             112 => Mapper::Ntdec112(Ntdec112::new(prg_16k)),
             113 => Mapper::Nina03_06(Nina03_06::new()),
+            114 => Mapper::Mmc3(Mmc3::new_114(prg_16k, chr_8k, mirroring)),
+            115 => Mapper::Mmc3(Mmc3::new_115(prg_16k, chr_8k, mirroring)),
             116 => Mapper::Mapper116(Mapper116::new(prg_16k, chr_8k)),
             117 => Mapper::Mapper117(Mapper117::new(prg_16k, chr_8k, mirroring)),
             118 => Mapper::Mmc3(Mmc3::new_118(prg_16k, chr_8k, mirroring)),
             119 => Mapper::Mmc3(Mmc3::new_119(prg_16k, chr_8k, mirroring)),
             120 => Mapper::Mapper120(Mapper120::new(mirroring)),
+            121 => Mapper::Mmc3(Mmc3::new_121(prg_16k, chr_8k, mirroring)),
             122 => Mapper::Mapper122(Mapper122::new(mirroring)),
             133 => Mapper::Sachen133(Sachen133::new(prg_16k, mirroring)),
             140 => Mapper::JalecoJf11_14(JalecoJf11_14::new(mirroring)),
@@ -792,6 +796,7 @@ mod tests {
             (44, true),    // Mapper 44 MMC3 A12 IRQ
             (45, true),    // Mapper 45 MMC3 A12 IRQ
             (47, true),    // Mapper 47 MMC3 A12 IRQ
+            (49, true),    // Mapper 49 MMC3 A12 IRQ
             (25, false),   // VRC4 IRQ is CPU-clocked, not PPU-bus-clocked
             (52, true),    // Mapper 52 MMC3 A12 IRQ
             (66, false),   // GxROM
@@ -831,10 +836,13 @@ mod tests {
             (101, false),  // Jaleco JF-xx ordered bits
             (103, false),  // Mapper 103
             (106, false),  // Mapper 106 IRQ is CPU-clocked, not PPU-bus-clocked
+            (114, true),   // Mapper 114 MMC3 A12 IRQ
+            (115, true),   // Mapper 115 MMC3 A12 IRQ
             (117, true),   // Mapper 117 A12 IRQ
             (118, true),   // Mapper 118 MMC3 A12 IRQ
             (119, true),   // Mapper 119 MMC3 A12 IRQ
             (120, false),  // Mapper 120
+            (121, true),   // Mapper 121 MMC3 A12 IRQ
             (122, false),  // Mapper 122
             (133, false),  // Sachen SA72008
             (144, false),  // Mapper 144 ColorDreams variant
@@ -927,6 +935,7 @@ mod tests {
             (44, false),   // Mapper 44 uses PPU A12 edges
             (45, false),   // Mapper 45 uses PPU A12 edges
             (47, false),   // Mapper 47 uses PPU A12 edges
+            (49, false),   // Mapper 49 uses PPU A12 edges
             (25, true),    // VRC4 IRQ counter clocks per CPU cycle
             (52, false),   // Mapper 52 uses PPU A12 edges
             (66, false),   // GxROM
@@ -966,10 +975,13 @@ mod tests {
             (101, false),  // Jaleco JF-xx ordered bits
             (103, false),  // Mapper 103
             (106, true),   // Mapper 106 IRQ counter clocks per CPU cycle
+            (114, false),  // Mapper 114 uses PPU A12 edges
+            (115, false),  // Mapper 115 uses PPU A12 edges
             (117, false),  // Mapper 117 uses PPU A12 edges
             (118, false),  // Mapper 118 uses PPU A12 edges
             (119, false),  // Mapper 119 uses PPU A12 edges
             (120, false),  // Mapper 120
+            (121, false),  // Mapper 121 uses PPU A12 edges
             (122, false),  // Mapper 122
             (133, false),  // Sachen SA72008
             (144, false),  // Mapper 144 ColorDreams variant
@@ -1062,6 +1074,7 @@ mod tests {
             (45, false),
             (46, false),
             (47, false),
+            (49, false),
             (50, false),
             (52, false),
             (57, false),
@@ -1106,11 +1119,14 @@ mod tests {
             (107, false),
             (112, false),
             (113, false),
+            (114, false),
+            (115, false),
             (116, false),
             (117, false),
             (118, false),
             (119, false),
             (120, false),
+            (121, false),
             (122, false),
             (133, false),
             (144, false),

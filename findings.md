@@ -260,3 +260,10 @@
 - Low-risk batch `144/146/148` exposed two useful architecture details: mapper 144 needs a per-mapper bus-conflict transform instead of plain AND, and `$4100-$5FFF` writes in this project flow through `write_expansion()` rather than `write_low_register()`.
 - Mapper 144 can share Color Dreams banking with mapper 11 once PRG low nibble support and bit0-only conflict are modeled. Mapper 146/148 share SA016-1M bank decoding, differing only by low expansion writes versus high register writes.
 - Next mechanical batch should move to `154/155/108`; keep `166/167`, `156`, and the later A-grade mechanical set behind that. MMC3 protocol variants still need helper refactoring first.
+
+## Mapper Architecture Planning Findings 2026-06-22
+- Mapper 适配耗时的核心瓶颈不是单个 mapper 的业务代码量，而是本项目缺少成熟模拟器里的 board compatibility layer。参考项目中的几百行 mapper 通常依赖隐藏的 handler 注册、bank helper、IRQ 单元、reset hook、open-bus/side-effect 读和 expansion audio 接口。
+- 当前 `MapperOps` 的 `prg_index()` / `chr_index()` 模型适合性能和普通 mapper，但对低地址 PRG-ROM、mapper register read、reset-selected bank、A12/CPU/HBlank 多时钟 IRQ、CHR-ROM/CHR-RAM 混合窗口和复合 ASIC 需要大量板卡局部胶水。
+- 后续应先建设 BankMap helper、CPU address handler helper、IRQ 单元库、MMC3 variant layer、reset/power/side-effect 标准层和 expansion audio 接口，再进入更大规模 mapper 机械翻译。
+- 规划文档已新增到 `docs/Mapper-架构优化计划.md`，作为 Phase 18 的执行依据。
+- MMC3 写协议 helper 已拆成 `write_bank_select()` / `write_bank_data()` / `write_standard_register()`，并以 mapper 49/114/115/121 作为第一批协议变体验证：49 使用 outer latch，114 使用高区写重映射与 cmd_pending，115 使用低区 PRG/CHR/protection regs，121 使用 protection LUT、scramble 与 override regs。
