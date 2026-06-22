@@ -475,12 +475,8 @@ impl Bus {
             0x4016 => self.controllers.read(0),
             0x4017 => self.controllers.read(1),
             0x4000..=0x4014 => self.open_bus,
-            0x4018..=0x5FFF => self
-                .cartridge
-                .mapper
-                .read_expansion(addr)
-                .unwrap_or(self.open_bus),
-            0x6000..=0xFFFF => self.cartridge.cpu_read(addr),
+            0x4018..=0x5FFF => self.cartridge.cpu_read_with_open_bus(addr, self.open_bus),
+            0x6000..=0xFFFF => self.cartridge.cpu_read_with_open_bus(addr, self.open_bus),
         };
         // Event Viewer: record register *reads* (skip the DMC alignment dummy read
         // so the conflict access doesn't masquerade as a program read).

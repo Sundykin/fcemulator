@@ -337,22 +337,41 @@ impl Cartridge {
     // ---- CPU bus ($4018-$FFFF) ----
 
     pub fn cpu_read(&mut self, addr: u16) -> u8 {
+        self.cpu_read_with_open_bus(addr, 0)
+    }
+
+    pub(crate) fn cpu_read_with_open_bus(&mut self, addr: u16, open_bus: u8) -> u8 {
         match addr {
-            0x4018..=0x5FFF => self.mapper.read_expansion(addr).unwrap_or(0),
+            0x4018..=0x5FFF => self
+                .mapper
+                .read_expansion(addr)
+                .or_else(|| {
+                    self.mapper
+                        .expansion_prg_index(addr)
+                        .map(|i| read_wrapped(&self.prg_rom, i, self.prg_rom_mask))
+                })
+                .unwrap_or(open_bus),
             0x6000..=0x7FFF => {
-                if let Some(b) = self.mapper.read_low_register(addr) {
+                let prg_ram_value =
+                    read_wrapped(&self.prg_ram, (addr - 0x6000) as usize, self.prg_ram_mask);
+                if let Some(b) = self
+                    .mapper
+                    .read_low_register_with_prg_ram(addr, prg_ram_value)
+                {
                     return b;
                 }
                 if let Some(i) = self.mapper.low_prg_index(addr) {
                     return read_wrapped(&self.prg_rom, i, self.prg_rom_mask);
                 }
-                let i = (addr - 0x6000) as usize;
-                read_wrapped(&self.prg_ram, i, self.prg_ram_mask)
+                prg_ram_value
             }
             0x8000..=0xFFFF => {
                 let i = self.mapper.prg_index(addr);
                 let v = read_wrapped(&self.prg_rom, i, self.prg_rom_mask);
-                let v = self.mapper.read_register(addr, v).unwrap_or(v);
+                let v = self
+                    .mapper
+                    .read_register_with_open_bus(addr, v, open_bus)
+                    .unwrap_or(v);
                 if !self.patches.is_empty() {
                     if let Some(&(patch, compare)) = self.patches.get(&addr) {
                         if compare.map_or(true, |c| c == v) {
@@ -367,22 +386,41 @@ impl Cartridge {
     }
 
     pub fn cpu_peek(&self, addr: u16) -> u8 {
+        self.cpu_peek_with_open_bus(addr, 0)
+    }
+
+    pub(crate) fn cpu_peek_with_open_bus(&self, addr: u16, open_bus: u8) -> u8 {
         match addr {
-            0x4018..=0x5FFF => self.mapper.peek_expansion(addr).unwrap_or(0),
+            0x4018..=0x5FFF => self
+                .mapper
+                .peek_expansion(addr)
+                .or_else(|| {
+                    self.mapper
+                        .expansion_prg_index(addr)
+                        .map(|i| read_wrapped(&self.prg_rom, i, self.prg_rom_mask))
+                })
+                .unwrap_or(open_bus),
             0x6000..=0x7FFF => {
-                if let Some(b) = self.mapper.peek_low_register(addr) {
+                let prg_ram_value =
+                    read_wrapped(&self.prg_ram, (addr - 0x6000) as usize, self.prg_ram_mask);
+                if let Some(b) = self
+                    .mapper
+                    .peek_low_register_with_prg_ram(addr, prg_ram_value)
+                {
                     return b;
                 }
                 if let Some(i) = self.mapper.low_prg_index(addr) {
                     return read_wrapped(&self.prg_rom, i, self.prg_rom_mask);
                 }
-                let i = (addr - 0x6000) as usize;
-                read_wrapped(&self.prg_ram, i, self.prg_ram_mask)
+                prg_ram_value
             }
             0x8000..=0xFFFF => {
                 let i = self.mapper.prg_index(addr);
                 let v = read_wrapped(&self.prg_rom, i, self.prg_rom_mask);
-                let v = self.mapper.peek_register(addr, v).unwrap_or(v);
+                let v = self
+                    .mapper
+                    .peek_register_with_open_bus(addr, v, open_bus)
+                    .unwrap_or(v);
                 if !self.patches.is_empty() {
                     if let Some(&(patch, compare)) = self.patches.get(&addr) {
                         if compare.map_or(true, |c| c == v) {
