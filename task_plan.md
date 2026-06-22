@@ -123,7 +123,8 @@ Phase 17: Mapper compatibility gap closure
 - [x] Add mapper 206 / Namco 108 subset and mapper 207 / Taito X1-005 alternate mirroring
 - [x] Add low-risk mapper batch 192 / 195 / 228 / 232 / 255
 - [x] Add mapper 68 / Sunsoft-4 with nametable-to-CHR architecture hook
-- [ ] Continue with MMC3 protocol variants 49/114/115/121 and low-risk latch batch 149/122/133
+- [x] Add low-risk mapper batch 122 / 133 / 149
+- [ ] Continue with MMC3 protocol variants 49/114/115/121 and low-risk latch batch 146/148/144
 - **Status:** in_progress
 
 ## Key Questions

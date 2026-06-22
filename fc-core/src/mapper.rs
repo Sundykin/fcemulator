@@ -216,13 +216,13 @@ pub use basic::{
     ActionEnterprises, AddrLatch16k, AddrLatchVariant, Axrom, Bandai74161, Bf9096, Bnrom,
     Caltron41, Cnrom, Codemasters, ColorDreams, ColorDreams46, Cprom, Gxrom, IremG101, IremLrog017,
     IremTamS1, JalecoJf11_14, JalecoJf13, JalecoJf16, JalecoJfxx, Mapper103, Mapper106, Mapper107,
-    Mapper116, Mapper117, Mapper120, Mapper15, Mapper151, Mapper170, Mapper18, Mapper183,
-    Mapper203, Mapper212, Mapper222, Mapper226, Mapper230, Mapper233, Mapper234, Mapper235,
-    Mapper240, Mapper241, Mapper244, Mapper246, Mapper253, Mapper36, Mapper40, Mapper42, Mapper43,
-    Mapper50, Mapper57, Mapper60, Mapper63, Mapper65, Mapper67, Mapper72, Mapper73, Mapper79,
-    Mapper83, Mapper91, Mapper92, Namco108Mapper206, Namco108Mapper95, Namco118, Nina01, Nina03_06,
-    Nrom, Ntdec112, Sunsoft184, Sunsoft4, Sunsoft89, TaitoTc0190, TaitoX1005, TaitoX1017,
-    UnlPci556, Unrom, UnromVariant, UnromVariantMapper, Vrc1,
+    Mapper116, Mapper117, Mapper120, Mapper122, Mapper15, Mapper151, Mapper170, Mapper18,
+    Mapper183, Mapper203, Mapper212, Mapper222, Mapper226, Mapper230, Mapper233, Mapper234,
+    Mapper235, Mapper240, Mapper241, Mapper244, Mapper246, Mapper253, Mapper36, Mapper40, Mapper42,
+    Mapper43, Mapper50, Mapper57, Mapper60, Mapper63, Mapper65, Mapper67, Mapper72, Mapper73,
+    Mapper79, Mapper83, Mapper91, Mapper92, Namco108Mapper206, Namco108Mapper95, Namco118, Nina01,
+    Nina03_06, Nrom, Ntdec112, Sachen133, Sachen149, Sunsoft184, Sunsoft4, Sunsoft89, TaitoTc0190,
+    TaitoX1005, TaitoX1017, UnlPci556, Unrom, UnromVariant, UnromVariantMapper, Vrc1,
 };
 pub use expansion_mappers::{Fme7, Namco163, Vrc6, Vrc6Variant, Vrc7};
 pub use mmc1::Mmc1;
@@ -284,6 +284,9 @@ pub enum Mapper {
     Mapper116(Mapper116),
     Mapper117(Mapper117),
     Mapper120(Mapper120),
+    Mapper122(Mapper122),
+    Sachen133(Sachen133),
+    Sachen149(Sachen149),
     Mapper170(Mapper170),
     Mapper183(Mapper183),
     Mapper212(Mapper212),
@@ -434,7 +437,10 @@ impl Mapper {
             118 => Mapper::Mmc3(Mmc3::new_118(prg_16k, chr_8k, mirroring)),
             119 => Mapper::Mmc3(Mmc3::new_119(prg_16k, chr_8k, mirroring)),
             120 => Mapper::Mapper120(Mapper120::new(mirroring)),
+            122 => Mapper::Mapper122(Mapper122::new(mirroring)),
+            133 => Mapper::Sachen133(Sachen133::new(prg_16k, mirroring)),
             140 => Mapper::JalecoJf11_14(JalecoJf11_14::new(mirroring)),
+            149 => Mapper::Sachen149(Sachen149::new(mirroring)),
             25 => Mapper::Vrc4(Vrc4::new(number, prg_16k, chr_8k, submapper)),
             74 => Mapper::Mmc3(Mmc3::new_74(prg_16k, chr_8k, mirroring)),
             151 => Mapper::Mapper151(Mapper151::new(prg_16k, mirroring)),
@@ -553,6 +559,9 @@ macro_rules! dispatch {
             Mapper::Mapper116($m) => $body,
             Mapper::Mapper117($m) => $body,
             Mapper::Mapper120($m) => $body,
+            Mapper::Mapper122($m) => $body,
+            Mapper::Sachen133($m) => $body,
+            Mapper::Sachen149($m) => $body,
             Mapper::Mapper170($m) => $body,
             Mapper::Mapper183($m) => $body,
             Mapper::Mapper212($m) => $body,
@@ -806,6 +815,9 @@ mod tests {
             (118, true),   // Mapper 118 MMC3 A12 IRQ
             (119, true),   // Mapper 119 MMC3 A12 IRQ
             (120, false),  // Mapper 120
+            (122, false),  // Mapper 122
+            (133, false),  // Sachen SA72008
+            (149, false),  // Sachen SA0036
             (112, false),  // NTDEC ASDER
             (116, true),   // Mapper 116 can switch into MMC3 A12 IRQ mode
             (151, false),  // Mapper 151
@@ -935,6 +947,9 @@ mod tests {
             (118, false),  // Mapper 118 uses PPU A12 edges
             (119, false),  // Mapper 119 uses PPU A12 edges
             (120, false),  // Mapper 120
+            (122, false),  // Mapper 122
+            (133, false),  // Sachen SA72008
+            (149, false),  // Sachen SA0036
             (112, false),  // NTDEC ASDER
             (116, false),  // Mapper 116 uses PPU A12 edges only in MMC3 mode
             (151, false),  // Mapper 151
@@ -1070,6 +1085,9 @@ mod tests {
             (118, false),
             (119, false),
             (120, false),
+            (122, false),
+            (133, false),
+            (149, false),
             (140, false),
             (151, false),
             (152, false),

@@ -257,6 +257,65 @@ impl MapperOps for Mapper72 {
 }
 
 // ============================================================================
+// Mapper 122 — fixed PRG with two switchable 4KB CHR banks
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Mapper122 {
+    chr_banks: [usize; 2],
+    mirroring: Mirroring,
+}
+
+impl Mapper122 {
+    pub(in crate::mapper) fn new(mirroring: Mirroring) -> Self {
+        Mapper122 {
+            chr_banks: [0; 2],
+            mirroring,
+        }
+    }
+}
+
+impl MapperOps for Mapper122 {
+    fn prg_index(&self, addr: u16) -> usize {
+        (addr as usize - 0x8000) & 0x7FFF
+    }
+
+    fn chr_index(&self, addr: u16) -> usize {
+        let slot = ((addr >> 12) & 1) as usize;
+        self.chr_banks[slot] * 0x1000 + (addr as usize & 0x0FFF)
+    }
+
+    fn write_register(&mut self, addr: u16, value: u8) {
+        self.chr_banks[(addr & 1) as usize] = value as usize;
+    }
+
+    fn mirroring(&self) -> Mirroring {
+        self.mirroring
+    }
+}
+
+#[cfg(test)]
+mod mapper122_tests {
+    use super::*;
+
+    #[test]
+    fn mapper122_selects_two_independent_4k_chr_banks() {
+        let mut mapper = Mapper122::new(Mirroring::Horizontal);
+
+        assert_eq!(mapper.prg_index(0x8004), 0x0004);
+        assert_eq!(mapper.prg_index(0xC004), 0x4004);
+        assert_eq!(mapper.chr_index(0x0004), 0x0004);
+        assert_eq!(mapper.chr_index(0x1004), 0x0004);
+
+        mapper.write_register(0x8000, 0x03);
+        mapper.write_register(0x8001, 0x07);
+        assert_eq!(mapper.chr_index(0x0004), 3 * 0x1000 + 4);
+        assert_eq!(mapper.chr_index(0x1004), 7 * 0x1000 + 4);
+        assert_eq!(mapper.mirroring(), Mirroring::Horizontal);
+    }
+}
+
+// ============================================================================
 // Mapper 79 — NINA-003/NINA-006 compatible latch
 //
 // References:

@@ -803,3 +803,20 @@
   - `git diff --check`: PASS.
   - `cargo test -p fc-core`: PASS, 127/127 fc-core tests.
   - `cargo test`: PASS, workspace tests.
+
+### Mapper 122 / 133 / 149 Low-risk Latch Batch
+- Implemented mapper 122 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/latch/discrete.rs`: fixed 32KB PRG mapping and two independent 4KB CHR latches selected by write-address A0.
+- Added `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/latch/sachen.rs` for mapper 133 / Sachen SA72008 and mapper 149 / Sachen SA0036.
+- Mapper 133 accepts Mesen2-style low writes where `(addr & 0x6100) == 0x4100` and high writes through the normal mapper-register path; latch bits select PRG32 and CHR8.
+- Mapper 149 keeps fixed PRG32 and selects CHR8 from bit 7 of the written value.
+- Wired all three through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs` and updated capability guard tables.
+- Updated mapper gap and reference documents. Supported mapper count is now 130; remaining four-reference union gap is 363.
+- Verification so far:
+  - `cargo fmt`: PASS.
+  - `cargo test -p fc-core mapper::basic::latch::sachen::tests -- --nocapture`: PASS, 2/2.
+  - `cargo test -p fc-core mapper::basic::latch::discrete::mapper122_tests -- --nocapture`: PASS, 1/1 after correcting the initial test expectation for CHR slot 1's reset bank.
+  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 38/38 mapper facade tests.
+  - `cargo fmt --check`: PASS.
+  - `git diff --check`: PASS.
+  - `cargo test -p fc-core`: PASS, 130/130 fc-core tests.
+  - `cargo test`: PASS, workspace tests.
