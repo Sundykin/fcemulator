@@ -17,6 +17,7 @@ enum Mmc3OuterBank {
     None,
     Mapper37 { block: u8 },
     Mapper44 { block: u8 },
+    Mapper45 { regs: [u8; 4], index: u8 },
     Mapper47 { block: u8, submapper: u8 },
     Mapper52 { reg: u8, locked: bool },
 }
@@ -107,6 +108,16 @@ impl Mmc3 {
     pub(super) fn new_44(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
         let mut m = Mmc3::new(prg_16k, chr_8k, mirroring);
         m.outer_bank = Mmc3OuterBank::Mapper44 { block: 0 };
+        m
+    }
+
+    /// Mapper 45 — BMC-Hero, MMC3 with four serially written outer-bank regs.
+    pub(super) fn new_45(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
+        let mut m = Mmc3::new(prg_16k, chr_8k, mirroring);
+        m.outer_bank = Mmc3OuterBank::Mapper45 {
+            regs: [0, 0, 0x0F, 0],
+            index: 0,
+        };
         m
     }
 
@@ -245,6 +256,11 @@ impl Mmc3 {
                 let mask = if *block >= 6 { 0x1F } else { 0x0F };
                 ((*block as usize) << 4) | (bank & mask)
             }
+            Mmc3OuterBank::Mapper45 { regs, .. } => {
+                let prg_and = (!regs[3] as usize) & 0x3F;
+                let prg_or = regs[1] as usize | (((regs[2] as usize) << 2) & 0x300);
+                (bank & prg_and) | (prg_or & !prg_and)
+            }
             Mmc3OuterBank::Mapper47 { block, .. } => (((block & 1) as usize) << 4) | (bank & 0x0F),
             Mmc3OuterBank::Mapper52 { reg, .. } => {
                 let mask = 0x1F ^ (((reg & 0x08) as usize) << 1);
@@ -261,6 +277,11 @@ impl Mmc3 {
             Mmc3OuterBank::Mapper44 { block } => {
                 let mask = if *block < 6 { 0x7F } else { 0xFF };
                 ((*block as usize) << 7) | (bank & mask)
+            }
+            Mmc3OuterBank::Mapper45 { regs, .. } => {
+                let chr_and = 0xFFu16 >> (!regs[2] & 0x0F);
+                let chr_or = regs[0] as u16 | (((regs[2] as u16) << 4) & 0x0F00);
+                (((bank as u16) & chr_and) | (chr_or & !chr_and)) as usize
             }
             Mmc3OuterBank::Mapper47 { block, .. } => (((block & 1) as usize) << 7) | (bank & 0x7F),
             Mmc3OuterBank::Mapper52 { reg, .. } => {
@@ -414,6 +435,15 @@ impl MapperOps for Mmc3 {
                 *block = (value & 0x06) >> 1;
                 true
             }
+            Mmc3OuterBank::Mapper45 { regs, index } => {
+                if regs[3] & 0x40 == 0 {
+                    regs[*index as usize] = value;
+                    *index = (*index + 1) & 0x03;
+                    true
+                } else {
+                    false
+                }
+            }
             Mmc3OuterBank::Mapper47 { block, submapper } => {
                 if *submapper == 0 || (*block & 0x80) == 0 {
                     *block = value;
@@ -506,6 +536,13 @@ impl MapperOps for Mmc3 {
     fn clear_irq(&mut self) {
         self.irq_pending = false;
     }
+
+    fn reset(&mut self, _soft: bool) {
+        if let Mmc3OuterBank::Mapper45 { regs, index } = &mut self.outer_bank {
+            *regs = [0, 0, 0x0F, 0];
+            *index = 0;
+        }
+    }
 }
 
 #[cfg(test)]
@@ -562,6 +599,39 @@ mod tests {
         mapper.write_register(0x8000, 0x02);
         mapper.write_register(0x8001, 0xCA);
         assert_eq!(mapper.chr_index(0x1004), 0x3CA * 0x400 + 4);
+    }
+
+    #[test]
+    fn mapper45_serial_outer_regs_mask_prg_and_chr() {
+        let mut mapper = Mmc3::new_45(256, 512, Mirroring::Vertical);
+
+        mapper.write_register(0x8000, 0x06);
+        mapper.write_register(0x8001, 0x2A);
+        mapper.write_register(0x8000, 0x02);
+        mapper.write_register(0x8001, 0x55);
+
+        assert!(mapper.write_low_register(0x6000, 0x34));
+        assert!(mapper.write_low_register(0x6000, 0x20));
+        assert!(mapper.write_low_register(0x6000, 0x40));
+        assert!(mapper.write_low_register(0x6000, 0x3C));
+
+        assert_eq!(mapper.prg_index(0x8004), 0x122 * 0x2000 + 4);
+        assert_eq!(mapper.chr_index(0x1004), 0x434 * 0x0400 + 4);
+
+        mapper.reset(true);
+        assert_eq!(mapper.prg_index(0x8004), 0x2A * 0x2000 + 4);
+        assert_eq!(mapper.chr_index(0x1004), 0x55 * 0x0400 + 4);
+    }
+
+    #[test]
+    fn mapper45_lock_bit_reenables_wram_fallthrough() {
+        let mut mapper = Mmc3::new_45(64, 64, Mirroring::Vertical);
+
+        assert!(mapper.write_low_register(0x6000, 0));
+        assert!(mapper.write_low_register(0x6000, 0));
+        assert!(mapper.write_low_register(0x6000, 0x0F));
+        assert!(mapper.write_low_register(0x6000, 0x40));
+        assert!(!mapper.write_low_register(0x6000, 0x12));
     }
 
     #[test]

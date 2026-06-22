@@ -190,6 +190,19 @@
   - `cargo test -p fc-core`: PASS, 107/107 fc-core tests.
 - Updated mapper gap checklist and reference record. Supported mapper count is now 114; remaining union gap is 379.
 
+### Mapper 45 BMC-Hero Pass
+- Implemented mapper 45 / BMC-Hero as an MMC3-derived outer-bank variant in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs`.
+- Added four serial low-register slots with reset defaults `[0, 0, 0x0F, 0]`, lock-bit fall-through to WRAM, PRG AND/OR wrapping, CHR AND/OR wrapping, and normal MMC3 A12 IRQ behavior through the existing core.
+- Wired mapper 45 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs` and updated capability guard tables.
+- Updated mapper gap checklist and reference records with FCEUX, FCEUmm, Mesen2, and Nestopia source locations. Supported mapper count is now 115; remaining union gap is 378.
+- Verification so far:
+  - `cargo fmt --check`: PASS.
+  - `cargo test -p fc-core mapper::mmc3::tests::mapper45 -- --nocapture`: PASS, 2/2.
+  - `git diff --check`: PASS.
+  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 69/69 mapper tests.
+  - `cargo test -p fc-core`: PASS, 109/109 fc-core tests.
+  - `cargo test`: PASS, workspace tests.
+
 ### Continued Phase: PPU open-bus decay
 - Started: 2026-06-19 14:51:32 CST
 - Reproduced `ppu_open_bus/ppu_open_bus.nes` failure: subtest #3, "Decay value should become zero by one second".

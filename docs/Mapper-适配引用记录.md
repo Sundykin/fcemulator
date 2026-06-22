@@ -29,9 +29,9 @@
 - `fc-core/src/mapper/basic/waixing.rs:1-295`
   - 新增 Mapper 253 / Waixing Dragon Ball pirate。
   - 覆盖 8KB PRG、1KB CHR nibble register、2KB mapper-owned CHR-RAM window、mirroring、CPU-clock IRQ。
-- `fc-core/src/mapper/mmc3.rs:9-168,240-274,301-414,534-616`
-  - 新增 Mapper 37 / 44 / 47 / 52 / 76 的 MMC3 变体布局。
-  - 复用 MMC3 PRG/IRQ 核心，扩展 outer PRG/CHR bank latch 和 Mapper 76 自定义 2KB CHR cwrap。
+- `fc-core/src/mapper/mmc3.rs:9-180,248-294,322-545,604-686,728-763`
+  - 新增 Mapper 37 / 44 / 45 / 47 / 52 / 76 的 MMC3 变体布局。
+  - 复用 MMC3 PRG/IRQ 核心，扩展 outer PRG/CHR bank latch、Mapper 45 serial outer registers 和 Mapper 76 自定义 2KB CHR cwrap。
 - `fc-core/src/mapper/vrc4.rs:1-329`
   - 扩展 Mapper 21 / 22 / 23 / 25 的 VRC2/VRC4 共用实现。
   - 覆盖 mapper/submapper 地址线变体、VRC2a CHR 右移、VRC2 无 IRQ、VRC4 CPU-clock IRQ。
@@ -64,6 +64,10 @@
 | 37 | `mmc3.rs:15-21,99-136,240-274,534-550` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/mmc3.c` | 412-451 | Mapper 37 FCEUmm cross-check |
 | 44 | `mmc3.rs:15-21,106-110,240-274,381-390,552-565` | `/Users/sunmeng/workspace/fc/fceux/src/boards/mmc3.cpp` | 462-497 | Mapper 44 A001 outer bank select、block >=6 PRG/CHR mask |
 | 44 | `mmc3.rs:15-21,106-110,240-274,381-390,552-565` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/mmc3.c` | 456-500 | Mapper 44 reset/power cross-check；当前 block 7 按 FCEUX/FCEUmm 不 clamp |
+| 45 | `mmc3.rs:15-23,114-122,248-294,432-446,540-545,604-635` | `/Users/sunmeng/workspace/fc/fceux/src/boards/mmc3.cpp` | 502-565 | Mapper 45 PRG/CHR wrapper、低区 serial register 写、锁定位、reset/power defaults、可选 open-bus read 记录 |
+| 45 | `mmc3.rs:15-23,114-122,248-294,432-446,540-545,604-635` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/mmc3.c` | 505-589 | Mapper 45 PRG/CHR mask/OR、低区 serial register 写、reset/power、可选 open-bus high/low read 记录 |
+| 45 | `mmc3.rs:15-23,114-122,248-294,432-446,540-545,604-635` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Mmc3Variants/MMC3_45.h` | 40-80 | Mapper 45 reset、PRG/CHR bank wrapper、低区 serial write 与 lock 行为 cross-check |
+| 45 | `mmc3.rs:15-23,114-122,248-294,432-446,540-545,604-635` | `/Users/sunmeng/workspace/fc/nestopia/source/core/board/NstBoardBmcHero.cpp` | 97-129 | BMC Hero serial register 写入与 PRG/CHR 更新 cross-check |
 | 47 | `mmc3.rs:15-21,113-126,240-274,400-414,567-596` | `/Users/sunmeng/workspace/fc/fceux/src/boards/mmc3.cpp` | 570-601 | Mapper 47 1-bit outer bank latch |
 | 47 | `mmc3.rs:15-21,113-126,240-274,400-414,567-596` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/mmc3.c` | 602-644 | Mapper 47 submapper lock 与 low write fall-through |
 | 52 | `mmc3.rs:15-21,128-136,240-274,400-414,598-616` | `/Users/sunmeng/workspace/fc/fceux/src/boards/mmc3.cpp` | 652-693 | Mapper 52 one-shot low latch、outer PRG/CHR mask |
@@ -135,6 +139,7 @@
 - `Vrc4::config_for()` / `reg_select()` 对应 FCEUmm `21_22_23_25.c:33-67` 与 Mesen2 `VRC2_4.h:37-78,204-245`；submapper 0 使用参考实现中的 OR 地址线启发式。
 - `Vrc4::chr_index()` 的 mapper 22 右移对应 Mesen2 `VRC2_4.h:121-130` 与 FCEUmm `21_22_23_25.c:42-48`。
 - `Mmc3OuterBank::{Mapper37,Mapper44,Mapper47,Mapper52}` 对应 FCEUX `mmc3.cpp:418-497,570-601,652-693` 与 FCEUmm `mmc3.c:412-500,602-644,710-769`。
+- `Mmc3OuterBank::Mapper45` 的 PRG/CHR AND/OR wrapper、低区 serial register 和 reset defaults 对应 FCEUX `mmc3.cpp:502-565`、FCEUmm `mmc3.c:505-589`、Mesen2 `MMC3_45.h:40-80` 与 Nestopia `NstBoardBmcHero.cpp:97-129`；FCEUX/FCEUmm 的可选 open-bus read 侧效应暂未落地，留作需要具体 ROM 证据时精修。
 - `Mapper253::write_chr_register()` / `chr_ram_index()` / `cpu_clock()` 对应 FCEUX `253.cpp:44-89,110-145` 与 Mesen2 `Mapper253.h:54-130`。
 - `Mapper92::write_register()` 对应 FCEUX `72.cpp:35-80` 的 mapper 92 变体。
 - `Mapper106::write_register()` / `cpu_clock()` 对应 Mesen2 `Mapper106.h:36-73`。
@@ -154,7 +159,7 @@
 
 - 先替换 `fc-core/src/mapper/basic/unlicensed.rs:1-884`。
 - 同批替换 `fc-core/src/mapper/basic/latch/discrete.rs` 里 Mapper 36 / 72 / 79 / 92 的新增段、`fc-core/src/mapper/basic/taito.rs` 里 Mapper 80 / 82 的新增段，以及 `fc-core/src/mapper/basic/multicart.rs` 里 Mapper 59 / 63 / 201 / 217 的新增段。
-- 同批替换 `fc-core/src/mapper/basic/konami.rs` 的 VRC1 段、`fc-core/src/mapper/basic/jy.rs` 的 Mapper91 段、`fc-core/src/mapper/basic/sl12.rs` 的 Mapper116 段、`fc-core/src/mapper/basic/waixing.rs` 的 Mapper253 段、`fc-core/src/mapper/vrc4.rs` 的 VRC2/VRC4 段，以及 `fc-core/src/mapper/mmc3.rs` 的 Mapper37/44/47/52/76 变体段。
+- 同批替换 `fc-core/src/mapper/basic/konami.rs` 的 VRC1 段、`fc-core/src/mapper/basic/jy.rs` 的 Mapper91 段、`fc-core/src/mapper/basic/sl12.rs` 的 Mapper116 段、`fc-core/src/mapper/basic/waixing.rs` 的 Mapper253 段、`fc-core/src/mapper/vrc4.rs` 的 VRC2/VRC4 段，以及 `fc-core/src/mapper/mmc3.rs` 的 Mapper37/44/45/47/52/76 变体段。
 - 再处理 `fc-core/src/mapper.rs` 里 Mapper 43/60/75/76/83/91/106/183/212/222/235 的导出、枚举、构造和 dispatch 分支。
 - 若替换 Mapper91，请同步检查 `MapperOps::hblank_clock`、`Cartridge::mapper_clocks_hblank` 与 `Bus::clock_ppu_dot()` 的 HBlank hook 是否仍有使用者。
 - 最后检查 `fc-core/src/cartridge.rs` 的 open-bus aware 读钩子是否仍被其他 mapper 使用；如果无使用者，可收窄接口。

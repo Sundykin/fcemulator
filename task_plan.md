@@ -115,7 +115,8 @@ Phase 17: Mapper compatibility gap closure
 - [x] Add mapper architecture hooks and next batch: VRC1 mapper 75, MMC3-derived mapper 76, JY mapper 91 with cached HBlank IRQ clocking
 - [x] Team-mode parallel mapper pass: Worker A VRC/Konami, Worker B MMC3-derived, Worker C mapper 253/unlicensed, PM integrates and validates
 - [x] Add mapper 116 / Someri Team SL12 composite VRC2/MMC3/MMC1 board
-- [ ] Continue with P0/P1 missing mapper families: 45, 64, then VRC/MMC3/Taito variants that need A12/PPU-pattern mirroring hooks
+- [x] Add mapper 45 / BMC-Hero as an MMC3 outer-bank serial-register variant
+- [ ] Continue with P0/P1 missing mapper families: 64, then VRC/MMC3/Taito variants that need A12/PPU-pattern mirroring hooks
 - **Status:** in_progress
 
 ## Key Questions
@@ -141,6 +142,7 @@ Phase 17: Mapper compatibility gap closure
 | Add HBlank mapper clocking as a cached capability instead of a direct per-dot dispatch | Mapper 91 and similar FCEUX `GameHBIRQHook` boards need scanline-synchronous IRQs, but ordinary mappers should keep the PPU dot hot path gated by a cached bool |
 | Fold MMC3-derived mapper 76 into `Mmc3` variant layout instead of a standalone clone | Reusing MMC3 PRG/IRQ behavior keeps future MMC3 variants from copying timing-sensitive logic |
 | Run mapper team mode through disjoint ownership and PM integration | VRC/Konami, MMC3-derived, and Waixing/253 touched separable modules; PM-side docs/tests keep parallel changes from landing as unreviewed WIP |
+| Model Mapper 45 as an MMC3 outer-bank variant | References agree its PRG/CHR wrapping and low-register serial latch sit above normal MMC3 IRQ/register behavior, so reusing the existing MMC3 core keeps A12 timing centralized |
 
 ## Errors Encountered
 | Error | Attempt | Resolution |

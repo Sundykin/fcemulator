@@ -354,6 +354,7 @@ impl Mapper {
             42 => Mapper::Mapper42(Mapper42::new(prg_16k, mirroring)),
             43 => Mapper::Mapper43(Mapper43::new()),
             44 => Mapper::Mmc3(Mmc3::new_44(prg_16k, chr_8k, mirroring)),
+            45 => Mapper::Mmc3(Mmc3::new_45(prg_16k, chr_8k, mirroring)),
             41 => Mapper::Caltron41(Caltron41::new()),
             46 => Mapper::ColorDreams46(ColorDreams46::new(mirroring)),
             47 => Mapper::Mmc3(Mmc3::new_47(prg_16k, chr_8k, mirroring, submapper)),
@@ -717,6 +718,7 @@ mod tests {
             (42, false),   // Mapper 42
             (43, false),   // Mapper 43 IRQ is CPU-clocked, not PPU-bus-clocked
             (44, true),    // Mapper 44 MMC3 A12 IRQ
+            (45, true),    // Mapper 45 MMC3 A12 IRQ
             (47, true),    // Mapper 47 MMC3 A12 IRQ
             (25, false),   // VRC4 IRQ is CPU-clocked, not PPU-bus-clocked
             (52, true),    // Mapper 52 MMC3 A12 IRQ
@@ -833,6 +835,7 @@ mod tests {
             (42, true),    // Mapper 42 IRQ counter clocks per CPU cycle
             (43, true),    // Mapper 43 IRQ counter clocks per CPU cycle
             (44, false),   // Mapper 44 uses PPU A12 edges
+            (45, false),   // Mapper 45 uses PPU A12 edges
             (47, false),   // Mapper 47 uses PPU A12 edges
             (25, true),    // VRC4 IRQ counter clocks per CPU cycle
             (52, false),   // Mapper 52 uses PPU A12 edges
@@ -948,6 +951,7 @@ mod tests {
             (42, false),
             (43, false),
             (44, false),
+            (45, false),
             (46, false),
             (47, false),
             (50, false),
