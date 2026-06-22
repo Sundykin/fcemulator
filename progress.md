@@ -883,6 +883,22 @@
   - `cargo test -p fc-core`: PASS, 148/148.
   - `cargo test`: PASS, workspace tests.
 
+### Phase 18 A12 Edge Filter Helper Pass
+- Extended `/Users/sunmeng/workspace/fc/fc-core/src/mapper/irq.rs` with `A12EdgeFilter`.
+- Migrated A12 low-time debounce state for:
+  - `Mmc3A12Irq` with 9-dot threshold.
+  - `/Users/sunmeng/workspace/fc/fc-core/src/mapper/rambo1.rs` with 30-dot threshold.
+  - `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/irq.rs` mapper 117 with `>=11` to preserve the old `>10` test.
+- Kept `#[serde(flatten)]` on migrated filter fields so `a12_prev` / `a12_low_since` save-state names remain stable.
+- Verification so far:
+  - `cargo fmt --check`: PASS.
+  - `git diff --check`: PASS.
+  - `cargo test -p fc-core mapper::irq -- --nocapture`: PASS, 3/3.
+  - `cargo test -p fc-core mapper::rambo1::tests -- --nocapture`: PASS, 4/4.
+  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 108/108.
+  - `cargo test -p fc-core`: PASS, 149/149.
+  - `cargo test`: PASS, workspace tests.
+
 ### Mapper 49 / 114 / 115 / 121 MMC3 Protocol Variant Batch
 - Refactored MMC3 writes in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs` into `write_bank_select()`, `write_bank_data()`, and `write_standard_register()`.
 - Added mapper 49 / 114 / 115 / 121 as MMC3 variants:

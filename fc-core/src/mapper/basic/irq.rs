@@ -1,3 +1,4 @@
+use crate::mapper::irq::A12EdgeFilter;
 use crate::mapper::MapperOps;
 use crate::types::Mirroring;
 use serde::{Deserialize, Serialize};
@@ -766,8 +767,8 @@ pub struct Mapper117 {
     irq_enabled: bool,
     irq_enabled_alt: bool,
     irq_pending: bool,
-    a12_prev: bool,
-    a12_low_since: u64,
+    #[serde(flatten)]
+    a12: A12EdgeFilter,
 }
 
 impl Mapper117 {
@@ -789,8 +790,7 @@ impl Mapper117 {
             irq_enabled: false,
             irq_enabled_alt: false,
             irq_pending: false,
-            a12_prev: false,
-            a12_low_since: 0,
+            a12: A12EdgeFilter::new(),
         }
     }
 
@@ -846,15 +846,9 @@ impl MapperOps for Mapper117 {
     }
 
     fn notify_a12(&mut self, addr: u16, cycle: u64) {
-        let a12 = addr & 0x1000 != 0;
-        if a12 && !self.a12_prev {
-            if cycle.wrapping_sub(self.a12_low_since) > 10 {
-                self.clock_irq();
-            }
-        } else if !a12 && self.a12_prev {
-            self.a12_low_since = cycle;
+        if self.a12.clocked(addr, cycle, 11) {
+            self.clock_irq();
         }
-        self.a12_prev = a12;
     }
 
     fn watches_ppu_bus(&self) -> bool {

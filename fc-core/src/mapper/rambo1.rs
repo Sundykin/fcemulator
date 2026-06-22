@@ -1,4 +1,5 @@
 use super::MapperOps;
+use crate::mapper::irq::A12EdgeFilter;
 use crate::types::Mirroring;
 use serde::{Deserialize, Serialize};
 
@@ -22,8 +23,8 @@ pub struct Rambo1 {
     irq_pending: bool,
     cpu_divider: u8,
     force_cpu_clock: bool,
-    a12_prev: bool,
-    a12_low_since: u64,
+    #[serde(flatten)]
+    a12: A12EdgeFilter,
 }
 
 impl Rambo1 {
@@ -56,8 +57,7 @@ impl Rambo1 {
             irq_pending: false,
             cpu_divider: 0,
             force_cpu_clock: false,
-            a12_prev: false,
-            a12_low_since: 0,
+            a12: A12EdgeFilter::new(),
         }
     }
 
@@ -180,15 +180,9 @@ impl MapperOps for Rambo1 {
         if self.irq_cycle_mode {
             return;
         }
-        let a12 = addr & 0x1000 != 0;
-        if a12 && !self.a12_prev {
-            if cycle.wrapping_sub(self.a12_low_since) >= 30 {
-                self.clock_irq_counter(2);
-            }
-        } else if !a12 && self.a12_prev {
-            self.a12_low_since = cycle;
+        if self.a12.clocked(addr, cycle, 30) {
+            self.clock_irq_counter(2);
         }
-        self.a12_prev = a12;
     }
 
     fn watches_ppu_bus(&self) -> bool {

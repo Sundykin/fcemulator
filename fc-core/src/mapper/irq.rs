@@ -1,6 +1,43 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub(in crate::mapper) struct A12EdgeFilter {
+    a12_prev: bool,
+    a12_low_since: u64,
+}
+
+impl A12EdgeFilter {
+    pub(in crate::mapper) fn new() -> Self {
+        Self {
+            a12_prev: false,
+            a12_low_since: 0,
+        }
+    }
+
+    pub(in crate::mapper) fn clocked(
+        &mut self,
+        addr: u16,
+        cycle: u64,
+        min_low_cycles: u64,
+    ) -> bool {
+        let a12 = addr & 0x1000 != 0;
+        let clocked =
+            a12 && !self.a12_prev && cycle.wrapping_sub(self.a12_low_since) >= min_low_cycles;
+        if !a12 && self.a12_prev {
+            self.a12_low_since = cycle;
+        }
+        self.a12_prev = a12;
+        clocked
+    }
+}
+
+impl Default for A12EdgeFilter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub(super) struct Mmc3A12Irq {
     irq_latch: u8,
     irq_counter: u8,
@@ -9,8 +46,8 @@ pub(super) struct Mmc3A12Irq {
     irq_pending: bool,
     #[serde(default)]
     irq_suppress_zero_reload: bool,
-    a12_prev: bool,
-    a12_low_since: u64,
+    #[serde(flatten)]
+    a12: A12EdgeFilter,
 }
 
 impl Mmc3A12Irq {
@@ -22,8 +59,7 @@ impl Mmc3A12Irq {
             irq_enabled: false,
             irq_pending: false,
             irq_suppress_zero_reload: false,
-            a12_prev: false,
-            a12_low_since: 0,
+            a12: A12EdgeFilter::new(),
         }
     }
 
@@ -45,17 +81,11 @@ impl Mmc3A12Irq {
     }
 
     pub(super) fn notify_a12(&mut self, addr: u16, cycle: u64) {
-        let a12 = addr & 0x1000 != 0;
-        if a12 && !self.a12_prev {
-            // MMC3 counts a rising A12 edge only after A12 stayed low for
-            // roughly three CPU cycles. `cycle` is a monotonic PPU-dot count.
-            if cycle.wrapping_sub(self.a12_low_since) >= 9 {
-                self.clock_counter();
-            }
-        } else if !a12 && self.a12_prev {
-            self.a12_low_since = cycle;
+        // MMC3 counts a rising A12 edge only after A12 stayed low for roughly
+        // three CPU cycles. `cycle` is a monotonic PPU-dot count.
+        if self.a12.clocked(addr, cycle, 9) {
+            self.clock_counter();
         }
-        self.a12_prev = a12;
     }
 
     pub(super) fn irq(&self) -> bool {
@@ -143,5 +173,17 @@ mod tests {
         irq.notify_a12(0x0000, 20);
         irq.notify_a12(0x1000, 29);
         assert!(!irq.irq());
+    }
+
+    #[test]
+    fn a12_edge_filter_clocks_only_after_minimum_low_time() {
+        let mut filter = A12EdgeFilter::new();
+
+        assert!(!filter.clocked(0x1000, 1, 9));
+        assert!(!filter.clocked(0x0000, 2, 9));
+        assert!(!filter.clocked(0x1000, 10, 9));
+        assert!(!filter.clocked(0x0000, 11, 9));
+        assert!(filter.clocked(0x1000, 20, 9));
+        assert!(!filter.clocked(0x1000, 30, 9));
     }
 }

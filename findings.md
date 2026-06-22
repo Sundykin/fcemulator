@@ -276,3 +276,4 @@
 - Mapper 166/167 / Subor 也可用现有 `MapperOps` 直接落地。两者共用四个 register 与 outer/inner PRG XOR 公式，只在 NROM-like 模式 bank order 和 fixed high bank 上由 mapper ID 区分；FCEUmm 的 `regs[0].bit0` mirroring 被纳入第一版。
 - `fc-core/src/mapper/bank.rs` 现在包含 `ChrRamWindow` / `ChrBankSource`，把 CHR-ROM/CHR-RAM 混合窗口从 MMC3 局部逻辑抽成通用基础设施；mapper 74/119/192/194/195 已迁移作为验证，后续 MMC3-like CHR-RAM window 变体可直接声明 bank 范围和 RAM 尺寸。
 - IRQ helper 第一刀应先抽 MMC3 A12：所有 MMC3 变体 4/37/44/45/47/49/52/74/76/114/115/118/119/121/192/194/195 共享同一个 A12 filter/reload/enable/pending 逻辑，适合迁移到 `Mmc3A12Irq`。VRC4、RAMBO-1、JY/HBlank、FME7 和若干 `basic/irq.rs` CPU counter 语义不同，应作为后续 helper 分层，不和 MMC3 A12 混抽。
+- A12 边沿滤波可以作为比 IRQ counter 更底层的共享件：MMC3 使用 9 PPU-dot低电平门限，RAMBO-1 使用 30，Mapper117 原逻辑 `>10` 等价于 helper 的 `>=11`。把 `A12EdgeFilter` 作为可序列化 flatten 字段，可先去掉重复 `a12_prev/a12_low_since`，同时不混合各板卡的 counter/reload/delay 语义。
