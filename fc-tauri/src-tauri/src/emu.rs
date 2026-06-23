@@ -129,6 +129,28 @@ impl EmuState {
         let pad_shared = self.shared.clone();
         thread::spawn(move || gamepad_thread(pad_shared));
     }
+
+    /// Load a ROM into the live emulator worker from an IDE integration. This is
+    /// the same backend path as the Tauri command, so the preview window updates
+    /// instead of an off-screen core doing invisible work.
+    pub fn open_path_for_ide(&self, path: &str) -> Result<RomInfo, String> {
+        let data = std::fs::read(path).map_err(|e| e.to_string())?;
+        apply_rom(&self.shared, path, &data)
+    }
+
+    pub fn read_memory_for_ide(&self, addr: u16, len: u16) -> Vec<u8> {
+        self.shared.deck.lock().unwrap().read_memory_range(addr, len)
+    }
+
+    pub fn set_controller_for_ide(&self, port: usize, bits: u8) {
+        let mut input = self.shared.input.lock().unwrap();
+        if port < input.kb.len() {
+            input.kb[port] = bits;
+            input.kb_seq = input.kb_seq.saturating_add(1);
+        }
+        drop(input);
+        wake_worker(&self.shared);
+    }
 }
 
 fn wake_worker(shared: &Shared) {

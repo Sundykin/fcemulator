@@ -4,6 +4,7 @@ mod chr;
 mod converters;
 mod emu;
 mod famistudio;
+mod ide_mcp;
 mod map;
 mod palettes;
 mod project;
@@ -41,6 +42,10 @@ pub fn run() {
         .manage(ProjectState::new())
         .manage(BuildState::new())
         .manage(WatchState::new())
+        .setup(|app| {
+            ide_mcp::start(app.handle().clone());
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             emu::open_rom,
             emu::open_rom_id,

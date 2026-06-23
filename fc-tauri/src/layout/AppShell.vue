@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted } from "vue";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { NConfigProvider, NMessageProvider, darkTheme } from "naive-ui";
 import { naiveOverrides } from "../theme/naive";
 import { useEmuStore } from "../stores/emu";
@@ -27,6 +28,8 @@ const project = useProjectStore();
 useKeyboard();
 useHaltWatch();
 
+let ideMcpUiUnlisten: UnlistenFn | null = null;
+
 // Esc closes an open session drawer.
 function onEsc(e: KeyboardEvent) {
   if (e.key === "Escape" && store.panel) {
@@ -35,9 +38,21 @@ function onEsc(e: KeyboardEvent) {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   library.refresh();
   store.initPalettes();
+  project.listenIdeMcp();
+  ideMcpUiUnlisten = await listen<{ reason?: string; changed?: string[]; extra?: { rom?: emuApi.RomInfo; romPath?: string } }>(
+    "ide-mcp-updated",
+    (e) => {
+      const extra = e.payload?.extra;
+      if (e.payload?.changed?.includes("preview") && extra?.rom) {
+        store.romPath = extra.romPath || "";
+        store.onLoaded(extra.rom, true);
+        store.setMode("studio");
+      }
+    },
+  );
   window.addEventListener("keydown", onEsc);
   if (import.meta.env.DEV) {
     const w = window as unknown as {
@@ -52,7 +67,10 @@ onMounted(() => {
     w.__emuApi = emuApi;
   }
 });
-onUnmounted(() => window.removeEventListener("keydown", onEsc));
+onUnmounted(() => {
+  ideMcpUiUnlisten?.();
+  window.removeEventListener("keydown", onEsc);
+});
 </script>
 
 <template>

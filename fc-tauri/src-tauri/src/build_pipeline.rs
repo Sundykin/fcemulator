@@ -64,6 +64,7 @@ fn resolve_tool(name: &str) -> PathBuf {
 }
 
 /// Whether a cc65 tool is resolvable (vendored or on PATH). For other modules' tests.
+#[cfg(test)]
 pub fn tool_available(name: &str) -> bool {
     resolve_tool(name).exists()
 }

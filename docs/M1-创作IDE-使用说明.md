@@ -26,6 +26,22 @@ npm --prefix fc-tauri run tauri dev
 5. **运行**:工具栏「运行」把刚打包的 `.nes` 载入内嵌模拟器预览;默认演示工程会显示一个可用方向键移动的 16×16 精灵与目标。预览画面获得焦点时,方向键/Z/X/Enter/Space 会作为手柄输入送入当前 ROM。
 6. **调试**:在编辑器**左侧断点槽点击**即可在该行下/清断点(基于构建产出的 dbgfile 行映射);命中时自动切回 IDE 并高亮所在行。
 
+## IDE 创作 MCP
+
+Tauri IDE 启动时会同时启动一个语义级 MCP socket:`/tmp/fc-tauri-ide-mcp.sock`。项目级智能体应连接
+`.mcp.json` 中的 `fc-ide` 服务器,通过 `ide_*` 工具直接操作**同一个** Tauri 后端工程状态:
+
+- `ide_new_project` / `ide_open_project` 新建或打开当前 IDE 工程。
+- `ide_read_file` / `ide_write_file` 写源码。
+- `ide_read_chr` / `ide_write_chr` 写 CHR 像素资源。
+- `ide_read_map` / `ide_write_map` / `ide_bind_map_chr` 写地图和资源绑定。
+- `ide_build` / `ide_run` 调用 IDE 构建链并把产物加载进当前预览。
+- `ide_press_buttons` / `ide_read_memory` 对当前预览 ROM 做运行验证。
+
+这些工具执行后会通过 Tauri event 通知前端刷新文件树、工程清单、构建面板和预览状态。也就是说,
+`fc-ide` 不是一个不可见的离线核心;它是 live IDE 的编程接口。`fc-tauri` MCP 仍保留为 DOM/窗口调试桥,
+主要用于验证 UI 是否刷新正确。
+
 ## cc65 工具链
 
 `ca65`/`ld65` 作为捆绑 sidecar,位于 `fc-tauri/src-tauri/vendor/cc65/<target-triple>/`。

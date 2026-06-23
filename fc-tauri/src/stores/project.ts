@@ -7,6 +7,7 @@ import * as emu from "../emu";
 
 // build-updated event listener handle (module-level; non-reactive).
 let buildUnlisten: UnlistenFn | null = null;
+let ideMcpUnlisten: UnlistenFn | null = null;
 
 // Web Audio for tracker preview (module-level; non-reactive).
 let audioCtx: AudioContext | null = null;
@@ -197,6 +198,59 @@ export const useProjectStore = defineStore("project", {
       } catch {
         /* mid-edit invalid manifest — keep current */
       }
+    },
+    async syncFromIdeMcp(
+      reason = "ide-mcp",
+      root?: string,
+      extra?: { path?: string; map?: string; chr?: string; result?: ide.BuildResult },
+      changed: string[] = [],
+    ) {
+      try {
+        if ((reason === "project-new" || reason === "project-open") && root) {
+          this.resetWorkspaceState(root);
+        }
+        this.manifest = normalizeManifest(await ide.projectGet());
+        if (root) this.root = root;
+        else if (!this.root) this.root = "MCP";
+        this.mapChrBindings = { ...(this.manifest.map_chr || {}) };
+        await this.refreshTree();
+        if (extra?.path && changed.includes("source")) {
+          const tab = this.tabs.find((t) => t.path === extra.path);
+          if (tab) {
+            tab.content = await ide.projectReadFile(extra.path);
+            tab.saved = tab.content;
+          }
+        }
+        if (extra?.path && changed.includes("chr") && this.chr?.path === extra.path) {
+          await this.openChr(extra.path);
+        }
+        if (extra?.path && changed.includes("map") && this.map?.path === extra.path) {
+          await this.openMap(extra.path);
+        }
+        this.status = `MCP 已更新：${reason}`;
+      } catch (e) {
+        this.status = `MCP 同步失败：${e}`;
+      }
+    },
+    async listenIdeMcp() {
+      if (ideMcpUnlisten) return;
+      ideMcpUnlisten = await listen<{ reason?: string; changed?: string[]; extra?: unknown }>("ide-mcp-updated", async (e) => {
+        const reason = e.payload?.reason || "ide-mcp";
+        const changed = e.payload?.changed || [];
+        const extra = e.payload?.extra as { root?: string; romPath?: string; path?: string; map?: string; chr?: string; result?: ide.BuildResult } | undefined;
+        await this.syncFromIdeMcp(reason, extra?.root, extra, changed);
+        if (changed.includes("build")) {
+          try {
+            const result = extra?.result;
+            if (result) {
+              this.build = result;
+              if (result.success) this.sourceMap = result.source_map;
+            }
+          } catch {
+            /* refreshTree/projectGet already handled the project state */
+          }
+        }
+      });
     },
     async saveManifest() {
       if (!this.manifest) return;

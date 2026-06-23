@@ -15,6 +15,14 @@
         "tauri-bridge"
       ],
       "env": {}
+    },
+    "fc-ide": {
+      "type": "stdio",
+      "command": "/Users/sunmeng/workspace/fc-creative-mode/target/debug/fc",
+      "args": [
+        "ide-mcp"
+      ],
+      "env": {}
     }
   }
 }

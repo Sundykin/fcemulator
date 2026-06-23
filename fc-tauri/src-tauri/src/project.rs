@@ -1106,6 +1106,11 @@ impl ProjectState {
     fn set(&self, root: PathBuf) {
         *self.root.lock().unwrap() = Some(root);
     }
+    /// Set the active project root from non-command integrations such as the
+    /// embedded IDE MCP server.
+    pub fn set_active_root(&self, root: PathBuf) {
+        self.set(root);
+    }
     fn root(&self) -> Result<PathBuf, String> {
         self.root
             .lock()

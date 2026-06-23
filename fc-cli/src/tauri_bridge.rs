@@ -12,6 +12,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
 
 const SOCKET: &str = "/tmp/fc-tauri-mcp.sock";
+const IDE_SOCKET: &str = "/tmp/fc-tauri-ide-mcp.sock";
 
 /// One request/response round-trip over the plugin's line-delimited JSON socket.
 fn socket_call(command: &str, payload: Value) -> Result<Value, String> {
@@ -172,4 +173,72 @@ pub fn run() -> anyhow::Result<()> {
         out.flush()?;
     }
     Ok(())
+}
+
+/// Raw JSON-RPC stdio bridge to the IDE MCP socket hosted inside the running
+/// Tauri process. Unlike `tauri_bridge`, this does not execute JS or inspect the
+/// DOM; tool calls mutate the live IDE backend and the frontend receives events
+/// to refresh itself.
+pub fn run_ide_mcp() -> anyhow::Result<()> {
+    let stdin = std::io::stdin();
+    let stdout = std::io::stdout();
+    let reader = std::io::BufReader::new(stdin.lock());
+    let mut out = stdout.lock();
+    for line in reader.lines() {
+        let line = line?;
+        if line.trim().is_empty() {
+            continue;
+        }
+        let is_notification = serde_json::from_str::<Value>(&line)
+            .ok()
+            .and_then(|v| v.get("id").cloned())
+            .is_none();
+        if is_notification {
+            let _ = forward_notification_to_ide(&line);
+            continue;
+        }
+        match forward_to_ide(&line) {
+            Ok(resp) => {
+                writeln!(out, "{resp}")?;
+                out.flush()?;
+            }
+            Err(e) => {
+                let id = serde_json::from_str::<Value>(&line)
+                    .ok()
+                    .and_then(|v| v.get("id").cloned())
+                    .unwrap_or(Value::Null);
+                let resp = json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "error": {
+                        "code": -32000,
+                        "message": format!("connect {IDE_SOCKET}: {e} — is the fc-tauri app running?")
+                    }
+                });
+                writeln!(out, "{resp}")?;
+                out.flush()?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn forward_to_ide(line: &str) -> Result<String, String> {
+    let stream = UnixStream::connect(IDE_SOCKET).map_err(|e| e.to_string())?;
+    let mut w = stream.try_clone().map_err(|e| e.to_string())?;
+    w.write_all(line.as_bytes()).map_err(|e| e.to_string())?;
+    w.write_all(b"\n").map_err(|e| e.to_string())?;
+    w.flush().map_err(|e| e.to_string())?;
+    let mut reader = BufReader::new(stream);
+    let mut resp = String::new();
+    reader.read_line(&mut resp).map_err(|e| e.to_string())?;
+    Ok(resp.trim_end().to_string())
+}
+
+fn forward_notification_to_ide(line: &str) -> Result<(), String> {
+    let stream = UnixStream::connect(IDE_SOCKET).map_err(|e| e.to_string())?;
+    let mut w = stream.try_clone().map_err(|e| e.to_string())?;
+    w.write_all(line.as_bytes()).map_err(|e| e.to_string())?;
+    w.write_all(b"\n").map_err(|e| e.to_string())?;
+    w.flush().map_err(|e| e.to_string())
 }
