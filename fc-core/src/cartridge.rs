@@ -376,7 +376,7 @@ impl Cartridge {
     pub(crate) fn cpu_read_with_open_bus(&mut self, addr: u16, open_bus: u8) -> u8 {
         match addr {
             0x4018..=0x5FFF => self.cpu_read_expansion_with_open_bus(addr, open_bus),
-            0x6000..=0x7FFF => self.cpu_read_low(addr),
+            0x6000..=0x7FFF => self.cpu_read_low_with_open_bus(addr, open_bus),
             0x8000..=0xFFFF => self.cpu_read_high_with_open_bus(addr, open_bus),
             _ => self.cpu_peek(addr),
         }
@@ -389,7 +389,7 @@ impl Cartridge {
     pub(crate) fn cpu_peek_with_open_bus(&self, addr: u16, open_bus: u8) -> u8 {
         match addr {
             0x4018..=0x5FFF => self.cpu_peek_expansion_with_open_bus(addr, open_bus),
-            0x6000..=0x7FFF => self.cpu_peek_low(addr),
+            0x6000..=0x7FFF => self.cpu_peek_low_with_open_bus(addr, open_bus),
             0x8000..=0xFFFF => self.cpu_peek_high_with_open_bus(addr, open_bus),
             _ => 0,
         }
@@ -424,22 +424,22 @@ impl Cartridge {
             .map(|i| read_wrapped(&self.prg_rom, i, self.prg_rom_mask))
     }
 
-    fn cpu_read_low(&mut self, addr: u16) -> u8 {
+    fn cpu_read_low_with_open_bus(&mut self, addr: u16, open_bus: u8) -> u8 {
         let prg_ram_value = self.low_prg_ram_value(addr);
         if let Some(b) = self
             .mapper
-            .read_low_register_with_prg_ram(addr, prg_ram_value)
+            .read_low_register_with_open_bus(addr, prg_ram_value, open_bus)
         {
             return b;
         }
         self.low_prg_rom_value(addr).unwrap_or(prg_ram_value)
     }
 
-    fn cpu_peek_low(&self, addr: u16) -> u8 {
+    fn cpu_peek_low_with_open_bus(&self, addr: u16, open_bus: u8) -> u8 {
         let prg_ram_value = self.low_prg_ram_value(addr);
         if let Some(b) = self
             .mapper
-            .peek_low_register_with_prg_ram(addr, prg_ram_value)
+            .peek_low_register_with_open_bus(addr, prg_ram_value, open_bus)
         {
             return b;
         }

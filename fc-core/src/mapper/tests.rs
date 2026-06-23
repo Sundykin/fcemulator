@@ -18,6 +18,7 @@ fn watches_ppu_bus_matches_notify_a12_overrides() {
         (12, true),    // Mapper 12 MMC3 A12 IRQ
         (13, false),   // CPROM
         (15, false),   // 100-in-1 multicart
+        (16, false),   // Bandai FCG/LZ93D50
         (17, false),   // FFE F4xxx full mode
         (18, false),   // Jaleco SS88006
         (19, false),   // Namco 163
@@ -203,6 +204,7 @@ fn clocks_cpu_matches_cpu_clock_overrides() {
         (12, false),   // Mapper 12 uses PPU A12 edges
         (13, false),   // CPROM
         (15, false),   // 100-in-1 multicart
+        (16, true),    // Bandai FCG/LZ93D50 IRQ counter clocks per CPU cycle
         (17, true),    // FFE IRQ counter clocks per CPU cycle
         (18, true),    // Jaleco SS88006 IRQ counter clocks per CPU cycle
         (19, true),    // Namco 163 IRQ + expansion audio clock per CPU cycle
@@ -385,6 +387,7 @@ fn clocks_hblank_matches_hblank_clock_overrides() {
         (12, false),
         (13, false),
         (15, false),
+        (16, false),
         (17, false),
         (18, false),
         (19, false),
@@ -929,6 +932,73 @@ fn ffe_mapper17_full_mode_switches_8k_prg_and_1k_chr_registers() {
     m.write_register(0x8000, 0x2F);
     assert_eq!(m.prg_index(0x8004), 3 * 0x2000 + 4);
     assert_eq!(m.chr_index(0x0004), 0x12 * 0x0400 + 4);
+}
+
+#[test]
+fn bandai_mapper16_switches_banks_mirroring_irq_and_eeprom_bit() {
+    let mut m = Mapper::new(16, 32, 16, Mirroring::Horizontal, 0).expect("mapper 16");
+    assert_eq!(m.prg_index(0x8004), 0x0004);
+    assert_eq!(m.prg_index(0xC004), 31 * 0x4000 + 4);
+    assert_eq!(m.chr_index(0x1004), 0x0004);
+    assert_eq!(m.mirroring(), Mirroring::Vertical);
+
+    assert!(m.write_low_register(0x6000, 0x12));
+    assert!(m.write_low_register(0x6007, 0x1F));
+    assert!(m.write_low_register(0x6008, 0x0B));
+    assert_eq!(m.chr_index(0x0004), 0x12 * 0x0400 + 4);
+    assert_eq!(m.chr_index(0x1C04), 0x1F * 0x0400 + 4);
+    assert_eq!(m.prg_index(0x8004), 0x0B * 0x4000 + 4);
+    assert_eq!(m.prg_index(0xC004), 31 * 0x4000 + 4);
+
+    assert!(m.write_low_register(0x6009, 0x03));
+    assert_eq!(m.mirroring(), Mirroring::SingleScreenHigh);
+    assert!(m.write_low_register(0x6009, 0x01));
+    assert_eq!(m.mirroring(), Mirroring::Horizontal);
+
+    assert_eq!(
+        m.peek_low_register_with_open_bus(0x6000, 0x55, 0xFF),
+        Some(0xEF)
+    );
+    m.write_low_register(0x600D, 0x60);
+    m.write_low_register(0x600D, 0x20);
+    m.write_low_register(0x600D, 0x60);
+    assert_eq!(
+        m.read_low_register_with_open_bus(0x6000, 0x55, 0x00),
+        Some(0x10)
+    );
+
+    m.write_low_register(0x600B, 0x02);
+    m.write_low_register(0x600C, 0x00);
+    m.write_low_register(0x600A, 0x01);
+    m.cpu_clock();
+    assert!(!m.irq());
+    m.cpu_clock();
+    assert!(!m.irq());
+    m.cpu_clock();
+    assert!(m.irq());
+}
+
+#[test]
+fn bandai_mapper16_submapper_write_windows_and_fcg_irq_counter() {
+    let mut fcg = Mapper::new(16, 32, 16, Mirroring::Horizontal, 4).expect("mapper 16 sub4");
+    fcg.write_register(0x8008, 0x03);
+    assert_eq!(fcg.prg_index(0x8004), 0x0004);
+    assert!(fcg.write_low_register(0x6008, 0x03));
+    assert_eq!(fcg.prg_index(0x8004), 3 * 0x4000 + 4);
+
+    fcg.write_low_register(0x600B, 0x01);
+    fcg.write_low_register(0x600C, 0x00);
+    fcg.write_low_register(0x600A, 0x01);
+    fcg.cpu_clock();
+    assert!(!fcg.irq());
+    fcg.cpu_clock();
+    assert!(fcg.irq());
+
+    let mut lz93d50 = Mapper::new(16, 32, 16, Mirroring::Horizontal, 5).expect("mapper 16 sub5");
+    assert!(!lz93d50.write_low_register(0x6008, 0x04));
+    assert_eq!(lz93d50.prg_index(0x8004), 0x0004);
+    lz93d50.write_register(0x8008, 0x04);
+    assert_eq!(lz93d50.prg_index(0x8004), 4 * 0x4000 + 4);
 }
 
 #[test]

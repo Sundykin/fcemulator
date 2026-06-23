@@ -5,6 +5,7 @@
 //! such as MMC/VRC in their dedicated sibling modules.
 
 mod ave;
+mod bandai;
 mod core;
 mod discrete;
 mod irem;
@@ -25,6 +26,7 @@ mod unlicensed;
 mod waixing;
 
 pub use ave::{Bnrom, Nina01};
+pub use bandai::BandaiFcg;
 pub use core::{Axrom, Bf9096, Cnrom, Codemasters, ColorDreams, Gxrom, Nrom, Unrom};
 pub use discrete::{Mapper185, Mapper188, Mapper193, Mapper218};
 pub use irem::{IremG101, IremLrog017};

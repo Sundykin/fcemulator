@@ -14,6 +14,7 @@ macro_rules! dispatch {
             Mapper::Nina01($m) => $body,
             Mapper::Cprom($m) => $body,
             Mapper::Mapper15($m) => $body,
+            Mapper::BandaiFcg($m) => $body,
             Mapper::Mapper18($m) => $body,
             Mapper::Namco163($m) => $body,
             Mapper::Vrc6($m) => $body,
@@ -182,11 +183,27 @@ impl MapperOps for Mapper {
     fn read_low_register_with_prg_ram(&mut self, addr: u16, prg_ram_value: u8) -> Option<u8> {
         dispatch!(self, m => m.read_low_register_with_prg_ram(addr, prg_ram_value))
     }
+    fn read_low_register_with_open_bus(
+        &mut self,
+        addr: u16,
+        prg_ram_value: u8,
+        open_bus: u8,
+    ) -> Option<u8> {
+        dispatch!(self, m => m.read_low_register_with_open_bus(addr, prg_ram_value, open_bus))
+    }
     fn peek_low_register(&self, addr: u16) -> Option<u8> {
         dispatch!(self, m => m.peek_low_register(addr))
     }
     fn peek_low_register_with_prg_ram(&self, addr: u16, prg_ram_value: u8) -> Option<u8> {
         dispatch!(self, m => m.peek_low_register_with_prg_ram(addr, prg_ram_value))
+    }
+    fn peek_low_register_with_open_bus(
+        &self,
+        addr: u16,
+        prg_ram_value: u8,
+        open_bus: u8,
+    ) -> Option<u8> {
+        dispatch!(self, m => m.peek_low_register_with_open_bus(addr, prg_ram_value, open_bus))
     }
     fn read_expansion(&mut self, addr: u16) -> Option<u8> {
         dispatch!(self, m => m.read_expansion(addr))

@@ -114,6 +114,16 @@ pub trait MapperOps {
     fn read_low_register_with_prg_ram(&mut self, addr: u16, _prg_ram_value: u8) -> Option<u8> {
         self.read_low_register(addr)
     }
+    /// Optional mapper-owned low read with both the underlying PRG-RAM byte and
+    /// current CPU open-bus value. Serial devices often drive only a single bit.
+    fn read_low_register_with_open_bus(
+        &mut self,
+        addr: u16,
+        prg_ram_value: u8,
+        _open_bus: u8,
+    ) -> Option<u8> {
+        self.read_low_register_with_prg_ram(addr, prg_ram_value)
+    }
     /// Side-effect-free low-register peek.
     fn peek_low_register(&self, _addr: u16) -> Option<u8> {
         None
@@ -121,6 +131,15 @@ pub trait MapperOps {
     /// Side-effect-free low-register peek with the underlying PRG-RAM byte.
     fn peek_low_register_with_prg_ram(&self, addr: u16, _prg_ram_value: u8) -> Option<u8> {
         self.peek_low_register(addr)
+    }
+    /// Side-effect-free low-register peek with both PRG-RAM and open-bus value.
+    fn peek_low_register_with_open_bus(
+        &self,
+        addr: u16,
+        prg_ram_value: u8,
+        _open_bus: u8,
+    ) -> Option<u8> {
+        self.peek_low_register_with_prg_ram(addr, prg_ram_value)
     }
     /// Optional mapper-owned expansion-area read (`$4018..=$5FFF`).
     fn read_expansion(&mut self, _addr: u16) -> Option<u8> {
@@ -236,20 +255,20 @@ mod rambo1;
 mod vrc4;
 
 pub use basic::{
-    Action53, ActionEnterprises, AddrLatch16k, AddrLatchVariant, Axrom, Bandai74161, Bf9096, Bnrom,
-    Caltron41, Cnrom, Codemasters, ColorDreams, ColorDreams46, Cprom, FfeMapper, FfeMode, Gxrom,
-    IremG101, IremLrog017, IremTamS1, JalecoJf11_14, JalecoJf13, JalecoJf16, JalecoJfxx, Mapper103,
-    Mapper104, Mapper106, Mapper107, Mapper108, Mapper116, Mapper117, Mapper120, Mapper122,
-    Mapper142, Mapper15, Mapper151, Mapper156, Mapper170, Mapper175, Mapper177, Mapper18,
-    Mapper183, Mapper185, Mapper188, Mapper190, Mapper193, Mapper203, Mapper212, Mapper218,
-    Mapper222, Mapper226, Mapper230, Mapper233, Mapper234, Mapper235, Mapper240, Mapper241,
-    Mapper244, Mapper246, Mapper253, Mapper29, Mapper31, Mapper35, Mapper36, Mapper40, Mapper42,
-    Mapper43, Mapper50, Mapper51, Mapper57, Mapper60, Mapper63, Mapper65, Mapper67, Mapper72,
-    Mapper73, Mapper79, Mapper8, Mapper81, Mapper83, Mapper91, Mapper92, Mapper96,
-    Namco108Mapper154, Namco108Mapper206, Namco108Mapper95, Namco118, Nina01, Nina03_06, Nrom,
-    Ntdec112, Sachen133, Sachen149, SachenSa0161m, Subor166, SuborVariant, Sunsoft184, Sunsoft4,
-    Sunsoft89, TaitoTc0190, TaitoX1005, TaitoX1017, TxcMapper, TxcVariant, UnlPci556, Unrom,
-    UnromVariant, UnromVariantMapper, Vrc1,
+    Action53, ActionEnterprises, AddrLatch16k, AddrLatchVariant, Axrom, Bandai74161, BandaiFcg,
+    Bf9096, Bnrom, Caltron41, Cnrom, Codemasters, ColorDreams, ColorDreams46, Cprom, FfeMapper,
+    FfeMode, Gxrom, IremG101, IremLrog017, IremTamS1, JalecoJf11_14, JalecoJf13, JalecoJf16,
+    JalecoJfxx, Mapper103, Mapper104, Mapper106, Mapper107, Mapper108, Mapper116, Mapper117,
+    Mapper120, Mapper122, Mapper142, Mapper15, Mapper151, Mapper156, Mapper170, Mapper175,
+    Mapper177, Mapper18, Mapper183, Mapper185, Mapper188, Mapper190, Mapper193, Mapper203,
+    Mapper212, Mapper218, Mapper222, Mapper226, Mapper230, Mapper233, Mapper234, Mapper235,
+    Mapper240, Mapper241, Mapper244, Mapper246, Mapper253, Mapper29, Mapper31, Mapper35, Mapper36,
+    Mapper40, Mapper42, Mapper43, Mapper50, Mapper51, Mapper57, Mapper60, Mapper63, Mapper65,
+    Mapper67, Mapper72, Mapper73, Mapper79, Mapper8, Mapper81, Mapper83, Mapper91, Mapper92,
+    Mapper96, Namco108Mapper154, Namco108Mapper206, Namco108Mapper95, Namco118, Nina01, Nina03_06,
+    Nrom, Ntdec112, Sachen133, Sachen149, SachenSa0161m, Subor166, SuborVariant, Sunsoft184,
+    Sunsoft4, Sunsoft89, TaitoTc0190, TaitoX1005, TaitoX1017, TxcMapper, TxcVariant, UnlPci556,
+    Unrom, UnromVariant, UnromVariantMapper, Vrc1,
 };
 pub use expansion_mappers::{Fme7, Namco163, Vrc6, Vrc6Variant, Vrc7};
 pub use mmc1::Mmc1;
@@ -274,6 +293,7 @@ pub enum Mapper {
     Nina01(Nina01),
     Cprom(Cprom),
     Mapper15(Mapper15),
+    BandaiFcg(BandaiFcg),
     Mapper18(Mapper18),
     Namco163(Namco163),
     Vrc6(Vrc6),

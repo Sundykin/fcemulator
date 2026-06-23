@@ -29,6 +29,7 @@ impl Mapper {
             12 => Mapper::Mmc3(Mmc3::new_12(prg_16k, chr_8k, mirroring)),
             13 => Mapper::Cprom(Cprom::new()),
             15 => Mapper::Mapper15(Mapper15::new()),
+            16 => Mapper::BandaiFcg(BandaiFcg::new(prg_16k, chr_8k, submapper)),
             17 => Mapper::FfeMapper(FfeMapper::new(prg_16k, chr_8k, FfeMode::Mapper17)),
             18 => Mapper::Mapper18(Mapper18::new(prg_16k, chr_8k)),
             19 => Mapper::Namco163(Namco163::new(prg_16k, chr_8k, mirroring)),
