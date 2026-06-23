@@ -216,6 +216,61 @@ impl MapperOps for Mapper108 {
 }
 
 // ============================================================================
+// Mapper 190 — Magic Kid GooGoo
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Mapper190 {
+    prg_16k_total: usize,
+    prg_bank: u8,
+    chr_2k: [u8; 4],
+}
+
+impl Mapper190 {
+    pub(in crate::mapper) fn new(prg_16k: usize) -> Self {
+        Mapper190 {
+            prg_16k_total: prg_16k.max(1),
+            prg_bank: 0,
+            chr_2k: [0; 4],
+        }
+    }
+}
+
+impl MapperOps for Mapper190 {
+    fn prg_index(&self, addr: u16) -> usize {
+        let bank = if addr < 0xC000 {
+            self.prg_bank as usize
+        } else {
+            0
+        };
+        (bank % self.prg_16k_total) * 0x4000 + (addr as usize & 0x3FFF)
+    }
+
+    fn chr_index(&self, addr: u16) -> usize {
+        let slot = ((addr & 0x1FFF) / 0x0800) as usize;
+        (self.chr_2k[slot] as usize) * 0x0800 + (addr as usize & 0x07FF)
+    }
+
+    fn write_register(&mut self, addr: u16, value: u8) {
+        match addr {
+            0x8000..=0x9FFF => self.prg_bank = value & 0x07,
+            0xA000..=0xBFFF => self.chr_2k[(addr & 0x03) as usize] = value,
+            0xC000..=0xDFFF => self.prg_bank = 0x08 | (value & 0x07),
+            _ => {}
+        }
+    }
+
+    fn mirroring(&self) -> Mirroring {
+        Mirroring::Vertical
+    }
+
+    fn reset(&mut self, _soft: bool) {
+        self.prg_bank = 0;
+        self.chr_2k = [0; 4];
+    }
+}
+
+// ============================================================================
 // Mapper 170 — low-address protection reads
 // ============================================================================
 
@@ -255,6 +310,37 @@ mod tests {
         mapper.write_register(0xF000, 0x05);
         assert_eq!(mapper.low_prg_index(0x7FFF), Some(5 * 0x2000 + 0x1FFF));
         assert_eq!(mapper.mirroring(), Mirroring::Vertical);
+    }
+
+    #[test]
+    fn mapper190_switches_prg16_and_four_2k_chr_windows() {
+        let mut mapper = Mapper190::new(16);
+
+        assert_eq!(mapper.prg_index(0x8004), 0x0004);
+        assert_eq!(mapper.prg_index(0xC004), 0x0004);
+        assert_eq!(mapper.chr_index(0x1804), 0x0004);
+
+        mapper.write_register(0x8000, 0x06);
+        assert_eq!(mapper.prg_index(0x8004), 6 * 0x4000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 0x0004);
+
+        mapper.write_register(0xC000, 0x03);
+        assert_eq!(mapper.prg_index(0x8004), 11 * 0x4000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 0x0004);
+
+        mapper.write_register(0xA000, 0x02);
+        mapper.write_register(0xA001, 0x07);
+        mapper.write_register(0xA002, 0x0A);
+        mapper.write_register(0xA003, 0x3F);
+        assert_eq!(mapper.chr_index(0x0004), 2 * 0x0800 + 4);
+        assert_eq!(mapper.chr_index(0x0804), 7 * 0x0800 + 4);
+        assert_eq!(mapper.chr_index(0x1004), 10 * 0x0800 + 4);
+        assert_eq!(mapper.chr_index(0x1804), 63 * 0x0800 + 4);
+        assert_eq!(mapper.mirroring(), Mirroring::Vertical);
+
+        mapper.reset(true);
+        assert_eq!(mapper.prg_index(0x8004), 0x0004);
+        assert_eq!(mapper.chr_index(0x1804), 0x0004);
     }
 }
 

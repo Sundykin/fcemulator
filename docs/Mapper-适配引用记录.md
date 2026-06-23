@@ -273,6 +273,8 @@
 | 188 | `basic/discrete.rs:69-127,209-224` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/karaoke.c` | 23-63 | FCEUmm mapper 188 cross-check；同样记录 latch 为 0 时的特殊 bank 与 bit4 选择低/高 PRG block |
 | 189 | `mmc3.rs:18-29,198-203,439-440,760-762,918-920,1064-1086` | `/Users/sunmeng/workspace/fc/fceux/src/boards/189.cpp` | 24-43 | MMC3 PRG32 outer latch、`V | (V >> 4)` 低区写、power reset |
 | 189 | `mmc3.rs:18-29,198-203,439-440,760-762,918-920,1064-1086` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/189.c` | 24-43 | FCEUmm mapper 189 cross-check；同样记录 `$4120-$7FFF` 写窗口与 `setprg32` |
+| 190 | `special.rs:219-272,316-345; mapper.rs:229-242,253-367; factory.rs:163; tests.rs:127,304,484` | `/Users/sunmeng/workspace/fc/fceux/src/boards/190.cpp` | 24-85 | Magic Kid GooGoo：8KB WRAM at `$6000-$7FFF`、`$8000/$C000` PRG16 latch、`$A000-$BFFF` 四个 CHR2 latch、固定垂直 mirroring |
+| 190 | `special.rs:219-272,316-345; mapper.rs:229-242,253-367; factory.rs:163; tests.rs:127,304,484` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/190.c` | 24-90 | FCEUmm mapper 190 cross-check；power/reset 清零 PRG/CHR latch，CHR register 保存完整 byte |
 | 191 | `mmc3.rs:240-244,1109-1125` | `/Users/sunmeng/workspace/fc/fceux/src/boards/mmc3.cpp` | 975-988 | Mapper 191 CHR bank bit7 选择 2KB CHR-RAM；当前复用通用 `ChrRamWindow` |
 | 191 | `mmc3.rs:240-244,1109-1125` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Mmc3Variants/MMC3_ChrRam.h` | 5-38 | `MMC3_ChrRam(0x80, 0xFF, 2)` 参数模型 cross-check |
 | 191 | `mmc3.rs:240-244,1109-1125` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/191.c` | 30-39,42-63,66-72 | 新 FCEUmm mapper 191 submapper/PRG low-register 行为记录；当前先落地 FCEUX/Mesen2 CHR-RAM first pass |
@@ -390,6 +392,7 @@
 - `Mapper185::chr_enabled()` / `chr_read()` 对应 FCEUX/FCEUmm `185.cpp`/`185.c:45-50`；当前用 mapper-owned read override 返回 `0xFF` 来表达 dummy CHR page。
 - `Mapper188::write_register()` / `read_low_register()` 对应 FCEUX/FCEUmm `karaoke.cpp`/`karaoke.c:26-52`；PRG latch 为 0 时选择 `7 + prg16/16`，bit4 控制低 8 个或高 8 个 PRG16 bank。
 - `Mmc3OuterBank::Mapper189` 对应 FCEUX/FCEUmm `189.cpp`/`189.c:24-43`；低区写保存 `value | (value >> 4)`，PRG 走 32KB outer bank，CHR 和 IRQ 继续复用普通 MMC3。
+- `Mapper190::write_register()` / `chr_index()` / `prg_index()` 对应 FCEUX/FCEUmm `190.cpp`/`190.c:24-90`；本项目复用 cartridge PRG-RAM 路径提供 `$6000-$7FFF` WRAM，高区实现 PRG16 和四个 CHR2 latch。
 - `Mmc3::new_191()` 复用 `ChrRamWindow`，对应 FCEUX `mmc3.cpp:977-987` 与 Mesen2 `MapperFactory.cpp:464` 的 `MMC3_ChrRam(0x80,0xFF,2)`；FCEUmm `191.c` 新增的 submapper/PRG low-register 细节留作后续精修。
 - `Mmc3ChrLayout::Mapper165` 对应 FCEUX/FCEUmm `mmc3.cpp`/`mmc3.c:918-973,969-1024` 与 Mesen2 `MMC3_165.h:5-54`；本项目用现有 PPU bus watcher 同时驱动 MMC3 IRQ 和 MMC2-style 4KB CHR latch，寄存器值 0 时路由到 mapper-owned 4KB CHR-RAM。
 - `Mapper193::write_low_register()` / `chr_index()` / `prg_index()` 对应 FCEUX/FCEUmm `193.cpp`/`193.c:38-59`；低区四个寄存器直接控制 PRG8 与 CHR4/2/2。
