@@ -42,9 +42,9 @@
 - `fc-core/src/mapper/basic/namco.rs:1-356`
   - 新增 Mapper 95 / Namco 108 Rev. B、Mapper 154 / Namco 108 单屏变体与 Mapper 206 / Namco 108 子集。
   - 覆盖 Namco108 风格高区寄存器、固定 PRG/CHR mode、CHR register bit5 到 per-nametable CIRAM A10 映射、Mapper 154 的 command bit6 单屏 mirroring，以及 Mapper 206 的无 IRQ PRG8/CHR2+1 bank mask。
-- `fc-core/src/mapper/basic/special.rs:113-516`
-  - 新增 Mapper 104 / Pegasus 5-in-1、Mapper 108 / FDS conversion、Mapper 175 delayed latch 与 Mapper 177 / Henggedianzi XH-32A。
-  - 覆盖 Mapper 104 的双 16KB PRG register、固定 CHR8、固定垂直 mirroring、普通 `$6000-$7FFF` WRAM fallback，Mapper 108 的 `$6000-$7FFF` switchable PRG-ROM window、固定最后 32KB PRG-ROM、固定 CHR8 和 `$8000-$8FFF`/`$F000-$FFFF` 写窗口，Mapper 175 的 `$FFFC` read side-effect 提交 PRG latch，以及 Mapper 177 的 PRG32 latch/固定 CHR8/WRAM fallback/mirroring bit。
+- `fc-core/src/mapper/basic/special.rs:114-382,547-663`
+  - 新增 Mapper 104 / Pegasus 5-in-1、Mapper 108 / FDS conversion、Mapper 168 / Racermate Challenge II、Mapper 175 delayed latch、Mapper 177 / Henggedianzi XH-32A 与 Mapper 190 / Magic Kid GooGoo。
+  - 覆盖 Mapper 104 的双 16KB PRG register、固定 CHR8、固定垂直 mirroring、普通 `$6000-$7FFF` WRAM fallback，Mapper 108 的 `$6000-$7FFF` switchable PRG-ROM window、固定最后 32KB PRG-ROM、固定 CHR8 和 `$8000-$8FFF`/`$F000-$FFFF` 写窗口，Mapper 168 的 PRG16/CHR4 bank、64KB mapper-owned CHR-RAM、CPU-cycle IRQ 和 header mirroring，Mapper 175 的 `$FFFC` read side-effect 提交 PRG latch，以及 Mapper 177 的 PRG32 latch/固定 CHR8/WRAM fallback/mirroring bit。
 - `fc-core/src/mapper/basic/opencorp.rs:1-121`
   - 新增 Mapper 156 / OpenCorp Daou306。
   - 覆盖 16KB PRG bank、固定最后 16KB PRG、8 个 1KB CHR low/high register、`$C014` mirroring register 与 reset hook。
@@ -165,6 +165,9 @@
 | 165 | `mmc3.rs:15,298-306,457-491,591-592,1078-1085,1412-1426,1457-1459,1799-1853; factory.rs:145; tests.rs:107,283,464` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Mmc3Variants/MMC3_165.h` | 5-54 | Mesen2 mapper 165：两个 4KB latch、CHR page size/CHR-RAM size、VRAM address hook 与 latch 地址掩码 cross-check |
 | 165 | `mmc3.rs:15,298-306,457-491,591-592,1078-1085,1412-1426,1457-1459,1799-1853; factory.rs:145; tests.rs:107,283,464` | `/Users/sunmeng/workspace/fc/nestopia/source/core/board/NstBoard.hpp` | 589-590 | Nestopia WAIXING_SH2 mapper 165 metadata：512KB PRG、256KB CHR、可选 WRAM、4KB CHR-RAM |
 | 165 | `mmc3.rs:15,298-306,457-491,591-592,1078-1085,1412-1426,1457-1459,1799-1853; factory.rs:145; tests.rs:107,283,464` | `/Users/sunmeng/workspace/fc/nestopia/source/core/board/NstBoard.cpp` | 2799-2810 | Nestopia mapper 165 board name/WRAM variant selection cross-check |
+| 168 | `special.rs:273-382; mapper.rs:270,361; factory.rs:156; dispatch.rs:74; tests.rs:121,310,505,1065-1089` | `/Users/sunmeng/workspace/fc/fceux/src/boards/168.cpp` | 33-42,48-56,68-77 | Mapper 168 / Racermate Challenge II：64KB CHR-RAM、低 4KB CHR 固定 bank 0、高 4KB CHR 由 `reg & 0x0F` 选择、低 16KB PRG 由 `reg >> 6` 选择、高 16KB 固定末 bank；FCEUX 仅 `$B000` 写入 reg |
+| 168 | `special.rs:273-382; mapper.rs:270,361; factory.rs:156; dispatch.rs:74; tests.rs:121,310,505,1065-1089` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/168.c` | 36-45,51-59,71-80 | FCEUmm mapper 168 cross-check；同源 PRG16/CHR4/64KB CHR-RAM，同样记录 `$B000` 写窗口 |
+| 168 | `special.rs:273-382; mapper.rs:270,361; factory.rs:156; dispatch.rs:74; tests.rs:121,310,505,1065-1089` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Unlicensed/Racermate.h` | 11-17,32-55 | Mesen2 Racermate cross-check；补充 CPU clock hook、1024 周期 IRQ、`$C000-$FFFF` IRQ reload/ack，以及更宽的 `$8000-$BFFF` bank register 窗口 |
 | 64 | `rambo1.rs:1-309` | `/Users/sunmeng/workspace/fc/nestopia/source/core/board/NstBoardTengenRambo1.cpp` | 75-96, 190-225, 233-344 | RAMBO-1 register map、IRQ unit、PRG/CHR update、write handlers |
 | 64 | `rambo1.rs:1-309` | `/Users/sunmeng/workspace/fc/nestopia/source/core/board/NstBoardTengenRambo1.hpp` | 82-106 | CPU M2 divisor、A12 filter、IRQ delay/source constants |
 | 158 | `rambo1.rs:17-20,70-73,129-183,209-273,371-408` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/tengen.c` | 21-23,101-123,126-174,198-220 | Mapper 158 复用 RAMBO-1，CHR write wrapper 将 bank bit7 缓存为 per-nametable page，并忽略普通 mirroring 写 |
@@ -440,6 +443,7 @@
 - `TaitoX1017::chr_index()` 的 pattern half swap 对应 FCEUX `82.cpp:37-50` 与 FCEUmm `82_552.c:45-58`。
 - `Mapper81::write_register()` / `prg_index()` / `chr_index()` 对应 FCEUmm `81.c:24-31`；本项目显式保存地址 latch 和数据 latch，以等价表达 FCEUmm `Latch_Init` 提供的 `latch.addr` / `latch.data`。
 - `Mapper104::write_register()` / `prg_index()` 对应 FCEUmm `104.c:35-69,77-91`；`setprg8r(0x10,0x6000,0)` 由本项目 Cartridge 的普通低区 PRG-RAM fallback 提供，mapper 内只保存两个 PRG16 register 并固定 vertical mirroring。
+- `Mapper168::write_register()` / `chr_read()` / `chr_write()` / `cpu_clock()` 对应 FCEUX/FCEUmm `168.cpp`/`168.c:33-42,48-56,68-77` 与 Mesen2 `Racermate.h:11-17,32-55`；本项目按 FCEUX/FCEUmm 的 PRG/CHR/CHR-RAM 行为，并补入 Mesen2 的 CPU-cycle IRQ 与 `$C000-$FFFF` reload/ack。
 - `Mapper175::read_register()` 对应 FCEUX/FCEUmm `175.cpp`/`175.c:54-59`；本项目用高区 read side-effect hook 在读 `$FFFC` 时提交 `committed_prg`，peek 路径保持无副作用。
 - `Mapper177::write_register()` / `prg_index()` 对应 FCEUX/FCEUmm `177.cpp`/`177.c:34-53`；参考中的 `$6000-$7FFF` WRAM mapping 继续由 Cartridge 默认低区 PRG-RAM fallback 提供。
 - `MapperOps::read_expansion_with_open_bus()` / `peek_expansion_with_open_bus()` 是为 TXC/Sachen 低寄存器读增加的 open-bus aware 钩子；默认仍回落到旧 `read_expansion()` / `peek_expansion()`，现有 mapper 行为不变。
@@ -470,6 +474,7 @@
 - 同批替换 `fc-core/src/mapper/basic/discrete.rs` 里 Mapper 185 / 188 / 193 / 218 的新增段，以及 `fc-core/src/mapper/mmc3.rs` 里 Mapper187 / Mapper189 / Mapper191 / Mapper196 / Mapper197 / Mapper198 / Mapper208 / Mapper245 / Mapper254 的 `Mmc3OuterBank` / `Mmc3ChrLayout` 分支、构造、低区写、扩展区读写、低区读、reset 和测试段。
 - 同批替换 `fc-core/src/mapper/basic/irq.rs` 里 FFE Mapper6/17 新增段。
 - 同批替换 `fc-core/src/mapper/basic/konami.rs` 的 VRC1 段、`fc-core/src/mapper/basic/jy.rs` 的 Mapper35/91 段、`fc-core/src/mapper/basic/sl12.rs` 的 Mapper116 段、`fc-core/src/mapper/basic/waixing.rs` 的 Mapper253 段、`fc-core/src/mapper/vrc4.rs` 的 VRC2/VRC4 段、`fc-core/src/mapper/rambo1.rs` 的 Mapper64/158 段，`fc-core/src/mapper/basic/taito.rs` 的 Mapper48 段，以及 `fc-core/src/mapper/mmc3.rs` 的 Mapper37/44/45/47/52/76/119 变体段。
-- 再处理 `fc-core/src/mapper.rs` 里 Mapper 43/60/75/76/83/91/106/183/212/222/235 的导出、枚举、构造和 dispatch 分支。
+- 同批替换 `fc-core/src/mapper/basic/special.rs` 里 Mapper168 的新增段，并同步检查 `MapperOps::has_chr_read` / `chr_read` / `chr_write` / `cpu_clock` 是否仍有使用者。
+- 再处理 `fc-core/src/mapper.rs` 里 Mapper 43/60/75/76/83/91/106/168/183/212/222/235 的导出、枚举、构造和 dispatch 分支。
 - 若替换 Mapper91，请同步检查 `MapperOps::hblank_clock`、`Cartridge::mapper_clocks_hblank` 与 `Bus::clock_ppu_dot()` 的 HBlank hook 是否仍有使用者。
 - 最后检查 `fc-core/src/cartridge.rs` 的 open-bus aware 读钩子是否仍被其他 mapper 使用；如果无使用者，可收窄接口。

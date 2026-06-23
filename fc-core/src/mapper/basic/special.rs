@@ -1,5 +1,5 @@
 use crate::mapper::bank::{chr_8k, prg_8k_at};
-use crate::mapper::MapperOps;
+use crate::mapper::{ChrAccess, MapperOps};
 use crate::types::Mirroring;
 use serde::{Deserialize, Serialize};
 
@@ -271,6 +271,117 @@ impl MapperOps for Mapper190 {
 }
 
 // ============================================================================
+// Mapper 168 — Racermate Challenge II
+//
+// References:
+// - FCEUX `src/boards/168.cpp:33-42,48-56,68-77`
+// - FCEUmm `src/boards/168.c:36-45,51-59,71-80`
+// - Mesen2 `Core/NES/Mappers/Unlicensed/Racermate.h:11-17,32-55`
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Mapper168 {
+    prg_16k_total: usize,
+    reg: u8,
+    irq_counter: u16,
+    irq_pending: bool,
+    chr_ram: Vec<u8>,
+    mirroring: Mirroring,
+}
+
+impl Mapper168 {
+    pub(in crate::mapper) fn new(prg_16k: usize, mirroring: Mirroring) -> Self {
+        Mapper168 {
+            prg_16k_total: prg_16k.max(1),
+            reg: 0,
+            irq_counter: 0,
+            irq_pending: false,
+            chr_ram: vec![0; 64 * 1024],
+            mirroring,
+        }
+    }
+
+    fn chr_ram_index(&self, addr: u16) -> usize {
+        let bank = if addr < 0x1000 {
+            0
+        } else {
+            (self.reg & 0x0F) as usize
+        };
+        (bank * 0x1000 + (addr as usize & 0x0FFF)) % self.chr_ram.len()
+    }
+}
+
+impl MapperOps for Mapper168 {
+    fn prg_index(&self, addr: u16) -> usize {
+        let bank = if addr < 0xC000 {
+            (self.reg >> 6) as usize
+        } else {
+            self.prg_16k_total - 1
+        };
+        (bank % self.prg_16k_total) * 0x4000 + (addr as usize & 0x3FFF)
+    }
+
+    fn chr_index(&self, addr: u16) -> usize {
+        self.chr_ram_index(addr)
+    }
+
+    fn chr_read(&self, addr: u16, _access: ChrAccess) -> Option<u8> {
+        Some(self.chr_ram[self.chr_ram_index(addr)])
+    }
+
+    fn has_chr_read(&self) -> bool {
+        true
+    }
+
+    fn chr_write(&mut self, addr: u16, value: u8) -> bool {
+        let index = self.chr_ram_index(addr);
+        self.chr_ram[index] = value;
+        true
+    }
+
+    fn write_register(&mut self, addr: u16, value: u8) {
+        match addr & 0xC000 {
+            0x8000 => self.reg = value,
+            0xC000 => {
+                self.irq_counter = 1024;
+                self.irq_pending = false;
+            }
+            _ => {}
+        }
+    }
+
+    fn mirroring(&self) -> Mirroring {
+        self.mirroring
+    }
+
+    fn cpu_clock(&mut self) {
+        self.irq_counter = self.irq_counter.wrapping_sub(1);
+        if self.irq_counter == 0 {
+            self.irq_counter = 1024;
+            self.irq_pending = true;
+        }
+    }
+
+    fn clocks_cpu(&self) -> bool {
+        true
+    }
+
+    fn irq(&self) -> bool {
+        self.irq_pending
+    }
+
+    fn clear_irq(&mut self) {
+        self.irq_pending = false;
+    }
+
+    fn reset(&mut self, _soft: bool) {
+        self.reg = 0;
+        self.irq_counter = 0;
+        self.irq_pending = false;
+    }
+}
+
+// ============================================================================
 // Mapper 170 — low-address protection reads
 // ============================================================================
 
@@ -341,6 +452,62 @@ mod tests {
         mapper.reset(true);
         assert_eq!(mapper.prg_index(0x8004), 0x0004);
         assert_eq!(mapper.chr_index(0x1804), 0x0004);
+    }
+
+    #[test]
+    fn mapper168_switches_prg16_and_upper_chr_ram_bank() {
+        let mut mapper = Mapper168::new(8, Mirroring::Vertical);
+
+        assert_eq!(mapper.mirroring(), Mirroring::Vertical);
+        assert!(mapper.has_chr_read());
+        assert_eq!(mapper.prg_index(0x8004), 0x0004);
+        assert_eq!(mapper.prg_index(0xC004), 7 * 0x4000 + 4);
+        assert_eq!(mapper.chr_index(0x0004), 0x0004);
+        assert_eq!(mapper.chr_index(0x1004), 0x0004);
+
+        assert!(mapper.chr_write(0x0004, 0x12));
+        assert_eq!(mapper.chr_read(0x1004, ChrAccess::Default), Some(0x12));
+        assert!(mapper.chr_write(0x1004, 0x34));
+        assert_eq!(mapper.chr_read(0x0004, ChrAccess::Default), Some(0x34));
+        assert_eq!(mapper.chr_read(0x1004, ChrAccess::Default), Some(0x34));
+
+        mapper.write_register(0xB000, 0xC5);
+        assert_eq!(mapper.prg_index(0x8004), 3 * 0x4000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 7 * 0x4000 + 4);
+        assert_eq!(mapper.chr_index(0x0004), 0x0004);
+        assert_eq!(mapper.chr_index(0x1004), 5 * 0x1000 + 4);
+        assert_eq!(mapper.chr_read(0x0004, ChrAccess::Default), Some(0x34));
+        assert_eq!(mapper.chr_read(0x1004, ChrAccess::Default), Some(0x00));
+
+        mapper.reset(true);
+        assert_eq!(mapper.prg_index(0x8004), 0x0004);
+        assert_eq!(mapper.chr_index(0x1004), 0x0004);
+    }
+
+    #[test]
+    fn mapper168_clocks_cpu_irq_like_racermate() {
+        let mut mapper = Mapper168::new(8, Mirroring::Horizontal);
+
+        assert!(mapper.clocks_cpu());
+        assert!(!mapper.irq());
+
+        mapper.write_register(0xC000, 0);
+        for _ in 0..1023 {
+            mapper.cpu_clock();
+        }
+        assert!(!mapper.irq());
+
+        mapper.cpu_clock();
+        assert!(mapper.irq());
+
+        mapper.clear_irq();
+        assert!(!mapper.irq());
+
+        mapper.write_register(0xFFFF, 0);
+        for _ in 0..1024 {
+            mapper.cpu_clock();
+        }
+        assert!(mapper.irq());
     }
 }
 

@@ -153,6 +153,7 @@ impl Mapper {
             165 => Mapper::Mmc3(Mmc3::new_165(prg_16k, chr_8k, mirroring)),
             166 => Mapper::Subor166(Subor166::new(SuborVariant::Mapper166)),
             167 => Mapper::Subor166(Subor166::new(SuborVariant::Mapper167)),
+            168 => Mapper::Mapper168(Mapper168::new(prg_16k, mirroring)),
             170 => Mapper::Mapper170(Mapper170::new(mirroring)),
             172 => Mapper::TxcMapper(TxcMapper::new(prg_16k, chr_8k, TxcVariant::Mapper172)),
             173 => Mapper::TxcMapper(TxcMapper::new(prg_16k, chr_8k, TxcVariant::Mapper173)),

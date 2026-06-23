@@ -121,6 +121,7 @@ fn watches_ppu_bus_matches_notify_a12_overrides() {
         (153, false),  // Bandai FCG with SRAM
         (154, false),  // Namco 108 mapper 154
         (155, false),  // MMC1 mapper 155
+        (168, false),  // Racermate CPU IRQ; no PPU-bus hook
         (170, false),  // Mapper 170
         (172, false),  // TXC 22211B
         (173, false),  // TXC 22211C
@@ -309,6 +310,7 @@ fn clocks_cpu_matches_cpu_clock_overrides() {
         (153, true),   // Bandai FCG IRQ counter clocks per CPU cycle
         (154, false),  // Namco 108 mapper 154
         (155, false),  // MMC1 mapper 155
+        (168, true),   // Racermate IRQ counter clocks per CPU cycle
         (170, false),  // Mapper 170
         (172, false),  // TXC 22211B
         (173, false),  // TXC 22211C
@@ -503,6 +505,7 @@ fn clocks_hblank_matches_hblank_clock_overrides() {
         (155, false),
         (166, false),
         (167, false),
+        (168, false),
         (170, false),
         (172, false),
         (173, false),
@@ -1057,6 +1060,32 @@ fn bandai_mapper159_uses_24c01_eeprom_and_high_register_window() {
         mapper.read_low_register_with_open_bus(0x6000, 0x55, 0x00),
         Some(0x10)
     );
+}
+
+#[test]
+fn mapper168_racermate_switches_banks_and_clocks_irq() {
+    let mut mapper = Mapper::new(168, 8, 0, Mirroring::Horizontal, 0).expect("mapper 168");
+    assert!(mapper.clocks_cpu());
+    assert_eq!(mapper.mirroring(), Mirroring::Horizontal);
+    assert_eq!(mapper.prg_index(0x8004), 0x0004);
+    assert_eq!(mapper.prg_index(0xC004), 7 * 0x4000 + 4);
+
+    assert!(mapper.chr_write(0x1004, 0x34));
+    assert_eq!(mapper.chr_read(0x1004, ChrAccess::Default), Some(0x34));
+    mapper.write_register(0xB000, 0xC5);
+    assert_eq!(mapper.prg_index(0x8004), 3 * 0x4000 + 4);
+    assert_eq!(mapper.chr_index(0x1004), 5 * 0x1000 + 4);
+    assert_eq!(mapper.chr_read(0x1004, ChrAccess::Default), Some(0x00));
+
+    mapper.write_register(0xC000, 0);
+    for _ in 0..1023 {
+        mapper.cpu_clock();
+    }
+    assert!(!mapper.irq());
+    mapper.cpu_clock();
+    assert!(mapper.irq());
+    mapper.write_register(0xFFFF, 0);
+    assert!(!mapper.irq());
 }
 
 #[test]
