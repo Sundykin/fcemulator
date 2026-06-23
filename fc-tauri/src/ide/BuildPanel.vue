@@ -11,12 +11,15 @@ const emu = useEmuStore();
 const tab = ref<"diagnostics" | "health" | "log">("diagnostics");
 
 type HealthLevel = "ok" | "warn" | "fail";
+type HealthAction = "saveAll" | "repairBindings" | "build" | "run";
 interface HealthItem {
   key: string;
   label: string;
   value: string;
   level: HealthLevel;
   detail?: string;
+  action?: HealthAction;
+  actionLabel?: string;
 }
 
 function jump(d: Diagnostic) {
@@ -61,9 +64,72 @@ const activeCollision = computed(() => {
   const blocked = map.collision.reduce((sum, value) => sum + (value ? 1 : 0), 0);
   return { total: map.w * map.h, actual: map.collision.length, blocked };
 });
+const canRepairBindings = computed(() => !!store.manifest?.maps.length && !!store.manifest?.chr.length);
+const expectedBuildPath = computed(() => (store.build?.success && store.build.output ? `${store.root}/${store.build.output}` : ""));
+const previewMatchesBuild = computed(() => !!expectedBuildPath.value && emu.romPath === expectedBuildPath.value);
 
 function levelRank(level: HealthLevel): number {
   return level === "fail" ? 2 : level === "warn" ? 1 : 0;
+}
+
+async function repairMapBindings() {
+  const manifest = store.manifest;
+  if (!manifest) return;
+  const chrFallback = store.chr?.path || manifest.chr[0] || "";
+  if (!chrFallback) {
+    store.status = "没有可绑定的 CHR 资源";
+    return;
+  }
+  manifest.map_chr = manifest.map_chr || {};
+  const validMaps = new Set(manifest.maps);
+  const validChr = new Set(manifest.chr);
+  for (const key of Object.keys(manifest.map_chr)) {
+    if (!validMaps.has(key) || !validChr.has(manifest.map_chr[key])) delete manifest.map_chr[key];
+  }
+  for (const mapPath of manifest.maps) {
+    if (!manifest.map_chr[mapPath]) manifest.map_chr[mapPath] = chrFallback;
+  }
+  await store.saveManifest();
+  store.mapChrBindings = { ...(manifest.map_chr || {}) };
+  if (store.map) {
+    await store.bindChrToMap(manifest.map_chr[store.map.path] || chrFallback, false);
+  }
+  store.status = "已修复地图 CHR 绑定";
+}
+
+async function buildProject() {
+  await store.build_();
+  tab.value = "health";
+}
+
+async function runProject() {
+  if (!store.build?.success || !store.build.output) {
+    await store.build_();
+  }
+  if (store.build?.success && store.build.output) {
+    await emu.openPath(`${store.root}/${store.build.output}`, true);
+    store.status = `运行中 → ${store.build.output}`;
+  }
+  tab.value = "health";
+}
+
+function actionDisabled(action?: HealthAction): boolean {
+  if (!action) return true;
+  if (action === "repairBindings") return !canRepairBindings.value;
+  if (action === "build" || action === "run") return store.building || !store.hasProject;
+  return false;
+}
+
+async function runHealthAction(action?: HealthAction) {
+  if (!action || actionDisabled(action)) return;
+  try {
+    if (action === "saveAll") await store.saveAll();
+    if (action === "repairBindings") await repairMapBindings();
+    if (action === "build") await buildProject();
+    if (action === "run") await runProject();
+  } catch (e) {
+    store.status = `体检动作失败：${e}`;
+  }
 }
 
 const healthItems = computed<HealthItem[]>(() => {
@@ -123,6 +189,8 @@ const healthItems = computed<HealthItem[]>(() => {
           .filter(Boolean)
           .join("；")
       : "地图可恢复对应 CHR 预览",
+    action: bindingProblems && canRepairBindings.value ? "repairBindings" : undefined,
+    actionLabel: bindingProblems && canRepairBindings.value ? "修复绑定" : undefined,
   });
 
   const dirty = [
@@ -137,6 +205,8 @@ const healthItems = computed<HealthItem[]>(() => {
     value: dirty.length ? `${dirty.length} 类未保存` : "已保存",
     level: dirty.length ? "warn" : "ok",
     detail: dirty.join(", "),
+    action: dirty.length ? "saveAll" : undefined,
+    actionLabel: dirty.length ? "保存全部" : undefined,
   });
 
   const collision = activeCollision.value;
@@ -155,13 +225,21 @@ const healthItems = computed<HealthItem[]>(() => {
     value: !build ? "未构建" : build.success ? "成功" : "失败",
     level: !build ? "warn" : build.success ? "ok" : "fail",
     detail: build?.output || (build ? `${store.errorCount} 错误，${store.warnCount} 警告` : ""),
+    action: !build || !build.success ? "build" : undefined,
+    actionLabel: !build || !build.success ? "构建" : undefined,
   });
   items.push({
     key: "preview",
     label: "预览",
-    value: emu.hasRom ? emu.rom?.name ?? "已加载" : "未加载",
-    level: emu.hasRom ? "ok" : build?.success ? "warn" : "warn",
-    detail: emu.hasRom ? emu.status : build?.success ? "构建成功后尚未运行" : "",
+    value: previewMatchesBuild.value ? emu.rom?.name ?? "已加载" : "未加载",
+    level: previewMatchesBuild.value ? "ok" : build?.success ? "warn" : "warn",
+    detail: previewMatchesBuild.value
+      ? emu.status
+      : build?.success
+        ? "当前构建产物尚未运行"
+        : "",
+    action: !previewMatchesBuild.value && build?.success ? "run" : undefined,
+    actionLabel: !previewMatchesBuild.value && build?.success ? "运行" : undefined,
   });
 
   return items;
@@ -230,6 +308,14 @@ const healthCounts = computed(() => ({
               <span>{{ item.value }}</span>
             </div>
             <p v-if="item.detail">{{ item.detail }}</p>
+            <button
+              v-if="item.action"
+              class="hfix"
+              :disabled="actionDisabled(item.action)"
+              @click="runHealthAction(item.action)"
+            >
+              {{ item.actionLabel }}
+            </button>
           </div>
         </div>
       </div>
@@ -427,6 +513,29 @@ const healthCounts = computed(() => ({
   font-size: 11.5px;
   line-height: 1.35;
   word-break: break-word;
+}
+.hfix {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 72px;
+  height: 24px;
+  margin-top: 8px;
+  padding: 0 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--border));
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+.hfix:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+}
+.hfix:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 .log {
   flex: 1;

@@ -70,6 +70,7 @@ const KEY_MAP: Record<string, number> = {
 export const useEmuStore = defineStore("emu", {
   state: () => ({
     rom: null as emu.RomInfo | null,
+    romPath: "" as string,
     mode: "launcher" as Mode,
     lastMode: loadLastMode() as PMode,
     view: "main" as View,
@@ -175,16 +176,21 @@ export const useEmuStore = defineStore("emu", {
     },
     async openDialog() {
       const info = await emu.openRomDialog();
-      if (info) this.onLoaded(info);
+      if (info) {
+        this.romPath = "";
+        this.onLoaded(info);
+      }
       return info;
     },
     async openId(id: string) {
       const info = await emu.openRomId(id);
+      this.romPath = "";
       this.onLoaded(info);
       return info;
     },
     async openPath(path: string, keepMode = false) {
       const info = await emu.openRomPath(path);
+      this.romPath = path;
       this.onLoaded(info, keepMode);
       return info;
     },
