@@ -257,6 +257,65 @@ impl MapperOps for Mapper72 {
 }
 
 // ============================================================================
+// Mapper 96 — Bandai Oeka Kids
+//
+// References:
+// - FCEUX `src/boards/96.cpp`
+// - FCEUmm `src/boards/96.c`
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Mapper96 {
+    reg: u8,
+    ppu_latch: u8,
+}
+
+impl Mapper96 {
+    pub(in crate::mapper) fn new() -> Self {
+        Mapper96 {
+            reg: 0,
+            ppu_latch: 0,
+        }
+    }
+
+    fn chr_low_bank(&self) -> usize {
+        ((self.reg & 0x04) | self.ppu_latch) as usize
+    }
+
+    fn chr_high_bank(&self) -> usize {
+        ((self.reg & 0x04) | 0x03) as usize
+    }
+}
+
+impl MapperOps for Mapper96 {
+    fn prg_index(&self, addr: u16) -> usize {
+        ((self.reg & 0x03) as usize) * 0x8000 + (addr - 0x8000) as usize
+    }
+    fn chr_index(&self, addr: u16) -> usize {
+        let addr = addr & 0x1FFF;
+        if addr < 0x1000 {
+            self.chr_low_bank() * 0x1000 + addr as usize
+        } else {
+            self.chr_high_bank() * 0x1000 + (addr as usize - 0x1000)
+        }
+    }
+    fn write_register(&mut self, _addr: u16, value: u8) {
+        self.reg = value;
+    }
+    fn notify_a12(&mut self, addr: u16, _cycle: u64) {
+        if (addr & 0x3000) == 0x2000 {
+            self.ppu_latch = ((addr >> 8) & 0x03) as u8;
+        }
+    }
+    fn watches_ppu_bus(&self) -> bool {
+        true
+    }
+    fn mirroring(&self) -> Mirroring {
+        Mirroring::SingleScreenLow
+    }
+}
+
+// ============================================================================
 // Mapper 122 — fixed PRG with two switchable 4KB CHR banks
 // ============================================================================
 

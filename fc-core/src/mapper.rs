@@ -234,8 +234,8 @@ pub use basic::{
     Mapper222, Mapper226, Mapper230, Mapper233, Mapper234, Mapper235, Mapper240, Mapper241,
     Mapper244, Mapper246, Mapper253, Mapper35, Mapper36, Mapper40, Mapper42, Mapper43, Mapper50,
     Mapper57, Mapper60, Mapper63, Mapper65, Mapper67, Mapper72, Mapper73, Mapper79, Mapper83,
-    Mapper91, Mapper92, Namco108Mapper154, Namco108Mapper206, Namco108Mapper95, Namco118, Nina01,
-    Nina03_06, Nrom, Ntdec112, Sachen133, Sachen149, SachenSa0161m, Subor166, SuborVariant,
+    Mapper91, Mapper92, Mapper96, Namco108Mapper154, Namco108Mapper206, Namco108Mapper95, Namco118,
+    Nina01, Nina03_06, Nrom, Ntdec112, Sachen133, Sachen149, SachenSa0161m, Subor166, SuborVariant,
     Sunsoft184, Sunsoft4, Sunsoft89, TaitoTc0190, TaitoX1005, TaitoX1017, UnlPci556, Unrom,
     UnromVariant, UnromVariantMapper, Vrc1,
 };
@@ -294,6 +294,7 @@ pub enum Mapper {
     Mapper83(Mapper83),
     Mapper91(Mapper91),
     Mapper92(Mapper92),
+    Mapper96(Mapper96),
     AddrLatch16k(AddrLatch16k),
     Mapper103(Mapper103),
     Mapper106(Mapper106),
@@ -441,6 +442,7 @@ impl Mapper {
             89 => Mapper::Sunsoft89(Sunsoft89::new(prg_16k)),
             91 => Mapper::Mapper91(Mapper91::new(prg_16k, chr_8k, submapper, mirroring)),
             92 => Mapper::Mapper92(Mapper92::new(mirroring)),
+            96 => Mapper::Mapper96(Mapper96::new()),
             93 => Mapper::UnromVariant(UnromVariantMapper::new(
                 prg_16k,
                 UnromVariant::Sunsoft93,
@@ -607,6 +609,7 @@ macro_rules! dispatch {
             Mapper::Mapper83($m) => $body,
             Mapper::Mapper91($m) => $body,
             Mapper::Mapper92($m) => $body,
+            Mapper::Mapper96($m) => $body,
             Mapper::AddrLatch16k($m) => $body,
             Mapper::Mapper103($m) => $body,
             Mapper::Mapper106($m) => $body,
@@ -875,6 +878,7 @@ mod tests {
             (88, false),   // Namco 118
             (91, false),   // Mapper 91 IRQ is HBlank-clocked
             (92, false),   // Mapper 92
+            (96, true),    // Mapper 96 PPU nametable latch
             (95, false),   // Namco 108 mapper 95
             (101, false),  // Jaleco JF-xx ordered bits
             (103, false),  // Mapper 103
@@ -1033,6 +1037,7 @@ mod tests {
             (88, false),   // Namco 118
             (91, false),   // Mapper 91 IRQ is HBlank-clocked
             (92, false),   // Mapper 92
+            (96, false),   // Mapper 96 PPU nametable latch has no CPU clock
             (95, false),   // Namco 108 mapper 95
             (101, false),  // Jaleco JF-xx ordered bits
             (103, false),  // Mapper 103
@@ -1193,6 +1198,7 @@ mod tests {
             (93, false),
             (94, false),
             (95, false),
+            (96, false),
             (97, false),
             (101, false),
             (103, false),
@@ -2188,6 +2194,27 @@ mod tests {
         assert_eq!(m75.chr_index(0x0004), 0x17 * 0x1000 + 4);
         assert_eq!(m75.chr_index(0x1004), 0x19 * 0x1000 + 4);
         assert_eq!(m75.mirroring(), Mirroring::Vertical);
+    }
+
+    #[test]
+    fn mapper96_uses_ppu_nametable_latch_for_low_chr_bank() {
+        let mut m96 = Mapper::new(96, 8, 8, Mirroring::Vertical, 0).expect("mapper 96");
+        assert!(m96.watches_ppu_bus());
+        assert_eq!(m96.mirroring(), Mirroring::SingleScreenLow);
+
+        m96.write_register(0x8000, 0x06);
+        assert_eq!(m96.prg_index(0x8000), 2 * 0x8000);
+        assert_eq!(m96.prg_index(0xFFFF), 2 * 0x8000 + 0x7FFF);
+        assert_eq!(m96.chr_index(0x0000), 0x04 * 0x1000);
+        assert_eq!(m96.chr_index(0x1000), 0x07 * 0x1000);
+
+        m96.notify_a12(0x2100, 0);
+        assert_eq!(m96.chr_index(0x0000), 0x05 * 0x1000);
+        m96.notify_a12(0x2300, 1);
+        assert_eq!(m96.chr_index(0x0FFF), 0x07 * 0x1000 + 0x0FFF);
+
+        m96.notify_a12(0x1000, 2);
+        assert_eq!(m96.chr_index(0x0000), 0x07 * 0x1000);
     }
 
     #[test]

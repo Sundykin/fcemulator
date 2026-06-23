@@ -1102,3 +1102,13 @@
   - `cargo test`: PASS, workspace tests.
 - Error note:
   - Tried to pass `mapper35 mapper221` as two Cargo test filters; Cargo accepts one filter, so the targeted tests were split and rerun.
+
+### Mapper 96 PPU Latch Batch
+- Implemented mapper 96 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/latch/discrete.rs`: Oeka Kids PRG32 register, fixed high CHR4 bank, PPU nametable-address latch for the low CHR4 bank, and fixed single-screen-low mirroring.
+- Wired mapper 96 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs`, marked it as a PPU-bus watcher, added facade behavior coverage, and refreshed mapper gap/reference docs; supported mapper count is now 160 and remaining four-reference union gap is 333.
+- Verification:
+  - `cargo fmt --check`: PASS.
+  - `git diff --check`: PASS.
+  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 127/127 mapper tests.
+  - `cargo test -p fc-core`: PASS, 168/168 fc-core tests.
+  - `cargo test`: PASS, workspace tests.

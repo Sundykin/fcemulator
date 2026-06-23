@@ -295,3 +295,4 @@
 - Mapper 199 不适合和 197/198 混在同一机械批次：FCEUX 的 board 文件包含 mixed CHR-RAM/EXPREGS side effects，FCEUmm 则简化为 unbanked CHR-RAM 与 `$5000-$5FFF` WRAM。应先确认目标 ROM 或选择主参考后再落地。
 - Mapper 35 证明 `A12EdgeFilter` 可以继续承载非 MMC3 的 MMC3-style A12 IRQ：PRG/CHR/mirroring register 是独立 JYASIC 逻辑，但 IRQ edge filter 不需要重复实现。
 - Mapper 221 证明当前 CPU high-read open-bus hook 已足够表达未焊接 PRG bank：mode latch 和 PRG latch 仍在 address-latch mapper 内部，读路径只在选中越界 16KB PRG bank 时返回 open bus。
+- Mapper 96 证明现有 `notify_a12()` 快路径需要按“PPU bus notify”理解，而不是只按 A12 IRQ 命名理解：Oeka Kids 的 PPU hook 监听 nametable 地址 `$2000-$2FFF` 来更新 CHR low 4KB latch，能力位 `watches_ppu_bus()` 仍可复用，不需要新增专用 latch trait。

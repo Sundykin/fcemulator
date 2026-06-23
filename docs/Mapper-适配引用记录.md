@@ -9,8 +9,8 @@
   - 新增 Mapper 43 / 60 / 83 / 106 / 183 / 212 / 222 / 235。
   - 覆盖 PRG/CHR bank 译码、低地址 PRG-ROM 窗口、mapper register read、open-bus 读侧效应、reset hook、CPU clock IRQ、A12 IRQ。
 - `fc-core/src/mapper/basic/latch/discrete.rs`
-  - 新增 Mapper 36 / 72 / 79 / 92 / 122。
-  - 覆盖 TXC/Micro Genius 简化 latch、$4100 读回、bus conflict、Jaleco 2-in-1/JF-17 PRG/CHR 写位规则、NINA-003/006 扩展区 latch，以及 Mapper 122 双 4KB CHR latch。
+  - 新增 Mapper 36 / 72 / 79 / 92 / 96 / 122。
+  - 覆盖 TXC/Micro Genius 简化 latch、$4100 读回、bus conflict、Jaleco 2-in-1/JF-17 PRG/CHR 写位规则、Mapper 96 的 PPU nametable latch、NINA-003/006 扩展区 latch，以及 Mapper 122 双 4KB CHR latch。
 - `fc-core/src/mapper/basic/latch/sachen.rs:1-135`
   - 新增 Mapper 133 / Sachen SA72008、Mapper 146 / Sachen SA016-1M、Mapper 148 / Sachen SA0037 与 Mapper 149 / Sachen SA0036。
   - 覆盖 SA72008 PRG32/CHR8 latch、SA016-1M/SA0037 PRG32/CHR8 latch 和 SA0036 CHR bit7 latch。
@@ -160,6 +160,8 @@
 | 95 | `namco.rs:34-203` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/80.c` | 106-122, 124-134, 153-184 | FCEUmm Mapper 95 与 FCEUX 同源行为 cross-check |
 | 95 | `namco.rs:34-203` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Namco/Namco108.h` | 5-23 | Namco108 固定 PRG/CHR mode 与 hardwired mirroring 行为 |
 | 95 | `namco.rs:34-203` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Namco/Namco108_95.h` | 5-18 | Mapper 95 reg0/reg1 bit5 到四个 nametable 页映射；当前实现采用此模型 |
+| 96 | `latch/discrete.rs:259-316; mapper.rs:235-237,297,445,612,881,1040,1201,2200-2221` | `/Users/sunmeng/workspace/fc/fceux/src/boards/96.cpp` | 25-68 | Oeka Kids board：reg/ppulatch 状态、PRG32=`reg&3`、CHR4 low=`reg&4|ppulatch`、CHR4 high=`reg&4|3`、固定单屏 0 mirroring、PPU nametable hook |
+| 96 | `latch/discrete.rs:259-316; mapper.rs:235-237,297,445,612,881,1040,1201,2200-2221` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/96.c` | 32-75 | FCEUmm mapper 96 cross-check；同样记录 Oeka Kids PPU hook 和 attribute-table 精度 TODO 注释 |
 | 108 | `special.rs:113-165,187-208` | `/Users/sunmeng/workspace/fc/fceux/src/boards/108.cpp` | 31-48,54-58 | Mapper 108 低区 `setprg8(0x6000, reg)`、高区 `setprg32(0x8000, ~0)`、固定 `setchr8(0)` 与写窗口 |
 | 108 | `special.rs:113-165,187-208` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/108.c` | 37-53,60-64 | FCEUmm Mapper 108 cross-check；同样覆盖 `$8000-$8FFF` 与 `$F000-$FFFF` 写处理 |
 | 206 | `namco.rs:86-154,275-301` | `/Users/sunmeng/workspace/fc/fceux/src/boards/206.cpp` | 33-78 | Mapper 206 Namco108 subset：2KB/1KB CHR、8KB PRG、cmd/data 写译码、power defaults |
