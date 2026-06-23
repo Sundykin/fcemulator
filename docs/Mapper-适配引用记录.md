@@ -38,9 +38,9 @@
 - `fc-core/src/mapper/basic/namco.rs:1-356`
   - 新增 Mapper 95 / Namco 108 Rev. B、Mapper 154 / Namco 108 单屏变体与 Mapper 206 / Namco 108 子集。
   - 覆盖 Namco108 风格高区寄存器、固定 PRG/CHR mode、CHR register bit5 到 per-nametable CIRAM A10 映射、Mapper 154 的 command bit6 单屏 mirroring，以及 Mapper 206 的无 IRQ PRG8/CHR2+1 bank mask。
-- `fc-core/src/mapper/basic/special.rs:113-212`
-  - 新增 Mapper 104 / Pegasus 5-in-1 与 Mapper 108 / FDS conversion。
-  - 覆盖 Mapper 104 的双 16KB PRG register、固定 CHR8、固定垂直 mirroring、普通 `$6000-$7FFF` WRAM fallback，以及 Mapper 108 的 `$6000-$7FFF` switchable PRG-ROM window、固定最后 32KB PRG-ROM、固定 CHR8 和 `$8000-$8FFF`/`$F000-$FFFF` 写窗口。
+- `fc-core/src/mapper/basic/special.rs:113-516`
+  - 新增 Mapper 104 / Pegasus 5-in-1、Mapper 108 / FDS conversion、Mapper 175 delayed latch 与 Mapper 177 / Henggedianzi XH-32A。
+  - 覆盖 Mapper 104 的双 16KB PRG register、固定 CHR8、固定垂直 mirroring、普通 `$6000-$7FFF` WRAM fallback，Mapper 108 的 `$6000-$7FFF` switchable PRG-ROM window、固定最后 32KB PRG-ROM、固定 CHR8 和 `$8000-$8FFF`/`$F000-$FFFF` 写窗口，Mapper 175 的 `$FFFC` read side-effect 提交 PRG latch，以及 Mapper 177 的 PRG32 latch/固定 CHR8/WRAM fallback/mirroring bit。
 - `fc-core/src/mapper/basic/opencorp.rs:1-121`
   - 新增 Mapper 156 / OpenCorp Daou306。
   - 覆盖 16KB PRG bank、固定最后 16KB PRG、8 个 1KB CHR low/high register、`$C014` mirroring register 与 reset hook。
@@ -235,6 +235,10 @@
 | 167 | `subor.rs:1-124` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/subor.c` | 31-70,84-88 | FCEUmm Subor mapper 167 cross-check |
 | 167 | `subor.rs:1-124` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Unlicensed/Subor166.h` | 38-53 | mapper ID 167 的 `altMode` PRG order/fixed bank 行为 |
 | 167 | `subor.rs:1-124` | `/Users/sunmeng/workspace/fc/nestopia/source/core/board/NstBoardSubor.cpp` | 83-124 | Nestopia Subor Type0/Type1 PRG bank mode cross-check |
+| 175 | `special.rs:300-366; mapper.rs:228-242,320-321,510-511,652-653,939-940,1108-1109,1281-1282,2249-2277` | `/Users/sunmeng/workspace/fc/fceux/src/boards/175.cpp` | 32-67,70-78 | Mapper 175：`$8000` mirroring latch、`$A000` bank latch、写后延迟 PRG16/PRG8 提交、读 `$FFFC` 后同步、CHR8 和 mirroring bit |
+| 175 | `special.rs:300-366; mapper.rs:228-242,320-321,510-511,652-653,939-940,1108-1109,1281-1282,2249-2277` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/175.c` | 32-67,70-78 | FCEUmm mapper 175 cross-check；同样记录 read side-effect 和延迟 PRG commit |
+| 177 | `special.rs:368-417; mapper.rs:228-242,320-321,510-511,652-653,939-940,1108-1109,1281-1282,2249-2277` | `/Users/sunmeng/workspace/fc/fceux/src/boards/177.cpp` | 34-53,62-79 | Mapper 177 / Henggedianzi XH-32A：固定 CHR8、`$6000-$7FFF` WRAM、PRG32=`reg&0x1f`、mirroring bit5、power/reset 默认 |
+| 177 | `special.rs:368-417; mapper.rs:228-242,320-321,510-511,652-653,939-940,1108-1109,1281-1282,2249-2277` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/177.c` | 34-53,62-87 | FCEUmm mapper 177 cross-check；新增 reset hook 语义也纳入本项目第一版 |
 | 185 | `basic/discrete.rs:9-63,191-207` | `/Users/sunmeng/workspace/fc/fceux/src/boards/185.cpp` | 24-50,59-70,83-93 | CNROM copy-protection：CHR enable 判定、dummy `0xFF` CHR mapping、固定 PRG16 首尾 bank |
 | 185 | `basic/discrete.rs:9-63,191-207` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/185.c` | 24-50,60-71,84-94 | FCEUmm mapper 185 cross-check；同样记录 `datareg != 0x13` 例外与 dummy CHR |
 | 187 | `mmc3.rs:17-54,222-228,520-535,599-605,840-875,940-945,1009-1015,1040-1057,1167-1169,1371-1408` | `/Users/sunmeng/workspace/fc/fceux/src/boards/187.cpp` | 24-83 | Mapper 187 A98402：CHR bit8 扩展、PRG forced 16/32KB modes、`$8000/$8001` 门控、`$5000/$6000` latch 与 security read |
@@ -379,6 +383,8 @@
 - `TaitoX1017::chr_index()` 的 pattern half swap 对应 FCEUX `82.cpp:37-50` 与 FCEUmm `82_552.c:45-58`。
 - `Mapper81::write_register()` / `prg_index()` / `chr_index()` 对应 FCEUmm `81.c:24-31`；本项目显式保存地址 latch 和数据 latch，以等价表达 FCEUmm `Latch_Init` 提供的 `latch.addr` / `latch.data`。
 - `Mapper104::write_register()` / `prg_index()` 对应 FCEUmm `104.c:35-69,77-91`；`setprg8r(0x10,0x6000,0)` 由本项目 Cartridge 的普通低区 PRG-RAM fallback 提供，mapper 内只保存两个 PRG16 register 并固定 vertical mirroring。
+- `Mapper175::read_register()` 对应 FCEUX/FCEUmm `175.cpp`/`175.c:54-59`；本项目用高区 read side-effect hook 在读 `$FFFC` 时提交 `committed_prg`，peek 路径保持无副作用。
+- `Mapper177::write_register()` / `prg_index()` 对应 FCEUX/FCEUmm `177.cpp`/`177.c:34-53`；参考中的 `$6000-$7FFF` WRAM mapping 继续由 Cartridge 默认低区 PRG-RAM fallback 提供。
 - `TaitoTc0190::new_48()` / `hblank_clock()` 对应 FCEUX/FCEUmm `33.cpp`/`33.c:66-97,110-115`；普通 TC0190 bank writes 复用同文件 `52-63`。
 - `Rambo1::new_158()` / `set_mapper158_nametable()` / mapper-owned nametable read/write 对应 FCEUmm `tengen.c:198-220` 与 Mesen2 `Rambo1_158.h:5-37`；RAMBO-1 基础 PRG/CHR/IRQ 仍对应 Mesen2 `Rambo1.h:96-177`。
 - `Mapper29::write_register()` / `prg_index()` / `chr_index()` 对应 FCEUX `datalatch.cpp:248-256`、FCEUmm `datalatch.c:186-194` 与 Mesen2 `SealieComputing.h:8-31`；当前第一版按 FCEUX/Mesen2 的高区 register 窗口实现，并在 iNES CHR-RAM 默认容量中补 32KB。

@@ -292,6 +292,125 @@ impl MapperOps for Mapper170 {
 }
 
 // ============================================================================
+// Mapper 175 — delayed PRG latch committed by reset-vector read
+//
+// References:
+// - FCEUX `src/boards/175.cpp`
+// - FCEUmm `src/boards/175.c`
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Mapper175 {
+    reg: u8,
+    committed_prg: u8,
+    delay: bool,
+    mirroring_reg: u8,
+}
+
+impl Mapper175 {
+    pub(in crate::mapper) fn new() -> Self {
+        Mapper175 {
+            reg: 0,
+            committed_prg: 0,
+            delay: false,
+            mirroring_reg: 0,
+        }
+    }
+}
+
+impl MapperOps for Mapper175 {
+    fn prg_index(&self, addr: u16) -> usize {
+        match addr {
+            0x8000..=0xBFFF => (self.committed_prg as usize) * 0x4000 + (addr as usize & 0x3FFF),
+            0xC000..=0xDFFF => {
+                ((self.committed_prg as usize) << 1) * 0x2000 + (addr as usize & 0x1FFF)
+            }
+            0xE000..=0xFFFF => (((self.reg as usize) << 1) + 1) * 0x2000 + (addr as usize & 0x1FFF),
+            _ => 0,
+        }
+    }
+
+    fn chr_index(&self, addr: u16) -> usize {
+        chr_8k((self.reg & 0x0F) as usize, addr)
+    }
+
+    fn write_register(&mut self, addr: u16, value: u8) {
+        match addr {
+            0x8000 => {
+                self.mirroring_reg = value;
+                self.delay = true;
+            }
+            0xA000 => {
+                self.reg = value & 0x0F;
+                self.delay = true;
+            }
+            _ => {}
+        }
+    }
+
+    fn read_register(&mut self, addr: u16, _prg_value: u8) -> Option<u8> {
+        if addr == 0xFFFC {
+            self.delay = false;
+            self.committed_prg = self.reg;
+        }
+        None
+    }
+
+    fn mirroring(&self) -> Mirroring {
+        if self.mirroring_reg & 0x04 != 0 {
+            Mirroring::Horizontal
+        } else {
+            Mirroring::Vertical
+        }
+    }
+}
+
+// ============================================================================
+// Mapper 177 — Henggedianzi XH-32A
+//
+// References:
+// - FCEUX `src/boards/177.cpp`
+// - FCEUmm `src/boards/177.c`
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Mapper177 {
+    reg: u8,
+}
+
+impl Mapper177 {
+    pub(in crate::mapper) fn new() -> Self {
+        Mapper177 { reg: 0 }
+    }
+}
+
+impl MapperOps for Mapper177 {
+    fn prg_index(&self, addr: u16) -> usize {
+        ((self.reg & 0x1F) as usize) * 0x8000 + (addr - 0x8000) as usize
+    }
+
+    fn chr_index(&self, addr: u16) -> usize {
+        chr_8k(0, addr)
+    }
+
+    fn write_register(&mut self, _addr: u16, value: u8) {
+        self.reg = value;
+    }
+
+    fn mirroring(&self) -> Mirroring {
+        if self.reg & 0x20 != 0 {
+            Mirroring::Horizontal
+        } else {
+            Mirroring::Vertical
+        }
+    }
+
+    fn reset(&mut self, _soft: bool) {
+        self.reg = 0;
+    }
+}
+
+// ============================================================================
 // Mapper 230 — 22-in-1 reset-selected multicart
 // ============================================================================
 

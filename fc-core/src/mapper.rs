@@ -230,15 +230,15 @@ pub use basic::{
     Caltron41, Cnrom, Codemasters, ColorDreams, ColorDreams46, Cprom, Gxrom, IremG101, IremLrog017,
     IremTamS1, JalecoJf11_14, JalecoJf13, JalecoJf16, JalecoJfxx, Mapper103, Mapper104, Mapper106,
     Mapper107, Mapper108, Mapper116, Mapper117, Mapper120, Mapper122, Mapper15, Mapper151,
-    Mapper156, Mapper170, Mapper18, Mapper183, Mapper185, Mapper188, Mapper193, Mapper203,
-    Mapper212, Mapper222, Mapper226, Mapper230, Mapper233, Mapper234, Mapper235, Mapper240,
-    Mapper241, Mapper244, Mapper246, Mapper253, Mapper29, Mapper31, Mapper35, Mapper36, Mapper40,
-    Mapper42, Mapper43, Mapper50, Mapper51, Mapper57, Mapper60, Mapper63, Mapper65, Mapper67,
-    Mapper72, Mapper73, Mapper79, Mapper8, Mapper81, Mapper83, Mapper91, Mapper92, Mapper96,
-    Namco108Mapper154, Namco108Mapper206, Namco108Mapper95, Namco118, Nina01, Nina03_06, Nrom,
-    Ntdec112, Sachen133, Sachen149, SachenSa0161m, Subor166, SuborVariant, Sunsoft184, Sunsoft4,
-    Sunsoft89, TaitoTc0190, TaitoX1005, TaitoX1017, UnlPci556, Unrom, UnromVariant,
-    UnromVariantMapper, Vrc1,
+    Mapper156, Mapper170, Mapper175, Mapper177, Mapper18, Mapper183, Mapper185, Mapper188,
+    Mapper193, Mapper203, Mapper212, Mapper222, Mapper226, Mapper230, Mapper233, Mapper234,
+    Mapper235, Mapper240, Mapper241, Mapper244, Mapper246, Mapper253, Mapper29, Mapper31, Mapper35,
+    Mapper36, Mapper40, Mapper42, Mapper43, Mapper50, Mapper51, Mapper57, Mapper60, Mapper63,
+    Mapper65, Mapper67, Mapper72, Mapper73, Mapper79, Mapper8, Mapper81, Mapper83, Mapper91,
+    Mapper92, Mapper96, Namco108Mapper154, Namco108Mapper206, Namco108Mapper95, Namco118, Nina01,
+    Nina03_06, Nrom, Ntdec112, Sachen133, Sachen149, SachenSa0161m, Subor166, SuborVariant,
+    Sunsoft184, Sunsoft4, Sunsoft89, TaitoTc0190, TaitoX1005, TaitoX1017, UnlPci556, Unrom,
+    UnromVariant, UnromVariantMapper, Vrc1,
 };
 pub use expansion_mappers::{Fme7, Namco163, Vrc6, Vrc6Variant, Vrc7};
 pub use mmc1::Mmc1;
@@ -317,6 +317,8 @@ pub enum Mapper {
     Mapper156(Mapper156),
     Subor166(Subor166),
     Mapper170(Mapper170),
+    Mapper175(Mapper175),
+    Mapper177(Mapper177),
     Mapper183(Mapper183),
     Mapper185(Mapper185),
     Mapper188(Mapper188),
@@ -505,6 +507,8 @@ impl Mapper {
             167 => Mapper::Subor166(Subor166::new(SuborVariant::Mapper167)),
             170 => Mapper::Mapper170(Mapper170::new(mirroring)),
             174 => Mapper::AddrLatch16k(AddrLatch16k::new(AddrLatchVariant::Mapper174)),
+            175 => Mapper::Mapper175(Mapper175::new()),
+            177 => Mapper::Mapper177(Mapper177::new()),
             180 => Mapper::UnromVariant(UnromVariantMapper::new(
                 prg_16k,
                 UnromVariant::Mapper180,
@@ -647,6 +651,8 @@ macro_rules! dispatch {
             Mapper::Mapper156($m) => $body,
             Mapper::Subor166($m) => $body,
             Mapper::Mapper170($m) => $body,
+            Mapper::Mapper175($m) => $body,
+            Mapper::Mapper177($m) => $body,
             Mapper::Mapper183($m) => $body,
             Mapper::Mapper185($m) => $body,
             Mapper::Mapper188($m) => $body,
@@ -940,6 +946,8 @@ mod tests {
             (170, false),  // Mapper 170
             (152, false),  // Bandai 74161/7432
             (174, false),  // Mapper 174
+            (175, false),  // Mapper 175
+            (177, false),  // Mapper 177
             (183, false),  // Mapper 183 IRQ is CPU-clocked, not PPU-bus-clocked
             (188, false),  // Mapper 188
             (230, false),  // Mapper 230
@@ -1107,6 +1115,8 @@ mod tests {
             (170, false),  // Mapper 170
             (152, false),  // Bandai 74161/7432
             (174, false),  // Mapper 174
+            (175, false),  // Mapper 175
+            (177, false),  // Mapper 177
             (183, true),   // Mapper 183 IRQ counter clocks per CPU cycle
             (188, false),  // Mapper 188
             (230, false),  // Mapper 230
@@ -1279,6 +1289,8 @@ mod tests {
             (167, false),
             (170, false),
             (174, false),
+            (175, false),
+            (177, false),
             (180, false),
             (183, false),
             (184, false),
@@ -2235,6 +2247,35 @@ mod tests {
 
     #[test]
     fn reset_selected_and_read_side_effect_mappers_follow_reference_rules() {
+        let mut m175 = Mapper::new(175, 32, 16, Mirroring::Vertical, 0).expect("mapper 175");
+        assert_eq!(m175.prg_index(0x8004), 0x0004);
+        assert_eq!(m175.prg_index(0xC004), 0x0004);
+        assert_eq!(m175.prg_index(0xE004), 0x2000 + 4);
+        m175.write_register(0xA000, 0x06);
+        assert_eq!(m175.chr_index(0x1010), 6 * 0x2000 + 0x1010);
+        assert_eq!(m175.prg_index(0x8004), 0x0004);
+        assert_eq!(m175.prg_index(0xC004), 0x0004);
+        assert_eq!(m175.prg_index(0xE004), 13 * 0x2000 + 4);
+        assert_eq!(m175.read_register(0xFFFB, 0xAA), None);
+        assert_eq!(m175.prg_index(0x8004), 0x0004);
+        assert_eq!(m175.read_register(0xFFFC, 0xAA), None);
+        assert_eq!(m175.prg_index(0x8004), 6 * 0x4000 + 4);
+        assert_eq!(m175.prg_index(0xC004), 12 * 0x2000 + 4);
+        m175.write_register(0x8000, 0x04);
+        assert_eq!(m175.mirroring(), Mirroring::Horizontal);
+
+        let mut m177 = Mapper::new(177, 64, 0, Mirroring::Vertical, 0).expect("mapper 177");
+        assert_eq!(m177.prg_index(0x8004), 0x0004);
+        assert_eq!(m177.chr_index(0x1010), 0x1010);
+        assert_eq!(m177.mirroring(), Mirroring::Vertical);
+        m177.write_register(0x9000, 0x25);
+        assert_eq!(m177.prg_index(0x8004), 5 * 0x8000 + 4);
+        assert_eq!(m177.prg_index(0xFFFF), 5 * 0x8000 + 0x7FFF);
+        assert_eq!(m177.mirroring(), Mirroring::Horizontal);
+        m177.reset(true);
+        assert_eq!(m177.prg_index(0x8004), 0x0004);
+        assert_eq!(m177.mirroring(), Mirroring::Vertical);
+
         let mut m230 = Mapper::new(230, 16, 0, Mirroring::Vertical, 0).expect("mapper 230");
         assert_eq!(m230.prg_index(0x8000), 0);
         assert_eq!(m230.prg_index(0xC000), 7 * 0x4000);

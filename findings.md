@@ -303,3 +303,5 @@
 - Mapper 51 / 11-in-1 Ball Games 验证了现有 low-register + low-PRG-ROM hook 可以表达 `$6000-$7FFF` 同时作为写寄存器窗口和 PRG-ROM 读窗口的板卡，不需要扩 MapperOps。高区写更新 bank 和部分 mode，低区写更新 mode，reset 恢复 `bank=0, mode=2`。
 - Mapper 81 / NTDEC N715062 仍属于现有 latch 架构可直接承载的板卡：FCEUmm 的 `Latch_Init` 隐含保存写地址和写数据，本项目等价拆成 `addr_latch` / `data_latch`，无需新增 trait hook。
 - Mapper 104 / Pegasus 5-in-1 也不需要扩 MapperOps：PRG16 双 register、固定 CHR8、固定 vertical mirroring 和 reset defaults 都在 mapper 内部完成；参考里的 8KB WRAM mapping 由本项目 Cartridge 低区 PRG-RAM fallback 覆盖。
+- Mapper 175 验证了现有高区 `read_register()` side-effect hook 足以表达“读 PRG-ROM 同时更新 mapper latch”的板卡：读 `$FFFC` 时提交延迟 PRG bank，debugger `peek` 路径不触发副作用。
+- Mapper 177 是纯 PRG32 latch 板卡，参考实现的 8KB WRAM 不需要新低区映射 hook，继续由 Cartridge 默认 PRG-RAM 路径提供。

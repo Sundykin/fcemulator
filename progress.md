@@ -1181,3 +1181,16 @@
   - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 135/135 mapper tests.
   - `cargo test -p fc-core`: PASS, 177/177 fc-core tests.
   - `cargo test`: PASS, workspace tests.
+
+### Mapper 175 / 177 Special Batch
+- Implemented mapper 175 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/special.rs`: `$8000` mirroring latch, `$A000` PRG/CHR latch, delayed PRG window commit, and read `$FFFC` side effect through the high-register read hook.
+- Implemented mapper 177 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/special.rs`: PRG32 latch from `reg & 0x1f`, fixed CHR8, mirroring bit5, reset default, and ordinary `$6000-$7FFF` WRAM fallback through Cartridge.
+- Wired both through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs`, updated capability guard tests, and refreshed mapper gap/reference docs; supported mapper count is now 170 and remaining four-reference union gap is 323.
+- Verification:
+  - `cargo test -p fc-core reset_selected_and_read_side_effect_mappers_follow_reference_rules -- --nocapture`: PASS, 1/1.
+  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 47/47 mapper facade tests.
+  - `cargo fmt --check`: PASS.
+  - `git diff --check`: PASS.
+  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 135/135 mapper tests.
+  - `cargo test -p fc-core`: PASS, 177/177 fc-core tests.
+  - `cargo test`: PASS, workspace tests.
