@@ -141,6 +141,7 @@ Phase 17: Mapper compatibility gap closure
 - [x] Add latch/NSF paging mapper batch 8 / 31
 - [x] Add Action 53 mapper 28
 - [x] Add Sealie Computing mapper 29
+- [x] Add 11-in-1 Ball Games mapper 51
 - **Status:** in_progress
 
 ### Phase 18: Mapper board compatibility layer

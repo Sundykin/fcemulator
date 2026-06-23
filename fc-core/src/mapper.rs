@@ -233,8 +233,8 @@ pub use basic::{
     Mapper170, Mapper18, Mapper183, Mapper185, Mapper188, Mapper193, Mapper203, Mapper212,
     Mapper222, Mapper226, Mapper230, Mapper233, Mapper234, Mapper235, Mapper240, Mapper241,
     Mapper244, Mapper246, Mapper253, Mapper29, Mapper31, Mapper35, Mapper36, Mapper40, Mapper42,
-    Mapper43, Mapper50, Mapper57, Mapper60, Mapper63, Mapper65, Mapper67, Mapper72, Mapper73,
-    Mapper79, Mapper8, Mapper83, Mapper91, Mapper92, Mapper96, Namco108Mapper154,
+    Mapper43, Mapper50, Mapper51, Mapper57, Mapper60, Mapper63, Mapper65, Mapper67, Mapper72,
+    Mapper73, Mapper79, Mapper8, Mapper83, Mapper91, Mapper92, Mapper96, Namco108Mapper154,
     Namco108Mapper206, Namco108Mapper95, Namco118, Nina01, Nina03_06, Nrom, Ntdec112, Sachen133,
     Sachen149, SachenSa0161m, Subor166, SuborVariant, Sunsoft184, Sunsoft4, Sunsoft89, TaitoTc0190,
     TaitoX1005, TaitoX1017, UnlPci556, Unrom, UnromVariant, UnromVariantMapper, Vrc1,
@@ -282,6 +282,7 @@ pub enum Mapper {
     Mapper42(Mapper42),
     Mapper43(Mapper43),
     Mapper50(Mapper50),
+    Mapper51(Mapper51),
     Mapper57(Mapper57),
     Mapper60(Mapper60),
     Mapper63(Mapper63),
@@ -418,6 +419,7 @@ impl Mapper {
             48 => Mapper::TaitoTc0190(TaitoTc0190::new_48(prg_16k, mirroring)),
             49 => Mapper::Mmc3(Mmc3::new_49(prg_16k, chr_8k, mirroring, submapper)),
             50 => Mapper::Mapper50(Mapper50::new(mirroring)),
+            51 => Mapper::Mapper51(Mapper51::new()),
             52 => Mapper::Mmc3(Mmc3::new_52(prg_16k, chr_8k, mirroring)),
             57 => Mapper::Mapper57(Mapper57::new()),
             58 => Mapper::AddrLatch16k(AddrLatch16k::new(AddrLatchVariant::Mapper58)),
@@ -606,6 +608,7 @@ macro_rules! dispatch {
             Mapper::Mapper42($m) => $body,
             Mapper::Mapper43($m) => $body,
             Mapper::Mapper50($m) => $body,
+            Mapper::Mapper51($m) => $body,
             Mapper::Mapper57($m) => $body,
             Mapper::Mapper60($m) => $body,
             Mapper::Mapper63($m) => $body,
@@ -870,6 +873,7 @@ mod tests {
             (41, false),   // Caltron 6-in-1
             (46, false),   // Color Dreams 46
             (50, false),   // Mapper 50
+            (51, false),   // Mapper 51
             (57, false),   // Mapper 57
             (58, false),   // Mapper 58
             (59, false),   // Mapper 59
@@ -1034,6 +1038,7 @@ mod tests {
             (41, false),   // Caltron 6-in-1
             (46, false),   // Color Dreams 46
             (50, true),    // Mapper 50 IRQ counter clocks per CPU cycle
+            (51, false),   // Mapper 51
             (57, false),   // Mapper 57
             (58, false),   // Mapper 58
             (59, false),   // Mapper 59
@@ -1190,6 +1195,7 @@ mod tests {
             (48, true),
             (49, false),
             (50, false),
+            (51, false),
             (52, false),
             (57, false),
             (58, false),
@@ -1399,6 +1405,37 @@ mod tests {
         assert_eq!(m29.prg_index(0x8004), 5 * 0x4000 + 4);
         assert_eq!(m29.prg_index(0xC004), 7 * 0x4000 + 4);
         assert_eq!(m29.chr_index(0x1010), 3 * 0x2000 + 0x1010);
+    }
+
+    #[test]
+    fn mapper51_switches_multicart_bank_mode_and_low_prg_rom() {
+        let mut m51 = Mapper::new(51, 128, 0, Mirroring::Vertical, 0).expect("mapper 51");
+        assert_eq!(m51.prg_index(0x8004), 0x0004);
+        assert_eq!(m51.prg_index(0xC004), 0x4000 + 4);
+        assert_eq!(m51.low_prg_index(0x6004), Some(0x23 * 0x2000 + 4));
+        assert_eq!(m51.mirroring(), Mirroring::Vertical);
+
+        m51.write_register(0x8000, 0x05);
+        assert_eq!(m51.prg_index(0x8004), 10 * 0x4000 + 4);
+        assert_eq!(m51.prg_index(0xC004), 11 * 0x4000 + 4);
+        assert_eq!(m51.low_prg_index(0x6004), Some(0x37 * 0x2000 + 4));
+
+        assert!(m51.write_low_register(0x6000, 0x10));
+        assert_eq!(m51.prg_index(0x8004), 11 * 0x4000 + 4);
+        assert_eq!(m51.prg_index(0xC004), 15 * 0x4000 + 4);
+        assert_eq!(m51.low_prg_index(0x6004), Some(0x3F * 0x2000 + 4));
+        assert_eq!(m51.mirroring(), Mirroring::Vertical);
+
+        m51.write_register(0xC000, 0x1D);
+        assert_eq!(m51.prg_index(0x8004), 27 * 0x4000 + 4);
+        assert_eq!(m51.prg_index(0xC004), 31 * 0x4000 + 4);
+        assert!(m51.write_low_register(0x7000, 0x12));
+        assert_eq!(m51.mirroring(), Mirroring::Horizontal);
+
+        m51.reset(true);
+        assert_eq!(m51.prg_index(0x8004), 0x0004);
+        assert_eq!(m51.prg_index(0xC004), 0x4000 + 4);
+        assert_eq!(m51.mirroring(), Mirroring::Vertical);
     }
 
     #[test]

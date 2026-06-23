@@ -180,6 +180,80 @@ impl MapperOps for Action53 {
 }
 
 // ============================================================================
+// Mapper 51 — 11-in-1 Ball Games
+//
+// References:
+// - FCEUX `src/boards/51.cpp`
+// - FCEUmm `src/boards/51.c`
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Mapper51 {
+    bank: u8,
+    mode: u8,
+}
+
+impl Mapper51 {
+    pub(in crate::mapper) fn new() -> Self {
+        Mapper51 { bank: 0, mode: 2 }
+    }
+
+    fn prg16_bank(&self, addr: u16) -> usize {
+        if self.mode & 0x02 != 0 {
+            ((self.bank as usize) << 1) | usize::from(addr >= 0xC000)
+        } else if addr < 0xC000 {
+            ((self.bank as usize) << 1) | ((self.mode >> 4) as usize)
+        } else {
+            (((self.bank & 0x0C) as usize) << 1) | 0x07
+        }
+    }
+}
+
+impl MapperOps for Mapper51 {
+    fn prg_index(&self, addr: u16) -> usize {
+        self.prg16_bank(addr) * 0x4000 + (addr as usize & 0x3FFF)
+    }
+
+    fn chr_index(&self, addr: u16) -> usize {
+        (addr & 0x1FFF) as usize
+    }
+
+    fn write_register(&mut self, addr: u16, value: u8) {
+        self.bank = value & 0x0F;
+        if addr & 0x4000 != 0 {
+            self.mode = (self.mode & 0x02) | (value & 0x10);
+        }
+    }
+
+    fn write_low_register(&mut self, _addr: u16, value: u8) -> bool {
+        self.mode = value & 0x12;
+        true
+    }
+
+    fn low_prg_index(&self, addr: u16) -> Option<usize> {
+        let bank = if self.mode & 0x02 != 0 {
+            (((self.bank & 0x07) as usize) << 2) | 0x23
+        } else {
+            (((self.bank & 0x04) as usize) << 2) | 0x2F
+        };
+        Some(bank * 0x2000 + (addr as usize & 0x1FFF))
+    }
+
+    fn mirroring(&self) -> Mirroring {
+        if self.mode == 0x12 {
+            Mirroring::Horizontal
+        } else {
+            Mirroring::Vertical
+        }
+    }
+
+    fn reset(&mut self, _soft: bool) {
+        self.bank = 0;
+        self.mode = 2;
+    }
+}
+
+// ============================================================================
 // Mapper 57/58/59/61/62 — simple address/data latch multicarts
 // ============================================================================
 

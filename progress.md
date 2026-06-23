@@ -1157,3 +1157,14 @@
   - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 132/132 mapper tests.
   - `cargo test -p fc-core`: PASS, 174/174 fc-core tests.
   - `cargo test`: PASS, workspace tests.
+
+### Mapper 51 11-in-1 Ball Games Batch
+- Implemented mapper 51 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/multicart.rs`: bank/mode registers, `$6000-$7FFF` low PRG-ROM window, `$6000-$7FFF` mode writes, high bank writes, vertical/horizontal mirroring switch, and reset defaults.
+- Wired mapper 51 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs`, updated capability guard tests, and refreshed mapper gap/reference docs; supported mapper count is now 166 and remaining four-reference union gap is 327.
+- Verification:
+  - `cargo test -p fc-core mapper51 -- --nocapture`: PASS, 1/1.
+  - `cargo fmt --check`: PASS.
+  - `git diff --check`: PASS.
+  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 133/133 mapper tests.
+  - `cargo test -p fc-core`: PASS, 175/175 fc-core tests.
+  - `cargo test`: PASS, workspace tests.

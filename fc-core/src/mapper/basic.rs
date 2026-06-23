@@ -38,7 +38,7 @@ pub use latch::{
 };
 pub use multicart::{
     Action53, ActionEnterprises, AddrLatch16k, AddrLatchVariant, Mapper15, Mapper226, Mapper240,
-    Mapper241, Mapper244, Mapper246, Mapper57, Mapper63,
+    Mapper241, Mapper244, Mapper246, Mapper51, Mapper57, Mapper63,
 };
 pub use namco::{Namco108Mapper154, Namco108Mapper206, Namco108Mapper95, Namco118};
 pub use ntdec::Ntdec112;
