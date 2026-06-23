@@ -128,6 +128,7 @@ impl Mapper {
             122 => Mapper::Mapper122(Mapper122::new(mirroring)),
             133 => Mapper::Sachen133(Sachen133::new(prg_16k, mirroring)),
             140 => Mapper::JalecoJf11_14(JalecoJf11_14::new(mirroring)),
+            142 => Mapper::Mapper142(Mapper142::new(prg_16k, mirroring)),
             144 => Mapper::ColorDreams(ColorDreams::new_144(mirroring)),
             146 => Mapper::SachenSa0161m(SachenSa0161m::new(mirroring, false)),
             148 => Mapper::SachenSa0161m(SachenSa0161m::new(mirroring, true)),

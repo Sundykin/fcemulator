@@ -742,6 +742,124 @@ impl MapperOps for Mapper73 {
 }
 
 // ============================================================================
+// Mapper 142 — Kaiser KS7032
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Mapper142 {
+    prg_8k_total: usize,
+    prg: [u8; 4],
+    mirroring: Mirroring,
+    selected_reg: u8,
+    irq_reload: u16,
+    irq_counter: u16,
+    irq_enabled: bool,
+    irq_pending: bool,
+}
+
+impl Mapper142 {
+    pub(in crate::mapper) fn new(prg_16k: usize, mirroring: Mirroring) -> Self {
+        Mapper142 {
+            prg_8k_total: (prg_16k * 2).max(4),
+            prg: [0; 4],
+            mirroring,
+            selected_reg: 0xFF,
+            irq_reload: 0,
+            irq_counter: 0,
+            irq_enabled: false,
+            irq_pending: false,
+        }
+    }
+
+    fn prg8_index(&self, bank: u8, addr: u16) -> usize {
+        (bank as usize % self.prg_8k_total) * 0x2000 + (addr as usize & 0x1FFF)
+    }
+}
+
+impl MapperOps for Mapper142 {
+    fn prg_index(&self, addr: u16) -> usize {
+        let slot = ((addr - 0x8000) / 0x2000) as usize;
+        let bank = if slot < 3 {
+            self.prg[slot]
+        } else {
+            (self.prg_8k_total - 1) as u8
+        };
+        self.prg8_index(bank, addr)
+    }
+
+    fn chr_index(&self, addr: u16) -> usize {
+        (addr & 0x1FFF) as usize
+    }
+
+    fn low_prg_index(&self, addr: u16) -> Option<usize> {
+        Some(self.prg8_index(self.prg[3], addr))
+    }
+
+    fn write_register(&mut self, addr: u16, value: u8) {
+        let nibble = value as u16 & 0x0F;
+        match addr & 0xF000 {
+            0x8000 => self.irq_reload = (self.irq_reload & 0xFFF0) | nibble,
+            0x9000 => self.irq_reload = (self.irq_reload & 0xFF0F) | (nibble << 4),
+            0xA000 => self.irq_reload = (self.irq_reload & 0xF0FF) | (nibble << 8),
+            0xB000 => self.irq_reload = (self.irq_reload & 0x0FFF) | (nibble << 12),
+            0xC000 => {
+                self.irq_enabled = value & 0x02 != 0;
+                if self.irq_enabled {
+                    self.irq_counter = self.irq_reload;
+                }
+                self.irq_pending = false;
+            }
+            0xD000 => self.irq_pending = false,
+            0xE000 => self.selected_reg = (value & 0x07).wrapping_sub(1),
+            0xF000 => {
+                match self.selected_reg {
+                    0..=2 => {
+                        let bank = self.selected_reg as usize;
+                        self.prg[bank] = (self.prg[bank] & 0x10) | (value & 0x0F);
+                    }
+                    3 => self.prg[3] = value,
+                    _ => {}
+                }
+                if addr & 0xFC00 == 0xF000 {
+                    let bank = (addr & 0x03) as usize;
+                    if bank < 3 {
+                        self.prg[bank] = (self.prg[bank] & 0x0F) | (value & 0x10);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn mirroring(&self) -> Mirroring {
+        self.mirroring
+    }
+
+    fn cpu_clock(&mut self) {
+        if !self.irq_enabled {
+            return;
+        }
+        self.irq_counter = self.irq_counter.wrapping_add(1);
+        if self.irq_counter == 0xFFFF {
+            self.irq_counter = self.irq_reload;
+            self.irq_pending = true;
+        }
+    }
+
+    fn clocks_cpu(&self) -> bool {
+        true
+    }
+
+    fn irq(&self) -> bool {
+        self.irq_pending
+    }
+
+    fn clear_irq(&mut self) {
+        self.irq_pending = false;
+    }
+}
+
+// ============================================================================
 // Mapper 117 — Future Media board with A12-clocked IRQ
 // ============================================================================
 

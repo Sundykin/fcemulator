@@ -96,6 +96,7 @@ fn watches_ppu_bus_matches_notify_a12_overrides() {
         (121, true),   // Mapper 121 MMC3 A12 IRQ
         (122, false),  // Mapper 122
         (133, false),  // Sachen SA72008
+        (142, false),  // Mapper 142 IRQ is CPU-clocked, not PPU-bus-clocked
         (144, false),  // Mapper 144 ColorDreams variant
         (146, false),  // Sachen SA016-1M
         (148, false),  // Sachen SA0037
@@ -269,6 +270,7 @@ fn clocks_cpu_matches_cpu_clock_overrides() {
         (121, false),  // Mapper 121 uses PPU A12 edges
         (122, false),  // Mapper 122
         (133, false),  // Sachen SA72008
+        (142, true),   // Mapper 142 IRQ counter clocks per CPU cycle
         (144, false),  // Mapper 144 ColorDreams variant
         (146, false),  // Sachen SA016-1M
         (148, false),  // Sachen SA0037
@@ -455,6 +457,7 @@ fn clocks_hblank_matches_hblank_clock_overrides() {
         (156, false),
         (158, false),
         (140, false),
+        (142, false),
         (151, false),
         (152, false),
         (154, false),
@@ -675,6 +678,65 @@ fn mapper104_switches_inner_and_outer_prg16_banks() {
     m104.reset(true);
     assert_eq!(m104.prg_index(0x8004), 0x0004);
     assert_eq!(m104.prg_index(0xC004), 0x0F * 0x4000 + 4);
+}
+
+#[test]
+fn mapper142_switches_prg8_and_low_prg_rom_window() {
+    let mut m = Mapper::new(142, 16, 0, Mirroring::Vertical, 0).expect("mapper 142");
+    assert_eq!(m.prg_index(0x8004), 0x0004);
+    assert_eq!(m.prg_index(0xA004), 0x0004);
+    assert_eq!(m.prg_index(0xC004), 0x0004);
+    assert_eq!(m.prg_index(0xE004), 31 * 0x2000 + 4);
+    assert_eq!(m.low_prg_index(0x6004), Some(0x0004));
+    assert_eq!(m.mirroring(), Mirroring::Vertical);
+
+    m.write_register(0xE000, 0x01);
+    m.write_register(0xF000, 0x05);
+    assert_eq!(m.prg_index(0x8004), 5 * 0x2000 + 4);
+
+    m.write_register(0xE000, 0x02);
+    m.write_register(0xF001, 0x16);
+    assert_eq!(m.prg_index(0xA004), 22 * 0x2000 + 4);
+
+    m.write_register(0xE000, 0x03);
+    m.write_register(0xF002, 0x17);
+    assert_eq!(m.prg_index(0xC004), 23 * 0x2000 + 4);
+
+    m.write_register(0xE000, 0x04);
+    m.write_register(0xF800, 0x09);
+    assert_eq!(m.low_prg_index(0x6004), Some(9 * 0x2000 + 4));
+
+    m.write_register(0xE000, 0x00);
+    m.write_register(0xF000, 0x13);
+    assert_eq!(m.prg_index(0x8004), 0x15 * 0x2000 + 4);
+}
+
+#[test]
+fn mapper142_cpu_irq_reloads_and_acks() {
+    let mut m = Mapper::new(142, 16, 0, Mirroring::Horizontal, 0).expect("mapper 142");
+    m.write_register(0x8000, 0x0D);
+    m.write_register(0x9000, 0x0C);
+    m.write_register(0xA000, 0x0B);
+    m.write_register(0xB000, 0x0A);
+    m.write_register(0xC000, 0x02);
+
+    for _ in 0..(0xFFFF - 0xABCD - 1) {
+        m.cpu_clock();
+    }
+    assert!(!m.irq());
+    m.cpu_clock();
+    assert!(m.irq());
+
+    m.write_register(0xD000, 0x00);
+    assert!(!m.irq());
+    m.cpu_clock();
+    assert!(!m.irq());
+
+    m.write_register(0xC000, 0x00);
+    for _ in 0..4 {
+        m.cpu_clock();
+    }
+    assert!(!m.irq());
 }
 
 #[test]

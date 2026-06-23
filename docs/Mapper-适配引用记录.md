@@ -50,6 +50,9 @@
 - `fc-core/src/mapper/basic/discrete.rs:1-247`
   - 新增 Mapper 185 / CNROM copy-protection CHR disable、Mapper 188 / Karaoke Studio expansion cartridge 与 Mapper 193 / MEGA-SOFT War in the Gulf。
   - 覆盖 mapper-owned dummy CHR read/write gating、Mapper 188 PRG16 latch 与 `$6000-$7FFF` 固定设备读、固定首/尾 16KB PRG、低区 `$6000-$6003` register、固定尾部 8KB PRG pages，以及 4KB/2KB/2KB CHR bank 译码。
+- `fc-core/src/mapper/basic/irq.rs:745-860`
+  - 新增 Mapper 142 / Kaiser KS7032。
+  - 覆盖 8KB PRG bank register、`$6000-$7FFF` PRG-ROM 低区窗口、固定 CHR8、nibble IRQ reload、CPU-cycle IRQ、`$E000/$F000` selected-register 写协议，以及 KS7032 风格 `$F000-$F003` PRG 高位写窗口。
 - `fc-core/src/mapper/mmc1.rs:23-318`
   - 新增 Mapper 105 / Nintendo World Championships MMC1 变体与 Mapper 155 / MMC1 WRAM-always-enabled 变体入口。
   - 覆盖 Mapper 105 的 NWC 初始化状态机、CHR reg0 bit4 控制 CPU-cycle IRQ timer、CHR reg0 bit3 控制 MMC1/32KB PRG 模式、固定 CHR8、PRG bank bit3 强制，以及 Mapper 155 variant intent。
@@ -226,6 +229,9 @@
 | 133 | `latch/sachen.rs:1-62,105-121` | `/Users/sunmeng/workspace/fc/fceux/src/boards/sachen.cpp` | 273-296 | SA72008 PRG32=`value>>2`、CHR8=`value&3` |
 | 133 | `latch/sachen.rs:1-62,105-121` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/sachen.c` | 180-203 | FCEUmm SA72008 cross-check |
 | 133 | `latch/sachen.rs:1-62,105-121` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Sachen/Sachen_133.h` | 10-25 | `$4100-$FFFF` 写窗口与 `(addr & 0x6100) == 0x4100` 门控 |
+| 142 | `basic/irq.rs:745-860; factory.rs:129; mapper.rs:234-239,318; dispatch.rs:68; tests.rs:97,273,460,683-740` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/KS7032.c` | 56-63,78-129,131-158 | KS7032 PRG8/低区 PRG-ROM/固定 CHR8、IRQ reload/control/ack、CPU-cycle IRQ，以及 `$E000/$F000` selected-register 写协议；当前按此版本保持 IRQ 命中后 reload 并继续使能 |
+| 142 | `basic/irq.rs:745-860; factory.rs:129; mapper.rs:234-239,318; dispatch.rs:68; tests.rs:97,273,460,683-740` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Kaiser/Kaiser202.h` | 17-30,43-55,57-115 | Kaiser202 mapper 142/56 shared model cross-check；确认 PRG page size 8KB、CPU clock hook、nibble reload、selected register 和可选 low PRG-ROM/WRAM 模型 |
+| 142 | `basic/irq.rs:745-860; factory.rs:129; mapper.rs:234-239,318; dispatch.rs:68; tests.rs:97,273,460,683-740` | `/Users/sunmeng/workspace/fc/fceux/src/boards/ks7032.cpp` | 35-67,72-87 | 旧 KS7032 实现 cross-check；记录早期版本 IRQ 命中后关闭使能、PRG low window register 编号差异，作为后续具体 ROM 精修参考 |
 | 149 | `latch/sachen.rs:64-135` | `/Users/sunmeng/workspace/fc/fceux/src/boards/sachen.cpp` | 306-310 | SA0036 复用 SA72007 CHR=`value>>7` |
 | 149 | `latch/sachen.rs:64-135` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/sachen.c` | 213-215 | FCEUmm SA0036 cross-check |
 | 149 | `latch/sachen.rs:64-135` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Sachen/Sachen_149.h` | 10-19 | mapper 149 固定 PRG、CHR bit7 latch |
