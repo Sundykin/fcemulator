@@ -1133,3 +1133,14 @@
   - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 130/130 mapper tests.
   - `cargo test -p fc-core`: PASS, 171/171 fc-core tests.
   - `cargo test`: PASS, workspace tests.
+
+### Mapper 28 Action 53 Batch
+- Implemented mapper 28 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/multicart.rs`: Action 53 `reg/chr/prg/mode/outer` state, `$5000-$5FFF` register selection, CHR8 latch, PRG16 mode matrix, direct/single-screen/vertical/horizontal mirroring, and reset defaults for `outer=63` plus `prg=15`.
+- Wired mapper 28 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs`, updated capability guard tests, and refreshed mapper gap/reference docs; supported mapper count is now 164 and remaining four-reference union gap is 329.
+- Verification:
+  - `cargo test -p fc-core mapper28_action53 -- --nocapture`: PASS, 1/1.
+  - `cargo fmt --check`: PASS.
+  - `git diff --check`: PASS.
+  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 131/131 mapper tests.
+  - `cargo test -p fc-core`: PASS, 172/172 fc-core tests.
+  - `cargo test`: PASS, workspace tests.

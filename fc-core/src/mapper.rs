@@ -226,7 +226,7 @@ mod rambo1;
 mod vrc4;
 
 pub use basic::{
-    ActionEnterprises, AddrLatch16k, AddrLatchVariant, Axrom, Bandai74161, Bf9096, Bnrom,
+    Action53, ActionEnterprises, AddrLatch16k, AddrLatchVariant, Axrom, Bandai74161, Bf9096, Bnrom,
     Caltron41, Cnrom, Codemasters, ColorDreams, ColorDreams46, Cprom, Gxrom, IremG101, IremLrog017,
     IremTamS1, JalecoJf11_14, JalecoJf13, JalecoJf16, JalecoJfxx, Mapper103, Mapper106, Mapper107,
     Mapper108, Mapper116, Mapper117, Mapper120, Mapper122, Mapper15, Mapper151, Mapper156,
@@ -265,6 +265,7 @@ pub enum Mapper {
     Namco163(Namco163),
     Vrc6(Vrc6),
     IremG101(IremG101),
+    Action53(Action53),
     Mapper31(Mapper31),
     TaitoTc0190(TaitoTc0190),
     Bandai74161(Bandai74161),
@@ -389,6 +390,7 @@ impl Mapper {
             21..=23 => Mapper::Vrc4(Vrc4::new(number, prg_16k, chr_8k, submapper)),
             24 => Mapper::Vrc6(Vrc6::new(prg_16k, chr_8k, Vrc6Variant::Vrc6a)),
             26 => Mapper::Vrc6(Vrc6::new(prg_16k, chr_8k, Vrc6Variant::Vrc6b)),
+            28 => Mapper::Action53(Action53::new(prg_16k)),
             31 => Mapper::Mapper31(Mapper31::new()),
             32 => Mapper::IremG101(IremG101::new(prg_16k, submapper, mirroring)),
             33 => Mapper::TaitoTc0190(TaitoTc0190::new(prg_16k, mirroring)),
@@ -585,6 +587,7 @@ macro_rules! dispatch {
             Mapper::Namco163($m) => $body,
             Mapper::Vrc6($m) => $body,
             Mapper::IremG101($m) => $body,
+            Mapper::Action53($m) => $body,
             Mapper::Mapper31($m) => $body,
             Mapper::TaitoTc0190($m) => $body,
             Mapper::Bandai74161($m) => $body,
@@ -837,6 +840,7 @@ mod tests {
             (23, false),   // VRC2/VRC4
             (24, false),   // VRC6a
             (26, false),   // VRC6b
+            (28, false),   // Action 53
             (31, false),   // Mapper 31
             (32, false),   // Irem G-101
             (33, false),   // Taito TC0190
@@ -999,6 +1003,7 @@ mod tests {
             (23, true),    // Ambiguous VRC2/VRC4 mapper defaults to VRC4-compatible IRQs
             (24, true),    // VRC6 IRQ + expansion audio clock per CPU cycle
             (26, true),    // VRC6 IRQ + expansion audio clock per CPU cycle
+            (28, false),   // Action 53
             (31, false),   // Mapper 31
             (32, false),   // Irem G-101
             (33, false),   // Taito TC0190
@@ -1158,6 +1163,7 @@ mod tests {
             (23, false),
             (24, false),
             (26, false),
+            (28, false),
             (31, false),
             (32, false),
             (33, false),
@@ -1343,6 +1349,36 @@ mod tests {
         assert_eq!(m8.prg_index(0x8004), 3 * 0x4000 + 4);
         assert_eq!(m8.prg_index(0xC004), 0x4000 + 4);
         assert_eq!(m8.chr_index(0x0010), 3 * 0x2000 + 0x10);
+    }
+
+    #[test]
+    fn mapper28_action53_selects_prg_modes_chr_and_mirroring() {
+        let mut m28 = Mapper::new(28, 128, 4, Mirroring::Vertical, 0).expect("mapper 28");
+        assert_eq!(m28.prg_index(0x8004), 126 * 0x4000 + 4);
+        assert_eq!(m28.prg_index(0xC004), 127 * 0x4000 + 4);
+        assert_eq!(m28.mirroring(), Mirroring::SingleScreenLow);
+
+        m28.write_expansion(0x5000, 0x81);
+        m28.write_register(0x8000, 0x02);
+        assert_eq!(m28.prg_index(0x8004), 4 * 0x4000 + 4);
+        assert_eq!(m28.prg_index(0xC004), 5 * 0x4000 + 4);
+
+        m28.write_expansion(0x5000, 0x00);
+        m28.write_register(0x8000, 0x13);
+        assert_eq!(m28.chr_index(0x0010), 3 * 0x2000 + 0x10);
+        assert_eq!(m28.mirroring(), Mirroring::SingleScreenHigh);
+
+        m28.write_expansion(0x5000, 0x80);
+        m28.write_register(0x8000, 0x1A);
+        assert_eq!(m28.mirroring(), Mirroring::Vertical);
+        m28.write_expansion(0x5000, 0x01);
+        m28.write_register(0x8000, 0x17);
+        assert_eq!(m28.prg_index(0x8004), 4 * 0x4000 + 4);
+        assert_eq!(m28.prg_index(0xC004), 7 * 0x4000 + 4);
+
+        m28.reset(true);
+        assert_eq!(m28.prg_index(0x8004), 126 * 0x4000 + 4);
+        assert_eq!(m28.prg_index(0xC004), 127 * 0x4000 + 4);
     }
 
     #[test]

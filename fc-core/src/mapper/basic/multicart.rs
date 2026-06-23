@@ -71,6 +71,115 @@ impl MapperOps for Mapper15 {
 }
 
 // ============================================================================
+// Mapper 28 — Action 53
+//
+// References:
+// - FCEUX `src/boards/28.cpp`
+// - FCEUmm `src/boards/28.c`
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Action53 {
+    prg_mask_16k: usize,
+    reg: u8,
+    chr: u8,
+    prg: u8,
+    mode: u8,
+    outer: u8,
+}
+
+impl Action53 {
+    pub(in crate::mapper) fn new(prg_16k: usize) -> Self {
+        Action53 {
+            prg_mask_16k: prg_16k.max(1) - 1,
+            reg: 0,
+            chr: 0,
+            prg: 15,
+            mode: 0,
+            outer: 63,
+        }
+    }
+
+    fn mirror_from_data(&mut self, value: u8) {
+        if self.mode & 0x02 == 0 {
+            self.mode = (self.mode & 0xFE) | ((value >> 4) & 0x01);
+        }
+    }
+
+    fn prg_pages(&self) -> [usize; 2] {
+        let outb = (self.outer as usize) << 1;
+        let prg = self.prg as usize;
+        let (lo, hi) = match self.mode & 0x3C {
+            0x00 | 0x04 => (outb, outb | 1),
+            0x10 | 0x14 => (outb & !2 | (prg << 1 & 2), outb & !2 | (prg << 1 & 2) | 1),
+            0x20 | 0x24 => (outb & !6 | (prg << 1 & 6), outb & !6 | (prg << 1 & 6) | 1),
+            0x30 | 0x34 => (
+                outb & !14 | (prg << 1 & 14),
+                outb & !14 | (prg << 1 & 14) | 1,
+            ),
+            0x08 => (outb, outb | (prg & 1)),
+            0x18 => (outb, outb & !2 | (prg & 3)),
+            0x28 => (outb, outb & !6 | (prg & 7)),
+            0x38 => (outb, outb & !14 | (prg & 15)),
+            0x0C => (outb | (prg & 1), outb | 1),
+            0x1C => (outb & !2 | (prg & 3), outb | 1),
+            0x2C => (outb & !6 | (prg & 7), outb | 1),
+            0x3C => (outb & !14 | (prg & 15), outb | 1),
+            _ => unreachable!("mode is masked by 0x3c"),
+        };
+        [lo & self.prg_mask_16k, hi & self.prg_mask_16k]
+    }
+}
+
+impl MapperOps for Action53 {
+    fn prg_index(&self, addr: u16) -> usize {
+        let pages = self.prg_pages();
+        let slot = if addr < 0xC000 { 0 } else { 1 };
+        pages[slot] * 0x4000 + (addr as usize & 0x3FFF)
+    }
+
+    fn chr_index(&self, addr: u16) -> usize {
+        (self.chr as usize) * 0x2000 + (addr as usize & 0x1FFF)
+    }
+
+    fn write_register(&mut self, _addr: u16, value: u8) {
+        match self.reg {
+            0x00 => {
+                self.chr = value & 0x03;
+                self.mirror_from_data(value);
+            }
+            0x01 => {
+                self.prg = value & 0x0F;
+                self.mirror_from_data(value);
+            }
+            0x80 => self.mode = value & 0x3F,
+            0x81 => self.outer = value & 0x3F,
+            _ => {}
+        }
+    }
+
+    fn write_expansion(&mut self, addr: u16, value: u8) {
+        if (0x5000..=0x5FFF).contains(&addr) {
+            self.reg = value & 0x81;
+        }
+    }
+
+    fn mirroring(&self) -> Mirroring {
+        match self.mode & 0x03 {
+            0 => Mirroring::SingleScreenLow,
+            1 => Mirroring::SingleScreenHigh,
+            2 => Mirroring::Vertical,
+            _ => Mirroring::Horizontal,
+        }
+    }
+
+    fn reset(&mut self, _soft: bool) {
+        self.outer = 63;
+        self.prg = 15;
+    }
+}
+
+// ============================================================================
 // Mapper 57/58/59/61/62 — simple address/data latch multicarts
 // ============================================================================
 

@@ -21,8 +21,8 @@
   - 新增 Mapper 48 / 80 / 207 / 82。
   - 覆盖 Taito TC0190/Taito X1-005/X1-017 的 PRG/CHR/mirroring 寄存器、Mapper 48 的 HBlank IRQ、Mapper 80 的 256B gated WRAM，以及 Mapper 207 的 CHR register bit7 到 per-nametable CIRAM A10 映射。
 - `fc-core/src/mapper/basic/multicart.rs:1-982`
-  - 新增 Mapper 59 / 63 / 201 / 217 / 221 / 228 / 255。
-  - 覆盖 address latch PRG/CHR/mirroring、Mapper 63 越界 PRG open-bus 读、Mapper 221 双地址 latch/UNROM-NROM 模式/open-bus 高区读、Mapper 228 Action Enterprises 地址线 bank + nibble RAM、Mapper 255 BMC 地址 latch。
+  - 新增 Mapper 28 / 59 / 63 / 201 / 217 / 221 / 228 / 255。
+  - 覆盖 Action 53 多寄存器 PRG/CHR/mirroring 模式、address latch PRG/CHR/mirroring、Mapper 63 越界 PRG open-bus 读、Mapper 221 双地址 latch/UNROM-NROM 模式/open-bus 高区读、Mapper 228 Action Enterprises 地址线 bank + nibble RAM、Mapper 255 BMC 地址 latch。
 - `fc-core/src/mapper/basic/core.rs:278-359`
   - 新增 Mapper 232 / Codemasters BF9096。
   - 覆盖 BF9096/Quattro 16KB PRG block + page register 和 submapper 1 outer bank bit swap。
@@ -96,6 +96,8 @@
 | 25 | `vrc4.rs:1-329` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/21_22_23_25.c` | 61-67 | VRC4b/VRC4d/VRC2c submapper 地址线映射 |
 | 25 | `vrc4.rs:1-329` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Konami/VRC2_4.h` | 63-71, 210-221 | mapper 25 variant detection 与 submapper 0 OR heuristics |
 | 8 | `latch/discrete.rs:152-188; mapper.rs:228-240,253-268,369-392,571-589,1336-1346` | `/Users/sunmeng/workspace/fc/fceux/src/boards/datalatch.cpp` | 207-216 | Mapper 8 FFE/FJ-007：单 latch 控制低 16KB PRG bank 与 8KB CHR bank，高 16KB 固定 bank 1，固定垂直 mirroring |
+| 28 | `multicart.rs:73-194; mapper.rs:228-240,253-269,370-394,572-590,1354-1382` | `/Users/sunmeng/workspace/fc/fceux/src/boards/28.cpp` | 20-166 | Action 53：`reg/chr/prg/mode/outer` 状态、`$5000-$5FFF` register select、PRG16 mode matrix、CHR8、mirroring 和 reset defaults |
+| 28 | `multicart.rs:73-194; mapper.rs:228-240,253-269,370-394,572-590,1354-1382` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/28.c` | 21-187 | FCEUmm mapper 28 cross-check；同源 Action 53 PRG mode/mirroring/reset 逻辑 |
 | 31 | `latch/discrete.rs:190-228; mapper.rs:228-240,253-268,369-392,571-589,1348-1359` | `/Users/sunmeng/workspace/fc/fceux/src/boards/inlnsf.cpp` | 23-61 | Mapper 31 NSF/INL：`$5000-$5FFF` 八个 4KB PRG-ROM window register，末 slot power-on 为 `0xFF` |
 | 31 | `latch/discrete.rs:190-228; mapper.rs:228-240,253-268,369-392,571-589,1348-1359` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/31.c` | 26-65 | FCEUmm mapper 31 cross-check；同样使用 `$5000 + (addr & 7)` 选择 4KB PRG slot |
 | 35 | `jy.rs:1-128; mapper.rs:235,276,395,588,831,989,1144,2246-2287` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/JyCompany/Mapper35.h` | 5-65 | Mapper 35 JY single-cart：PRG8/CHR1 register、`$C002/$C003/$C005` A12 IRQ、`$D001` mirroring |
