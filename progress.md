@@ -1144,3 +1144,16 @@
   - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 131/131 mapper tests.
   - `cargo test -p fc-core`: PASS, 172/172 fc-core tests.
   - `cargo test`: PASS, workspace tests.
+
+### Mapper 29 Sealie Computing Batch
+- Implemented mapper 29 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/latch/discrete.rs`: high-register latch with low 16KB PRG bank from `(value >> 2) & 7`, fixed high 16KB PRG bank, CHR8 from `value & 3`, and fixed vertical mirroring.
+- Added iNES default 32KB CHR-RAM sizing for mapper 29 in `/Users/sunmeng/workspace/fc/fc-core/src/cartridge.rs`, matching Mesen2's Sealie Computing board metadata.
+- Wired mapper 29 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs`, updated capability guard tests, and refreshed mapper gap/reference docs; supported mapper count is now 165 and remaining four-reference union gap is 328.
+- Verification:
+  - `cargo test -p fc-core mapper29_sealie -- --nocapture`: PASS, 1/1.
+  - `cargo test -p fc-core ines_mapper29 -- --nocapture`: PASS, 1/1.
+  - `cargo fmt --check`: PASS.
+  - `git diff --check`: PASS.
+  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 132/132 mapper tests.
+  - `cargo test -p fc-core`: PASS, 174/174 fc-core tests.
+  - `cargo test`: PASS, workspace tests.

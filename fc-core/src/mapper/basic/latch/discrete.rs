@@ -188,6 +188,50 @@ impl MapperOps for Mapper8 {
 }
 
 // ============================================================================
+// Mapper 29 — Sealie Computing / Glider
+//
+// References:
+// - FCEUX `src/boards/datalatch.cpp`
+// - Mesen2 `Core/NES/Mappers/Homebrew/SealieComputing.h`
+// - FCEUmm `src/boards/datalatch.c`
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Mapper29 {
+    prg_16k: usize,
+    latch: u8,
+}
+
+impl Mapper29 {
+    pub(in crate::mapper) fn new(prg_16k: usize) -> Self {
+        Mapper29 {
+            prg_16k: prg_16k.max(1),
+            latch: 0,
+        }
+    }
+}
+
+impl MapperOps for Mapper29 {
+    fn prg_index(&self, addr: u16) -> usize {
+        let bank = if addr < 0xC000 {
+            ((self.latch >> 2) & 0x07) as usize
+        } else {
+            self.prg_16k - 1
+        };
+        bank * 0x4000 + (addr as usize & 0x3FFF)
+    }
+    fn chr_index(&self, addr: u16) -> usize {
+        ((self.latch & 0x03) as usize) * 0x2000 + (addr & 0x1FFF) as usize
+    }
+    fn write_register(&mut self, _addr: u16, value: u8) {
+        self.latch = value;
+    }
+    fn mirroring(&self) -> Mirroring {
+        Mirroring::Vertical
+    }
+}
+
+// ============================================================================
 // Mapper 31 — NSF/INL 4KB PRG-ROM paging
 //
 // References:

@@ -299,3 +299,4 @@
 - Mapper 12 适合继续作为 MMC3 variant，而不是独立 mapper：PRG、普通 CHR bank register、mirroring 和 A12 IRQ 完全复用 MMC3，只在 `$4100-$5FFF` expansion register 上给 pattern table 两半补 CHR bank bit8，并提供 language latch read/reset toggle。FCEUmm 的 submapper 1 跳转 FFE_Init，先记录为后续独立兼容路径。
 - Mapper 8 / 31 说明一部分剩余 P2 缺口仍可机械推进：mapper 8 是单 latch PRG16/CHR8，mapper 31 是 `$5000-$5FFF` 低地址 register 选择八个 4KB PRG slot。现有 high-register write、expansion write 和 page index hooks 已足够表达，不需要新增架构。
 - Mapper 28 / Action 53 是独立 multicart board 而不是普通 address latch：它用 `$5000-$5FFF` 先选择 `reg`，再由高区写更新 `chr/prg/mode/outer`，PRG16 映射由 `mode & 0x3c` 的 12 种组合决定。现有 expansion write、reset hook 和 mirroring enum 足够表达第一版，不需要新 trait。
+- Mapper 29 / Sealie Computing 可以作为小型 latch board 直接落地：参考实现一致指向低 16KB PRG 可切、末 16KB PRG 固定、CHR8 两位 latch 和 32KB CHR-RAM 默认容量。第一版按 FCEUX/Mesen2 的 `$8000-$FFFF` register 窗口保留普通 `$6000-$7FFF` WRAM；FCEUmm 的 `$6000-$FFFF` latch 写窗口差异记录为后续精修项。

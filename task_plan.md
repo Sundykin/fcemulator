@@ -140,6 +140,7 @@ Phase 17: Mapper compatibility gap closure
 - [x] Add MMC3 expansion-register mapper 12
 - [x] Add latch/NSF paging mapper batch 8 / 31
 - [x] Add Action 53 mapper 28
+- [x] Add Sealie Computing mapper 29
 - **Status:** in_progress
 
 ### Phase 18: Mapper board compatibility layer

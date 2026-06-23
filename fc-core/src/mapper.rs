@@ -232,11 +232,11 @@ pub use basic::{
     Mapper108, Mapper116, Mapper117, Mapper120, Mapper122, Mapper15, Mapper151, Mapper156,
     Mapper170, Mapper18, Mapper183, Mapper185, Mapper188, Mapper193, Mapper203, Mapper212,
     Mapper222, Mapper226, Mapper230, Mapper233, Mapper234, Mapper235, Mapper240, Mapper241,
-    Mapper244, Mapper246, Mapper253, Mapper31, Mapper35, Mapper36, Mapper40, Mapper42, Mapper43,
-    Mapper50, Mapper57, Mapper60, Mapper63, Mapper65, Mapper67, Mapper72, Mapper73, Mapper79,
-    Mapper8, Mapper83, Mapper91, Mapper92, Mapper96, Namco108Mapper154, Namco108Mapper206,
-    Namco108Mapper95, Namco118, Nina01, Nina03_06, Nrom, Ntdec112, Sachen133, Sachen149,
-    SachenSa0161m, Subor166, SuborVariant, Sunsoft184, Sunsoft4, Sunsoft89, TaitoTc0190,
+    Mapper244, Mapper246, Mapper253, Mapper29, Mapper31, Mapper35, Mapper36, Mapper40, Mapper42,
+    Mapper43, Mapper50, Mapper57, Mapper60, Mapper63, Mapper65, Mapper67, Mapper72, Mapper73,
+    Mapper79, Mapper8, Mapper83, Mapper91, Mapper92, Mapper96, Namco108Mapper154,
+    Namco108Mapper206, Namco108Mapper95, Namco118, Nina01, Nina03_06, Nrom, Ntdec112, Sachen133,
+    Sachen149, SachenSa0161m, Subor166, SuborVariant, Sunsoft184, Sunsoft4, Sunsoft89, TaitoTc0190,
     TaitoX1005, TaitoX1017, UnlPci556, Unrom, UnromVariant, UnromVariantMapper, Vrc1,
 };
 pub use expansion_mappers::{Fme7, Namco163, Vrc6, Vrc6Variant, Vrc7};
@@ -266,6 +266,7 @@ pub enum Mapper {
     Vrc6(Vrc6),
     IremG101(IremG101),
     Action53(Action53),
+    Mapper29(Mapper29),
     Mapper31(Mapper31),
     TaitoTc0190(TaitoTc0190),
     Bandai74161(Bandai74161),
@@ -391,6 +392,7 @@ impl Mapper {
             24 => Mapper::Vrc6(Vrc6::new(prg_16k, chr_8k, Vrc6Variant::Vrc6a)),
             26 => Mapper::Vrc6(Vrc6::new(prg_16k, chr_8k, Vrc6Variant::Vrc6b)),
             28 => Mapper::Action53(Action53::new(prg_16k)),
+            29 => Mapper::Mapper29(Mapper29::new(prg_16k)),
             31 => Mapper::Mapper31(Mapper31::new()),
             32 => Mapper::IremG101(IremG101::new(prg_16k, submapper, mirroring)),
             33 => Mapper::TaitoTc0190(TaitoTc0190::new(prg_16k, mirroring)),
@@ -588,6 +590,7 @@ macro_rules! dispatch {
             Mapper::Vrc6($m) => $body,
             Mapper::IremG101($m) => $body,
             Mapper::Action53($m) => $body,
+            Mapper::Mapper29($m) => $body,
             Mapper::Mapper31($m) => $body,
             Mapper::TaitoTc0190($m) => $body,
             Mapper::Bandai74161($m) => $body,
@@ -841,6 +844,7 @@ mod tests {
             (24, false),   // VRC6a
             (26, false),   // VRC6b
             (28, false),   // Action 53
+            (29, false),   // Sealie Computing
             (31, false),   // Mapper 31
             (32, false),   // Irem G-101
             (33, false),   // Taito TC0190
@@ -1004,6 +1008,7 @@ mod tests {
             (24, true),    // VRC6 IRQ + expansion audio clock per CPU cycle
             (26, true),    // VRC6 IRQ + expansion audio clock per CPU cycle
             (28, false),   // Action 53
+            (29, false),   // Sealie Computing
             (31, false),   // Mapper 31
             (32, false),   // Irem G-101
             (33, false),   // Taito TC0190
@@ -1164,6 +1169,7 @@ mod tests {
             (24, false),
             (26, false),
             (28, false),
+            (29, false),
             (31, false),
             (32, false),
             (33, false),
@@ -1379,6 +1385,20 @@ mod tests {
         m28.reset(true);
         assert_eq!(m28.prg_index(0x8004), 126 * 0x4000 + 4);
         assert_eq!(m28.prg_index(0xC004), 127 * 0x4000 + 4);
+    }
+
+    #[test]
+    fn mapper29_sealie_computing_switches_prg16_and_chr8() {
+        let mut m29 = Mapper::new(29, 8, 0, Mirroring::Vertical, 0).expect("mapper 29");
+        assert_eq!(m29.prg_index(0x8004), 0x0004);
+        assert_eq!(m29.prg_index(0xC004), 7 * 0x4000 + 4);
+        assert_eq!(m29.chr_index(0x1010), 0x1010);
+        assert_eq!(m29.mirroring(), Mirroring::Vertical);
+
+        m29.write_register(0x8000, 0x17);
+        assert_eq!(m29.prg_index(0x8004), 5 * 0x4000 + 4);
+        assert_eq!(m29.prg_index(0xC004), 7 * 0x4000 + 4);
+        assert_eq!(m29.chr_index(0x1010), 3 * 0x2000 + 0x1010);
     }
 
     #[test]

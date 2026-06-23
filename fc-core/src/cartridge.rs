@@ -679,6 +679,7 @@ fn nes20_ram_size(nibble: u8) -> usize {
 fn default_ines_chr_ram_size(mapper_number: u16) -> usize {
     match mapper_number {
         13 => 16 * 1024,
+        29 => 32 * 1024,
         _ => 8 * 1024,
     }
 }
@@ -771,6 +772,22 @@ mod tests {
         assert!(cart.uses_chr_ram);
         assert_eq!(cart.chr_ram_size, 16 * 1024);
         assert_eq!(cart.chr_ram.len(), 16 * 1024);
+    }
+
+    #[test]
+    fn ines_mapper29_defaults_to_32k_chr_ram() {
+        let mut rom = vec![0u8; 16 + 8 * 0x4000];
+        rom[0..4].copy_from_slice(&INES_MAGIC);
+        rom[4] = 8;
+        rom[5] = 0;
+        rom[6] = 0xD0;
+        rom[7] = 0x10;
+
+        let cart = Cartridge::from_bytes(&rom).expect("sealie computing");
+        assert_eq!(cart.mapper_number, 29);
+        assert!(cart.uses_chr_ram);
+        assert_eq!(cart.chr_ram_size, 32 * 1024);
+        assert_eq!(cart.chr_ram.len(), 32 * 1024);
     }
 
     #[test]

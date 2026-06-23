@@ -9,8 +9,8 @@
   - 新增 Mapper 43 / 60 / 83 / 106 / 183 / 212 / 222 / 235。
   - 覆盖 PRG/CHR bank 译码、低地址 PRG-ROM 窗口、mapper register read、open-bus 读侧效应、reset hook、CPU clock IRQ、A12 IRQ。
 - `fc-core/src/mapper/basic/latch/discrete.rs`
-  - 新增 Mapper 8 / 31 / 36 / 72 / 79 / 92 / 96 / 122。
-  - 覆盖 FFE/FJ-007 PRG16/CHR8 latch、NSF/INL 4KB PRG-ROM paging、TXC/Micro Genius 简化 latch、$4100 读回、bus conflict、Jaleco 2-in-1/JF-17 PRG/CHR 写位规则、Mapper 96 的 PPU nametable latch、NINA-003/006 扩展区 latch，以及 Mapper 122 双 4KB CHR latch。
+  - 新增 Mapper 8 / 29 / 31 / 36 / 72 / 79 / 92 / 96 / 122。
+  - 覆盖 FFE/FJ-007 PRG16/CHR8 latch、Sealie Computing PRG16/CHR8 latch 与 32KB CHR-RAM 默认容量、NSF/INL 4KB PRG-ROM paging、TXC/Micro Genius 简化 latch、$4100 读回、bus conflict、Jaleco 2-in-1/JF-17 PRG/CHR 写位规则、Mapper 96 的 PPU nametable latch、NINA-003/006 扩展区 latch，以及 Mapper 122 双 4KB CHR latch。
 - `fc-core/src/mapper/basic/latch/sachen.rs:1-135`
   - 新增 Mapper 133 / Sachen SA72008、Mapper 146 / Sachen SA016-1M、Mapper 148 / Sachen SA0037 与 Mapper 149 / Sachen SA0036。
   - 覆盖 SA72008 PRG32/CHR8 latch、SA016-1M/SA0037 PRG32/CHR8 latch 和 SA0036 CHR bit7 latch。
@@ -98,6 +98,9 @@
 | 8 | `latch/discrete.rs:152-188; mapper.rs:228-240,253-268,369-392,571-589,1336-1346` | `/Users/sunmeng/workspace/fc/fceux/src/boards/datalatch.cpp` | 207-216 | Mapper 8 FFE/FJ-007：单 latch 控制低 16KB PRG bank 与 8KB CHR bank，高 16KB 固定 bank 1，固定垂直 mirroring |
 | 28 | `multicart.rs:73-194; mapper.rs:228-240,253-269,370-394,572-590,1354-1382` | `/Users/sunmeng/workspace/fc/fceux/src/boards/28.cpp` | 20-166 | Action 53：`reg/chr/prg/mode/outer` 状态、`$5000-$5FFF` register select、PRG16 mode matrix、CHR8、mirroring 和 reset defaults |
 | 28 | `multicart.rs:73-194; mapper.rs:228-240,253-269,370-394,572-590,1354-1382` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/28.c` | 21-187 | FCEUmm mapper 28 cross-check；同源 Action 53 PRG mode/mirroring/reset 逻辑 |
+| 29 | `latch/discrete.rs:190-232; cartridge.rs:679-683,777-790; mapper.rs:228-240,253-270,371-396,580-594,846-848,1010-1012,1171-1173,1390-1402` | `/Users/sunmeng/workspace/fc/fceux/src/boards/datalatch.cpp` | 246-256 | Mapper 29 / Sealie Computing：latch bit2-4 选择低 16KB PRG，高 16KB 固定末 bank，latch bit0-1 选择 CHR8，普通 WRAM 在 `$6000-$7FFF` |
+| 29 | `latch/discrete.rs:190-232; cartridge.rs:679-683,777-790; mapper.rs:228-240,253-270,371-396,580-594,846-848,1010-1012,1171-1173,1390-1402` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/datalatch.c` | 181-194 | FCEUmm mapper 29 cross-check；同样的 PRG/CHR latch，记录其 `$6000-$FFFF` 写窗口差异为后续精修项 |
+| 29 | `latch/discrete.rs:190-232; cartridge.rs:679-683,777-790; mapper.rs:228-240,253-270,371-396,580-594,846-848,1010-1012,1171-1173,1390-1402` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Homebrew/SealieComputing.h` | 5-31 | PRG page 16KB、CHR page 8KB、8KB WRAM、32KB CHR-RAM、`$8000-$FFFF` register window 与 fixed high PRG page cross-check |
 | 31 | `latch/discrete.rs:190-228; mapper.rs:228-240,253-268,369-392,571-589,1348-1359` | `/Users/sunmeng/workspace/fc/fceux/src/boards/inlnsf.cpp` | 23-61 | Mapper 31 NSF/INL：`$5000-$5FFF` 八个 4KB PRG-ROM window register，末 slot power-on 为 `0xFF` |
 | 31 | `latch/discrete.rs:190-228; mapper.rs:228-240,253-268,369-392,571-589,1348-1359` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/31.c` | 26-65 | FCEUmm mapper 31 cross-check；同样使用 `$5000 + (addr & 7)` 选择 4KB PRG slot |
 | 35 | `jy.rs:1-128; mapper.rs:235,276,395,588,831,989,1144,2246-2287` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/JyCompany/Mapper35.h` | 5-65 | Mapper 35 JY single-cart：PRG8/CHR1 register、`$C002/$C003/$C005` A12 IRQ、`$D001` mirroring |
@@ -372,11 +375,12 @@
 - `TaitoX1017::chr_index()` 的 pattern half swap 对应 FCEUX `82.cpp:37-50` 与 FCEUmm `82_552.c:45-58`。
 - `TaitoTc0190::new_48()` / `hblank_clock()` 对应 FCEUX/FCEUmm `33.cpp`/`33.c:66-97,110-115`；普通 TC0190 bank writes 复用同文件 `52-63`。
 - `Rambo1::new_158()` / `set_mapper158_nametable()` / mapper-owned nametable read/write 对应 FCEUmm `tengen.c:198-220` 与 Mesen2 `Rambo1_158.h:5-37`；RAMBO-1 基础 PRG/CHR/IRQ 仍对应 Mesen2 `Rambo1.h:96-177`。
+- `Mapper29::write_register()` / `prg_index()` / `chr_index()` 对应 FCEUX `datalatch.cpp:248-256`、FCEUmm `datalatch.c:186-194` 与 Mesen2 `SealieComputing.h:8-31`；当前第一版按 FCEUX/Mesen2 的高区 register 窗口实现，并在 iNES CHR-RAM 默认容量中补 32KB。
 
 ## 以后替换时的删除边界
 
 - 先替换 `fc-core/src/mapper/basic/unlicensed.rs:1-884`。
-- 同批替换 `fc-core/src/mapper/basic/latch/discrete.rs` 里 Mapper 36 / 72 / 79 / 92 / 122 的新增段、`fc-core/src/mapper/basic/latch/sachen.rs` 的新增段、`fc-core/src/mapper/basic/core.rs` 里 ColorDreams/Mapper144 的扩展段、`fc-core/src/mapper/basic/taito.rs` 里 Mapper 80 / 207 / 82 的新增段，以及 `fc-core/src/mapper/basic/multicart.rs` 里 Mapper 59 / 63 / 201 / 217 / 221 / 228 / 255 的新增段。
+- 同批替换 `fc-core/src/mapper/basic/latch/discrete.rs` 里 Mapper 29 / 36 / 72 / 79 / 92 / 122 的新增段、`fc-core/src/mapper/basic/latch/sachen.rs` 的新增段、`fc-core/src/mapper/basic/core.rs` 里 ColorDreams/Mapper144 的扩展段、`fc-core/src/mapper/basic/taito.rs` 里 Mapper 80 / 207 / 82 的新增段，以及 `fc-core/src/mapper/basic/multicart.rs` 里 Mapper 59 / 63 / 201 / 217 / 221 / 228 / 255 的新增段。
 - 同批替换 `fc-core/src/mapper/basic/latch/sunsoft.rs` 里 Mapper 68 的新增段，并同步检查 `MapperOps::nametable_chr_index` 与 `Cartridge::mapper_has_nametable_chr_mapping` 是否仍有其他使用者。
 - 同批替换 `fc-core/src/mapper/basic/core.rs` 里 Mapper 232 的新增段。
 - 同批替换 `fc-core/src/mapper/basic/discrete.rs` 里 Mapper 185 / 188 / 193 的新增段，以及 `fc-core/src/mapper/mmc3.rs` 里 Mapper187 / Mapper189 / Mapper191 / Mapper196 / Mapper197 / Mapper198 / Mapper208 / Mapper245 / Mapper254 的 `Mmc3OuterBank` / `Mmc3ChrLayout` 分支、构造、低区写、扩展区读写、低区读、reset 和测试段。
