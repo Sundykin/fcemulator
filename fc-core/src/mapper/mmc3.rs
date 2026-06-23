@@ -34,6 +34,7 @@ enum Mmc3OuterBank {
     Mapper198,
     Mapper208 { regs: [u8; 6], submapper: u8 },
     Mapper245,
+    Mapper250,
     Mapper254 { unlocked: bool, xor_mask: u8 },
 }
 
@@ -356,6 +357,14 @@ impl Mmc3 {
         m
     }
 
+    /// Mapper 250 — MMC3 clone whose register address and data are derived
+    /// from CPU address lines.
+    pub(super) fn new_250(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
+        let mut m = Mmc3::new(prg_16k, chr_8k, mirroring);
+        m.outer_bank = Mmc3OuterBank::Mapper250;
+        m
+    }
+
     /// Mapper 254 — Pikachu Y2K, MMC3 with protected WRAM reads.
     pub(super) fn new_254(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
         let mut m = Mmc3::new(prg_16k, chr_8k, mirroring);
@@ -639,6 +648,7 @@ impl Mmc3 {
                 };
                 (bank & 0x3F) | outer
             }
+            Mmc3OuterBank::Mapper250 => bank,
             Mmc3OuterBank::Mapper254 { .. } => bank,
         }
     }
@@ -691,6 +701,7 @@ impl Mmc3 {
             Mmc3OuterBank::Mapper198 => bank,
             Mmc3OuterBank::Mapper208 { .. } => bank,
             Mmc3OuterBank::Mapper245 => bank & 0x07,
+            Mmc3OuterBank::Mapper250 => bank,
             Mmc3OuterBank::Mapper254 { .. } => bank,
         }
     }
@@ -899,6 +910,10 @@ impl Mmc3 {
             (addr & 0xFFFE) | ((addr >> 2) & 1) | ((addr >> 3) & 1) | ((addr >> 1) & 1)
         }
     }
+
+    fn mapper250_remap_addr(addr: u16) -> u16 {
+        (addr & 0xE000) | ((addr & 0x0400) >> 10)
+    }
 }
 
 impl MapperOps for Mmc3 {
@@ -955,6 +970,8 @@ impl MapperOps for Mmc3 {
             self.mapper121_write(addr, value);
         } else if matches!(self.outer_bank, Mmc3OuterBank::Mapper196 { .. }) {
             self.write_standard_register(Self::mapper196_remap_addr(addr), value);
+        } else if matches!(self.outer_bank, Mmc3OuterBank::Mapper250) {
+            self.write_standard_register(Self::mapper250_remap_addr(addr), (addr & 0xFF) as u8);
         } else if matches!(self.outer_bank, Mmc3OuterBank::Mapper187 { .. }) {
             let write_standard = match addr {
                 0x8000 => {
@@ -1306,6 +1323,7 @@ impl MapperOps for Mmc3 {
                 *regs = [0; 6];
                 regs[5] = 0x11;
             }
+            Mmc3OuterBank::Mapper250 => {}
             Mmc3OuterBank::Mapper254 { unlocked, xor_mask } => {
                 *unlocked = false;
                 *xor_mask = 0;
@@ -1603,6 +1621,36 @@ mod tests {
         mapper.write_register(0x8000, 0x02);
         mapper.write_register(0x8001, 0x1D);
         assert_eq!(mapper.chr_index(0x1004), 0x05 * 0x0400 + 4);
+    }
+
+    #[test]
+    fn mapper250_uses_address_lines_for_mmc3_register_writes() {
+        let mut mapper = Mmc3::new_250(64, 64, Mirroring::Vertical);
+
+        mapper.write_register(0x8006, 0xFF);
+        mapper.write_register(0x840C, 0x00);
+        assert_eq!(mapper.prg_index(0x8004), 0x0C * 0x2000 + 4);
+
+        mapper.write_register(0x8002, 0xFF);
+        mapper.write_register(0x842A, 0x00);
+        assert_eq!(mapper.chr_index(0x1004), 0x2A * 0x0400 + 4);
+
+        mapper.write_register(0xA000, 0x01);
+        assert_eq!(mapper.mirroring(), Mirroring::Vertical);
+        mapper.write_register(0xA001, 0x00);
+        assert_eq!(mapper.mirroring(), Mirroring::Horizontal);
+
+        mapper.write_register(0xC005, 0x00);
+        mapper.write_register(0xC400, 0x00);
+        mapper.write_register(0xE401, 0x00);
+        mapper.notify_a12(0x0000, 0);
+        mapper.notify_a12(0x1000, 12);
+        assert!(!mapper.irq());
+        for cycle in [24, 36, 48, 60, 72] {
+            mapper.notify_a12(0x0000, cycle - 10);
+            mapper.notify_a12(0x1000, cycle);
+        }
+        assert!(mapper.irq());
     }
 
     #[test]

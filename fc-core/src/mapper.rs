@@ -564,6 +564,7 @@ impl Mapper {
             242 => Mapper::AddrLatch16k(AddrLatch16k::new(AddrLatchVariant::Mapper242)),
             244 => Mapper::Mapper244(Mapper244::new(mirroring)),
             245 => Mapper::Mmc3(Mmc3::new_245(prg_16k, chr_8k, mirroring)),
+            250 => Mapper::Mmc3(Mmc3::new_250(prg_16k, chr_8k, mirroring)),
             246 => Mapper::Mapper246(Mapper246::new(prg_16k, mirroring)),
             253 => Mapper::Mapper253(Mapper253::new(prg_16k, chr_8k)),
             254 => Mapper::Mmc3(Mmc3::new_254(prg_16k, chr_8k, mirroring)),
@@ -986,6 +987,7 @@ mod tests {
             (242, false),  // Mapper 242
             (244, false),  // Mapper 244
             (245, true),   // Mapper 245 MMC3 A12 IRQ
+            (250, true),   // Mapper 250 MMC3 A12 IRQ
             (246, false),  // Mapper 246
             (253, false),  // Mapper 253 IRQ is CPU-clocked, not PPU-bus-clocked
             (254, true),   // Mapper 254 MMC3 A12 IRQ
@@ -1156,6 +1158,7 @@ mod tests {
             (242, false),  // Mapper 242
             (244, false),  // Mapper 244
             (245, false),  // Mapper 245 uses PPU A12 edges
+            (250, false),  // Mapper 250 uses PPU A12 edges
             (246, false),  // Mapper 246
             (253, true),   // Mapper 253 IRQ counter clocks per CPU cycle
             (254, false),  // Mapper 254 uses PPU A12 edges
@@ -1334,6 +1337,7 @@ mod tests {
             (242, false),
             (244, false),
             (245, false),
+            (250, false),
             (246, false),
             (253, false),
             (254, false),

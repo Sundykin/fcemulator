@@ -305,3 +305,4 @@
 - Mapper 104 / Pegasus 5-in-1 也不需要扩 MapperOps：PRG16 双 register、固定 CHR8、固定 vertical mirroring 和 reset defaults 都在 mapper 内部完成；参考里的 8KB WRAM mapping 由本项目 Cartridge 低区 PRG-RAM fallback 覆盖。
 - Mapper 175 验证了现有高区 `read_register()` side-effect hook 足以表达“读 PRG-ROM 同时更新 mapper latch”的板卡：读 `$FFFC` 时提交延迟 PRG bank，debugger `peek` 路径不触发副作用。
 - Mapper 177 是纯 PRG32 latch 板卡，参考实现的 8KB WRAM 不需要新低区映射 hook，继续由 Cartridge 默认 PRG-RAM 路径提供。
+- Mapper 250 进一步验证 MMC3 写协议 helper 方向正确：参考实现只把 CPU 地址线折成普通 MMC3 register address/data，然后复用 GenMMC3/MMC3 core；本项目的 `write_standard_register()` 可以直接承载，不需要扩 `MapperOps`。

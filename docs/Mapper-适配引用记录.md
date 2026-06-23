@@ -53,6 +53,9 @@
 - `fc-core/src/mapper/mmc1.rs:10-43`
   - 新增 Mapper 155 / MMC1 WRAM-always-enabled 变体入口。
   - 当前本项目 MMC1 尚未实现 WRAM disable gating，因此先记录 variant 标记；后续补 PRG-RAM enable/disable 时可保留 mapper 155 的 always-enabled 语义。
+- `fc-core/src/mapper/mmc3.rs:18-38,360-365,651,704,914-916,973-974,1326,1626-1654`
+  - 新增 Mapper 250 / MMC3 地址线写协议变体。
+  - 覆盖 register address remap、写入 data=`addr & 0xff`、普通 MMC3 PRG/CHR/mirroring/A12 IRQ 复用，以及 reset pass-through。
 - `fc-core/src/mapper/basic/sl12.rs:1-344`
   - 新增 Mapper 116 / Someri Team SL12。
   - 覆盖 VRC2/MMC3/MMC1 三模式切换、VRC2 nibble CHR、MMC3 A12 IRQ、MMC1 serial register、CHR outer bank bit。
@@ -301,6 +304,10 @@
 | 245 | `mmc3.rs:18-30,262-268,457-460,496-497,1127-1142` | `/Users/sunmeng/workspace/fc/fceux/src/boards/mmc3.cpp` | 1266-1289 | Mapper 245 CHR bank 低 3 位、CHR reg0 bit1 扩展 PRG outer bit、power reset |
 | 245 | `mmc3.rs:18-30,262-268,457-460,496-497,1127-1142` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/mmc3.c` | 1355-1379 | FCEUmm mapper 245 cross-check；同样记录 `M245CW/M245PW` 行为 |
 | 245 | `mmc3.rs:18-30,262-268,457-460,496-497,1127-1142` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Mmc3Variants/MMC3_245.h` | 5-42 | Mesen2 Mapper 245 PRG outer bit 与 CHR-RAM mode cross-check |
+| 250 | `mmc3.rs:18-38,360-365,651,704,914-916,973-974,1326,1626-1654; mapper.rs:567,990,1161,1340` | `/Users/sunmeng/workspace/fc/fceux/src/boards/mmc3.cpp` | 1332-1350 | Mapper 250：`(addr & 0xE000) | ((addr & 0x400) >> 10)` 重映射 MMC3 register address，并用 `addr & 0xff` 作为写入值 |
+| 250 | `mmc3.rs:18-38,360-365,651,704,914-916,973-974,1326,1626-1654; mapper.rs:567,990,1161,1340` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/mmc3.c` | 1421-1440 | FCEUmm mapper 250 cross-check；同样拆分 command/IRQ 写 handler 后回到 GenMMC3 |
+| 250 | `mmc3.rs:18-38,360-365,651,704,914-916,973-974,1326,1626-1654; mapper.rs:567,990,1161,1340` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Mmc3Variants/MMC3_250.h` | 5-11 | Mesen2 MMC3_250：override `WriteRegister` 后调用普通 MMC3 register writer |
+| 250 | `mmc3.rs:18-38,360-365,651,704,914-916,973-974,1326,1626-1654; mapper.rs:567,990,1161,1340` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/MapperFactory.cpp` | 517 | mapper 250 归类到 `MMC3_250` |
 | 253 | `waixing.rs:1-295` | `/Users/sunmeng/workspace/fc/fceux/src/boards/253.cpp` | 44-89, 110-145 | Mapper 253 PRG/CHR/mirroring、IRQ、2KB CHR-RAM 与 8KB WRAM |
 | 253 | `waixing.rs:1-295` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Waixing/Mapper253.h` | 17-21, 54-80, 83-130 | Mapper 253 page size、CHR-RAM window、114-cycle IRQ scaler、register decode |
 | 253 | `waixing.rs:1-295` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/252_253.c` | 37-104 | 252/253 later VRC4-style CHR-RAM mask path；当前仅作为后续精修参考 |
@@ -389,6 +396,7 @@
 - `Rambo1::new_158()` / `set_mapper158_nametable()` / mapper-owned nametable read/write 对应 FCEUmm `tengen.c:198-220` 与 Mesen2 `Rambo1_158.h:5-37`；RAMBO-1 基础 PRG/CHR/IRQ 仍对应 Mesen2 `Rambo1.h:96-177`。
 - `Mapper29::write_register()` / `prg_index()` / `chr_index()` 对应 FCEUX `datalatch.cpp:248-256`、FCEUmm `datalatch.c:186-194` 与 Mesen2 `SealieComputing.h:8-31`；当前第一版按 FCEUX/Mesen2 的高区 register 窗口实现，并在 iNES CHR-RAM 默认容量中补 32KB。
 - `Mapper51::write_low_register()` / `low_prg_index()` / `write_register()` 对应 FCEUX/FCEUmm `51.cpp`/`51.c:31-72`；本项目用现有 low-register + low-PRG-ROM hook 表达 `$6000-$7FFF` 既是 mode 写窗口又是 PRG-ROM 读窗口的行为。
+- `Mmc3::new_250()` / `mapper250_remap_addr()` 对应 FCEUX `mmc3.cpp:1332-1350`、FCEUmm `mmc3.c:1421-1440` 与 Mesen2 `MMC3_250.h:5-11`；本项目把地址线写协议折回 `write_standard_register()`，继续复用普通 MMC3 PRG/CHR/mirroring 和 A12 IRQ。
 
 ## 以后替换时的删除边界
 

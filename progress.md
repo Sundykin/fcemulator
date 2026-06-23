@@ -1194,3 +1194,14 @@
   - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 135/135 mapper tests.
   - `cargo test -p fc-core`: PASS, 177/177 fc-core tests.
   - `cargo test`: PASS, workspace tests.
+
+### Mapper 250 MMC3 Address-Line Protocol Batch
+- Implemented mapper 250 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs`: address-line register remap `(addr & 0xE000) | ((addr & 0x0400) >> 10)`, data from `addr & 0xFF`, and reuse of normal MMC3 PRG/CHR/mirroring/A12 IRQ behavior.
+- Wired mapper 250 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs`, updated MMC3 capability guard tests, and refreshed mapper gap/reference docs; supported mapper count is now 171 and remaining four-reference union gap is 322.
+- Verification:
+  - `cargo test -p fc-core mapper250 -- --nocapture`: PASS, 1/1.
+  - `cargo fmt --check`: PASS.
+  - `git diff --check`: PASS.
+  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 136/136 mapper tests.
+  - `cargo test -p fc-core`: PASS, 178/178 fc-core tests.
+  - `cargo test`: PASS, workspace tests.
