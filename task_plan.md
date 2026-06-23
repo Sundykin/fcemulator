@@ -133,6 +133,7 @@ Phase 17: Mapper compatibility gap closure
 - [x] Add MMC3 protocol variant mapper 196
 - [x] Add MMC3 protected WRAM mapper 254
 - [x] Add MMC3 protection/PRG32 mapper batch 187 / 208
+- [x] Add IRQ/variant mapper batch 48 / 158
 - **Status:** in_progress
 
 ### Phase 18: Mapper board compatibility layer

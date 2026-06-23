@@ -286,3 +286,6 @@
 - Mapper 196 需要的是 MMC3 write protocol remap，而不是新 mapper trait：高区地址线先折叠到普通 MMC3 register 地址，低区 `$6000-$6FFF` 写启用 PRG32 latch。现有 `write_standard_register()` helper 和 `Mmc3OuterBank` 足够表达。
 - Mapper 254 验证了低区 PRG-RAM 组合读 hook 的价值：参考实现读取 `$6000-$7FFF` WRAM 后按保护寄存器 XOR，本项目的 `read_low_register_with_prg_ram()` 可以直接表达，不需要 Cartridge 泄露更多存储细节给 mapper。
 - Mapper 187 / 208 继续验证 MMC3 variant layer 的方向：两者都不是新 CPU/PPU 时钟模型，而是 MMC3 core 外层的 PRG/CHR wrapper、低/扩展区 protection registers、register read 和少量写协议门控。现有 expansion/low/high handler helper 足够承载，后续同类 MMC3 clone 应优先挂在 `Mmc3OuterBank`。
+- Mapper 48 是 Taito TC0190 的 HBlank IRQ 变体：普通 `$8000-$BFFF` bank 写与 mapper 33 共享，`$C000-$FFFF` 单独处理 IRQ latch/counter/enable 和 `$E000` mirroring；现有 `MapperOps::hblank_clock()` 架构可以直接承载。
+- Mapper 158 是 RAMBO-1 的 board 变体而不是新 IRQ 单元：PRG/CHR/CPU-vs-A12 IRQ 继续复用 mapper 64，差异只在 `$8001` 写入时把 CHR bank bit7 映射到 per-nametable CIRAM page，并忽略 `$A000` 普通 mirroring 写。现有 mapper-owned nametable read/write hook 可以表达，不需要新增 CHR-backed nametable 接口。
+- Mapper 158 参考实现存在 bit 极性差异：FCEUmm/Mesen2 直接使用 `value >> 7`，Nestopia 的 `T800037::UpdateChr()` 对 nametable page 做 `^ 1`。当前第一版按 FCEUmm/Mesen2 直接语义实现，Nestopia 差异已记录为后续具体 ROM 证据驱动的精修项。

@@ -402,6 +402,7 @@ impl Mapper {
             41 => Mapper::Caltron41(Caltron41::new()),
             46 => Mapper::ColorDreams46(ColorDreams46::new(mirroring)),
             47 => Mapper::Mmc3(Mmc3::new_47(prg_16k, chr_8k, mirroring, submapper)),
+            48 => Mapper::TaitoTc0190(TaitoTc0190::new_48(prg_16k, mirroring)),
             49 => Mapper::Mmc3(Mmc3::new_49(prg_16k, chr_8k, mirroring, submapper)),
             50 => Mapper::Mapper50(Mapper50::new(mirroring)),
             52 => Mapper::Mmc3(Mmc3::new_52(prg_16k, chr_8k, mirroring)),
@@ -478,6 +479,7 @@ impl Mapper {
             154 => Mapper::Namco108Mapper154(Namco108Mapper154::new(prg_16k)),
             155 => Mapper::Mmc1(Mmc1::new_155(prg_16k, chr_8k)),
             156 => Mapper::Mapper156(Mapper156::new(prg_16k)),
+            158 => Mapper::Rambo1(Rambo1::new_158(prg_16k, chr_8k)),
             166 => Mapper::Subor166(Subor166::new(SuborVariant::Mapper166)),
             167 => Mapper::Subor166(Subor166::new(SuborVariant::Mapper167)),
             170 => Mapper::Mapper170(Mapper170::new(mirroring)),
@@ -826,6 +828,7 @@ mod tests {
             (44, true),    // Mapper 44 MMC3 A12 IRQ
             (45, true),    // Mapper 45 MMC3 A12 IRQ
             (47, true),    // Mapper 47 MMC3 A12 IRQ
+            (48, false),   // Mapper 48 IRQ is HBlank-clocked
             (49, true),    // Mapper 49 MMC3 A12 IRQ
             (25, false),   // VRC4 IRQ is CPU-clocked, not PPU-bus-clocked
             (52, true),    // Mapper 52 MMC3 A12 IRQ
@@ -881,6 +884,7 @@ mod tests {
             (148, false),  // Sachen SA0037
             (149, false),  // Sachen SA0036
             (156, false),  // Mapper 156
+            (158, true),   // Mapper 158 RAMBO-1 can use PPU A12 IRQ mode
             (166, false),  // Subor 166
             (167, false),  // Subor 167
             (112, false),  // NTDEC ASDER
@@ -977,6 +981,7 @@ mod tests {
             (44, false),   // Mapper 44 uses PPU A12 edges
             (45, false),   // Mapper 45 uses PPU A12 edges
             (47, false),   // Mapper 47 uses PPU A12 edges
+            (48, false),   // Mapper 48 IRQ is HBlank-clocked
             (49, false),   // Mapper 49 uses PPU A12 edges
             (25, true),    // VRC4 IRQ counter clocks per CPU cycle
             (52, false),   // Mapper 52 uses PPU A12 edges
@@ -1032,6 +1037,7 @@ mod tests {
             (148, false),  // Sachen SA0037
             (149, false),  // Sachen SA0036
             (156, false),  // Mapper 156
+            (158, true),   // Mapper 158 RAMBO-1 can use CPU-cycle IRQ mode
             (166, false),  // Subor 166
             (167, false),  // Subor 167
             (112, false),  // NTDEC ASDER
@@ -1128,6 +1134,7 @@ mod tests {
             (45, false),
             (46, false),
             (47, false),
+            (48, true),
             (49, false),
             (50, false),
             (52, false),
@@ -1189,6 +1196,7 @@ mod tests {
             (148, false),
             (149, false),
             (156, false),
+            (158, false),
             (140, false),
             (151, false),
             (152, false),

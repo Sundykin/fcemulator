@@ -14,6 +14,10 @@ pub struct Rambo1 {
     ctrl: u8,
     regs: [u8; 16],
     mirroring: Mirroring,
+    #[serde(default)]
+    mapper158: bool,
+    #[serde(default)]
+    nt: [u8; 4],
     irq_enabled: bool,
     irq_cycle_mode: bool,
     irq_reload_pending: bool,
@@ -48,6 +52,8 @@ impl Rambo1 {
             ctrl: 0,
             regs,
             mirroring,
+            mapper158: false,
+            nt: [0; 4],
             irq_enabled: false,
             irq_cycle_mode: false,
             irq_reload_pending: false,
@@ -59,6 +65,12 @@ impl Rambo1 {
             force_cpu_clock: false,
             a12: A12EdgeFilter::new(),
         }
+    }
+
+    pub(super) fn new_158(prg_16k: usize, chr_8k: usize) -> Self {
+        let mut mapper = Self::new(prg_16k, chr_8k, Mirroring::FourScreen);
+        mapper.mapper158 = true;
+        mapper
     }
 
     fn clock_irq_counter(&mut self, delay: u8) {
@@ -113,6 +125,63 @@ impl Rambo1 {
             }
         }
     }
+
+    fn set_mapper158_nametable(&mut self, register: u8, value: u8) {
+        if !self.mapper158 {
+            return;
+        }
+        let nt = (value >> 7) & 1;
+        if self.ctrl & 0x80 != 0 {
+            match register & 0x07 {
+                2 => self.nt[0] = nt,
+                3 => self.nt[1] = nt,
+                4 => self.nt[2] = nt,
+                5 => self.nt[3] = nt,
+                _ => {}
+            }
+        } else {
+            match register & 0x07 {
+                0 => {
+                    self.nt[0] = nt;
+                    self.nt[1] = nt;
+                }
+                1 => {
+                    self.nt[2] = nt;
+                    self.nt[3] = nt;
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn rebuild_mapper158_nametables(&mut self) {
+        if !self.mapper158 {
+            return;
+        }
+        if self.ctrl & 0x80 != 0 {
+            self.nt = [
+                (self.regs[2] >> 7) & 1,
+                (self.regs[3] >> 7) & 1,
+                (self.regs[4] >> 7) & 1,
+                (self.regs[5] >> 7) & 1,
+            ];
+        } else {
+            self.nt = [
+                (self.regs[0] >> 7) & 1,
+                (self.regs[0] >> 7) & 1,
+                (self.regs[1] >> 7) & 1,
+                (self.regs[1] >> 7) & 1,
+            ];
+        }
+    }
+
+    fn ciram_index(&self, addr: u16) -> Option<usize> {
+        if !self.mapper158 {
+            return None;
+        }
+        let table = ((addr >> 10) & 0x03) as usize;
+        Some(((self.nt[table] as usize) * 0x400) | (addr as usize & 0x03FF))
+    }
 }
 
 impl MapperOps for Rambo1 {
@@ -139,17 +208,23 @@ impl MapperOps for Rambo1 {
 
     fn write_register(&mut self, addr: u16, value: u8) {
         match addr & 0xF001 {
-            0x8000 => self.ctrl = value,
+            0x8000 => {
+                self.ctrl = value;
+                self.rebuild_mapper158_nametables();
+            }
             0x8001 => {
                 let index = (self.ctrl & 0x0F) as usize;
+                self.set_mapper158_nametable(self.ctrl, value);
                 self.regs[index] = value;
             }
             0xA000 => {
-                self.mirroring = if value & 1 == 0 {
-                    Mirroring::Vertical
-                } else {
-                    Mirroring::Horizontal
-                };
+                if !self.mapper158 {
+                    self.mirroring = if value & 1 == 0 {
+                        Mirroring::Vertical
+                    } else {
+                        Mirroring::Horizontal
+                    };
+                }
             }
             0xC000 => self.irq_latch = value,
             0xC001 => {
@@ -173,7 +248,28 @@ impl MapperOps for Rambo1 {
     }
 
     fn mirroring(&self) -> Mirroring {
-        self.mirroring
+        if self.mapper158 {
+            Mirroring::FourScreen
+        } else {
+            self.mirroring
+        }
+    }
+
+    fn nametable_read(&mut self, addr: u16, ciram: &[u8; 0x1000]) -> Option<u8> {
+        self.peek_nametable(addr, ciram)
+    }
+
+    fn peek_nametable(&self, addr: u16, ciram: &[u8; 0x1000]) -> Option<u8> {
+        self.ciram_index(addr).map(|i| ciram[i])
+    }
+
+    fn nametable_write(&mut self, addr: u16, value: u8, ciram: &mut [u8; 0x1000]) -> bool {
+        if let Some(i) = self.ciram_index(addr) {
+            ciram[i] = value;
+            true
+        } else {
+            false
+        }
     }
 
     fn notify_a12(&mut self, addr: u16, cycle: u64) {
@@ -270,6 +366,45 @@ mod tests {
 
         mapper.write_register(0xA000, 1);
         assert_eq!(mapper.mirroring(), Mirroring::Horizontal);
+    }
+
+    #[test]
+    fn mapper158_uses_chr_bank_bit7_for_nametable_pages() {
+        let mut mapper = Rambo1::new_158(16, 16);
+        let mut ciram = [0u8; 0x1000];
+        ciram[0x004] = 0x11;
+        ciram[0x404] = 0x22;
+
+        assert_eq!(mapper.mirroring(), Mirroring::FourScreen);
+        mapper.write_register(0xA000, 0);
+        assert_eq!(mapper.mirroring(), Mirroring::FourScreen);
+
+        mapper.write_register(0x8000, 0x00);
+        mapper.write_register(0x8001, 0x80);
+        assert_eq!(mapper.peek_nametable(0x2004, &ciram), Some(0x22));
+        assert_eq!(mapper.peek_nametable(0x2404, &ciram), Some(0x22));
+
+        mapper.write_register(0x8000, 0x01);
+        mapper.write_register(0x8001, 0x00);
+        assert_eq!(mapper.peek_nametable(0x2804, &ciram), Some(0x11));
+        assert_eq!(mapper.peek_nametable(0x2C04, &ciram), Some(0x11));
+
+        mapper.write_register(0x8000, 0x82);
+        mapper.write_register(0x8001, 0x84);
+        mapper.write_register(0x8000, 0x83);
+        mapper.write_register(0x8001, 0x00);
+        mapper.write_register(0x8000, 0x84);
+        mapper.write_register(0x8001, 0x80);
+        mapper.write_register(0x8000, 0x85);
+        mapper.write_register(0x8001, 0x00);
+        assert_eq!(mapper.peek_nametable(0x2004, &ciram), Some(0x22));
+        assert_eq!(mapper.peek_nametable(0x2404, &ciram), Some(0x11));
+        assert_eq!(mapper.peek_nametable(0x2804, &ciram), Some(0x22));
+        assert_eq!(mapper.peek_nametable(0x2C04, &ciram), Some(0x11));
+
+        assert!(mapper.nametable_write(0x2004, 0x33, &mut ciram));
+        assert_eq!(ciram[0x404], 0x33);
+        assert_eq!(mapper.chr_index(0x0004), 0x04 * 0x0400 + 4);
     }
 
     #[test]

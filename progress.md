@@ -1051,3 +1051,21 @@
   - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 119/119 mapper tests.
   - `cargo test -p fc-core`: PASS, 160/160 fc-core tests.
   - `cargo test`: PASS, workspace tests.
+
+### Mapper 48 / 158 IRQ and Variant Batch
+- Implemented mapper 48 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/taito.rs`: reuses Taito TC0190 PRG/CHR banking, adds the mapper 48 `$C000-$FFFF` IRQ/mirroring write path, and clocks IRQ through the existing HBlank mapper hook.
+- Implemented mapper 158 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/rambo1.rs`: reuses RAMBO-1 PRG/CHR/IRQ behavior, ignores ordinary `$A000` mirroring, and maps CHR bank bit7 to mapper-owned per-nametable CIRAM pages.
+- Wired both through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs`, updated mapper capability guard tests, and refreshed `/Users/sunmeng/workspace/fc/docs/Mapper-适配差距清单.md` plus `/Users/sunmeng/workspace/fc/docs/Mapper-适配引用记录.md`; supported mapper count is now 154 and remaining four-reference union gap is 339.
+- Verification:
+  - `cargo test -p fc-core mapper::basic::taito::tests -- --nocapture`: PASS, 2/2.
+  - `cargo test -p fc-core mapper::rambo1::tests -- --nocapture`: PASS, 5/5.
+  - `cargo test -p fc-core mapper::tests::watches_ppu_bus_matches_notify_a12_overrides -- --nocapture`: PASS.
+  - `cargo test -p fc-core mapper::tests::clocks_cpu_matches_cpu_clock_overrides -- --nocapture`: PASS.
+  - `cargo test -p fc-core mapper::tests::clocks_hblank_matches_hblank_clock_overrides -- --nocapture`: PASS.
+  - `cargo fmt --check`: PASS.
+  - `git diff --check`: PASS.
+  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 121/121 mapper tests.
+  - `cargo test -p fc-core`: PASS, 162/162 fc-core tests.
+  - `cargo test`: PASS, workspace tests.
+- Error note:
+  - First mapper 158 test used `0x80` as the observable CHR bank value, but the 16KB CHR test fixture wraps it to bank 0; changed the assertion input to `0x84` so bit7 nametable selection and CHR bank mapping are both visible.

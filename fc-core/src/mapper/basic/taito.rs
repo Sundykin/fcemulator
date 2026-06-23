@@ -12,6 +12,16 @@ pub struct TaitoTc0190 {
     prg_8k: [usize; 2],
     chr_1k: [usize; 8],
     mirroring: Mirroring,
+    #[serde(default)]
+    mapper48: bool,
+    #[serde(default)]
+    irq_enabled: bool,
+    #[serde(default)]
+    irq_counter: u16,
+    #[serde(default)]
+    irq_latch: u16,
+    #[serde(default)]
+    irq_pending: bool,
 }
 
 impl TaitoTc0190 {
@@ -21,7 +31,18 @@ impl TaitoTc0190 {
             prg_8k: [0; 2],
             chr_1k: [0; 8],
             mirroring,
+            mapper48: false,
+            irq_enabled: false,
+            irq_counter: 0,
+            irq_latch: 0,
+            irq_pending: false,
         }
+    }
+
+    pub(in crate::mapper) fn new_48(prg_16k: usize, mirroring: Mirroring) -> Self {
+        let mut mapper = Self::new(prg_16k, mirroring);
+        mapper.mapper48 = true;
+        mapper
     }
 
     fn prg_page(&self, slot: usize) -> usize {
@@ -32,26 +53,18 @@ impl TaitoTc0190 {
             _ => 0,
         }
     }
-}
 
-impl MapperOps for TaitoTc0190 {
-    fn prg_index(&self, addr: u16) -> usize {
-        let slot = ((addr - 0x8000) / 0x2000) as usize;
-        self.prg_page(slot) * 0x2000 + (addr as usize & 0x1FFF)
-    }
-    fn chr_index(&self, addr: u16) -> usize {
-        let slot = ((addr & 0x1FFF) / 0x0400) as usize;
-        self.chr_1k[slot] * 0x0400 + (addr as usize & 0x03FF)
-    }
-    fn write_register(&mut self, addr: u16, value: u8) {
-        match addr & 0xA003 {
+    fn write_bank_register(&mut self, addr: u16, value: u8) {
+        match addr & 0xF003 {
             0x8000 => {
                 self.prg_8k[0] = (value & 0x3F) as usize;
-                self.mirroring = if value & 0x40 != 0 {
-                    Mirroring::Horizontal
-                } else {
-                    Mirroring::Vertical
-                };
+                if !self.mapper48 {
+                    self.mirroring = if value & 0x40 != 0 {
+                        Mirroring::Horizontal
+                    } else {
+                        Mirroring::Vertical
+                    };
+                }
             }
             0x8001 => self.prg_8k[1] = (value & 0x3F) as usize,
             0x8002 => {
@@ -66,8 +79,65 @@ impl MapperOps for TaitoTc0190 {
             _ => {}
         }
     }
+
+    fn write_mapper48_register(&mut self, addr: u16, value: u8) {
+        match addr & 0xF003 {
+            0xC000 => self.irq_latch = value as u16,
+            0xC001 => self.irq_counter = self.irq_latch,
+            0xC002 => self.irq_enabled = true,
+            0xC003 => {
+                self.irq_enabled = false;
+                self.irq_pending = false;
+            }
+            0xE000 => {
+                self.mirroring = if value & 0x40 != 0 {
+                    Mirroring::Horizontal
+                } else {
+                    Mirroring::Vertical
+                };
+            }
+            _ => {}
+        }
+    }
+}
+
+impl MapperOps for TaitoTc0190 {
+    fn prg_index(&self, addr: u16) -> usize {
+        let slot = ((addr - 0x8000) / 0x2000) as usize;
+        self.prg_page(slot) * 0x2000 + (addr as usize & 0x1FFF)
+    }
+    fn chr_index(&self, addr: u16) -> usize {
+        let slot = ((addr & 0x1FFF) / 0x0400) as usize;
+        self.chr_1k[slot] * 0x0400 + (addr as usize & 0x03FF)
+    }
+    fn write_register(&mut self, addr: u16, value: u8) {
+        if self.mapper48 && addr >= 0xC000 {
+            self.write_mapper48_register(addr, value);
+        } else {
+            self.write_bank_register(addr, value);
+        }
+    }
     fn mirroring(&self) -> Mirroring {
         self.mirroring
+    }
+    fn hblank_clock(&mut self, _scanline: u16, _dot: u16) {
+        if !self.irq_enabled {
+            return;
+        }
+        self.irq_counter = self.irq_counter.wrapping_add(1);
+        if self.irq_counter == 0x100 {
+            self.irq_pending = true;
+            self.irq_enabled = false;
+        }
+    }
+    fn clocks_hblank(&self) -> bool {
+        self.mapper48
+    }
+    fn irq(&self) -> bool {
+        self.irq_pending
+    }
+    fn clear_irq(&mut self) {
+        self.irq_pending = false;
     }
 }
 
@@ -305,6 +375,41 @@ impl MapperOps for TaitoX1017 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mapper48_uses_tc0190_banks_and_hblank_irq() {
+        let mut mapper = TaitoTc0190::new_48(16, Mirroring::Vertical);
+
+        mapper.write_register(0x8000, 0xC5);
+        mapper.write_register(0x8001, 0x06);
+        mapper.write_register(0x8002, 0x12);
+        mapper.write_register(0x8003, 0x18);
+        mapper.write_register(0xA000, 0x21);
+        assert_eq!(mapper.prg_index(0x8004), 0x05 * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xA004), 0x06 * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 0x1E * 0x2000 + 4);
+        assert_eq!(mapper.chr_index(0x0004), 0x24 * 0x0400 + 4);
+        assert_eq!(mapper.chr_index(0x0404), 0x25 * 0x0400 + 4);
+        assert_eq!(mapper.chr_index(0x1004), 0x21 * 0x0400 + 4);
+        assert_eq!(mapper.mirroring(), Mirroring::Vertical);
+
+        mapper.write_register(0xE000, 0x40);
+        assert_eq!(mapper.mirroring(), Mirroring::Horizontal);
+
+        mapper.write_register(0xC000, 0xFE);
+        mapper.write_register(0xC001, 0);
+        mapper.write_register(0xC002, 0);
+        mapper.hblank_clock(0, 260);
+        assert!(!mapper.irq());
+        mapper.hblank_clock(1, 260);
+        assert!(mapper.irq());
+
+        mapper.clear_irq();
+        assert!(!mapper.irq());
+        mapper.write_register(0xC003, 0);
+        mapper.hblank_clock(2, 260);
+        assert!(!mapper.irq());
+    }
 
     #[test]
     fn mapper207_uses_x1005_banks_with_chr_controlled_nametables() {
