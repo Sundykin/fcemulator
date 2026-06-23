@@ -23,6 +23,29 @@ const MAPPER_CORRECTIONS: &[MapperCorrection] = &[
     },
 ];
 
+#[derive(Debug, Clone, Copy)]
+struct MapperCaps {
+    watches_ppu_bus: bool,
+    clocks_cpu: bool,
+    clocks_hblank: bool,
+    has_expansion_audio: bool,
+    has_chr_read: bool,
+    has_nametable_chr_mapping: bool,
+}
+
+impl MapperCaps {
+    fn from_mapper(mapper: &Mapper) -> Self {
+        Self {
+            watches_ppu_bus: mapper.watches_ppu_bus(),
+            clocks_cpu: mapper.clocks_cpu(),
+            clocks_hblank: mapper.clocks_hblank(),
+            has_expansion_audio: mapper.has_expansion_audio(),
+            has_chr_read: mapper.has_chr_read(),
+            has_nametable_chr_mapping: mapper.has_nametable_chr_mapping(),
+        }
+    }
+}
+
 fn corrected_mapper_number(header_mapper: u16, data: &[u8]) -> u16 {
     let crc32 = crc32fast::hash(data);
     MAPPER_CORRECTIONS
@@ -268,12 +291,7 @@ impl Cartridge {
 
         let mapper = Mapper::new(mapper_number, prg_16k, chr_8k, header_mirroring, submapper)
             .map_err(CartridgeError::UnsupportedMapper)?;
-        let mapper_watches_ppu_bus = mapper.watches_ppu_bus();
-        let mapper_clocks_cpu = mapper.clocks_cpu();
-        let mapper_clocks_hblank = mapper.clocks_hblank();
-        let mapper_has_expansion_audio = mapper.has_expansion_audio();
-        let mapper_has_chr_read = mapper.has_chr_read();
-        let mapper_has_nametable_chr_mapping = mapper.has_nametable_chr_mapping();
+        let mapper_caps = MapperCaps::from_mapper(&mapper);
         let prg_rom_mask = pow2_mask(prg_rom.len());
         let chr_rom_mask = pow2_mask(chr_rom.len());
         let chr_ram_mask = pow2_mask(chr_ram.len());
@@ -293,12 +311,12 @@ impl Cartridge {
             mapper_number,
             submapper,
             mapper,
-            mapper_watches_ppu_bus,
-            mapper_clocks_cpu,
-            mapper_clocks_hblank,
-            mapper_has_expansion_audio,
-            mapper_has_chr_read,
-            mapper_has_nametable_chr_mapping,
+            mapper_watches_ppu_bus: mapper_caps.watches_ppu_bus,
+            mapper_clocks_cpu: mapper_caps.clocks_cpu,
+            mapper_clocks_hblank: mapper_caps.clocks_hblank,
+            mapper_has_expansion_audio: mapper_caps.has_expansion_audio,
+            mapper_has_chr_read: mapper_caps.has_chr_read,
+            mapper_has_nametable_chr_mapping: mapper_caps.has_nametable_chr_mapping,
             prg_rom_mask,
             chr_rom_mask,
             chr_ram_mask,
@@ -313,12 +331,13 @@ impl Cartridge {
     /// Re-derive cached mapper capabilities. Call after a save-state load, which
     /// replaces `mapper` wholesale (the cache is `#[serde(skip)]`).
     pub fn refresh_mapper_caps(&mut self) {
-        self.mapper_watches_ppu_bus = self.mapper.watches_ppu_bus();
-        self.mapper_clocks_cpu = self.mapper.clocks_cpu();
-        self.mapper_clocks_hblank = self.mapper.clocks_hblank();
-        self.mapper_has_expansion_audio = self.mapper.has_expansion_audio();
-        self.mapper_has_chr_read = self.mapper.has_chr_read();
-        self.mapper_has_nametable_chr_mapping = self.mapper.has_nametable_chr_mapping();
+        let mapper_caps = MapperCaps::from_mapper(&self.mapper);
+        self.mapper_watches_ppu_bus = mapper_caps.watches_ppu_bus;
+        self.mapper_clocks_cpu = mapper_caps.clocks_cpu;
+        self.mapper_clocks_hblank = mapper_caps.clocks_hblank;
+        self.mapper_has_expansion_audio = mapper_caps.has_expansion_audio;
+        self.mapper_has_chr_read = mapper_caps.has_chr_read;
+        self.mapper_has_nametable_chr_mapping = mapper_caps.has_nametable_chr_mapping;
         self.prg_rom_mask = pow2_mask(self.prg_rom.len());
         self.chr_rom_mask = pow2_mask(self.chr_rom.len());
         self.chr_ram_mask = pow2_mask(self.chr_ram.len());
