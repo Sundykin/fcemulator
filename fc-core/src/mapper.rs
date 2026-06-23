@@ -378,6 +378,7 @@ impl Mapper {
             9 => Mapper::Mmc2(Mmc2::new(prg_16k, mirroring)),
             10 => Mapper::Mmc4(Mmc4::new(prg_16k, mirroring)),
             11 => Mapper::ColorDreams(ColorDreams::new(mirroring)),
+            12 => Mapper::Mmc3(Mmc3::new_12(prg_16k, chr_8k, mirroring)),
             13 => Mapper::Cprom(Cprom::new()),
             15 => Mapper::Mapper15(Mapper15::new()),
             18 => Mapper::Mapper18(Mapper18::new(prg_16k, chr_8k)),
@@ -819,6 +820,7 @@ mod tests {
             (3, false),    // CNROM
             (7, false),    // AxROM
             (11, false),   // ColorDreams
+            (12, true),    // Mapper 12 MMC3 A12 IRQ
             (13, false),   // CPROM
             (15, false),   // 100-in-1 multicart
             (18, false),   // Jaleco SS88006
@@ -978,6 +980,7 @@ mod tests {
             (9, false),    // MMC2 CHR latch watches PPU bus
             (10, false),   // MMC4 CHR latch watches PPU bus
             (11, false),   // ColorDreams
+            (12, false),   // Mapper 12 uses PPU A12 edges
             (13, false),   // CPROM
             (15, false),   // 100-in-1 multicart
             (18, true),    // Jaleco SS88006 IRQ counter clocks per CPU cycle
@@ -1134,6 +1137,7 @@ mod tests {
             (9, false),
             (10, false),
             (11, false),
+            (12, false),
             (13, false),
             (15, false),
             (18, false),

@@ -60,8 +60,8 @@
   - 新增 Mapper 253 / Waixing Dragon Ball pirate。
   - 覆盖 8KB PRG、1KB CHR nibble register、2KB mapper-owned CHR-RAM window、mirroring、CPU-clock IRQ。
 - `fc-core/src/mapper/mmc3.rs:17-1598`
-  - 新增 Mapper 37 / 44 / 45 / 47 / 49 / 52 / 76 / 114 / 115 / 118 / 119 / 121 / 187 / 189 / 191 / 192 / 195 / 196 / 197 / 198 / 208 / 245 / 254 的 MMC3 变体布局。
-  - 复用 MMC3 PRG/IRQ 核心，扩展 outer PRG/CHR bank latch、Mapper 45 serial outer registers、Mapper 49 outer latch、Mapper 76/197 自定义 2KB CHR cwrap、Mapper 114/115/121 写协议与保护寄存器、Mapper 118 TxSROM per-nametable CIRAM A10、Mapper 119 TQROM CHR-ROM/CHR-RAM window、Mapper 187 保护读/PRG/CHR 扩展、Mapper 198 PRG mask/低区 WRAM，以及 Mapper 208 PRG32 latch/保护 LUT。
+  - 新增 Mapper 12 / 37 / 44 / 45 / 47 / 49 / 52 / 76 / 114 / 115 / 118 / 119 / 121 / 187 / 189 / 191 / 192 / 195 / 196 / 197 / 198 / 208 / 245 / 254 的 MMC3 变体布局。
+  - 复用 MMC3 PRG/IRQ 核心，扩展 outer PRG/CHR bank latch、Mapper 12 expansion CHR high-bit/language latch、Mapper 45 serial outer registers、Mapper 49 outer latch、Mapper 76/197 自定义 2KB CHR cwrap、Mapper 114/115/121 写协议与保护寄存器、Mapper 118 TxSROM per-nametable CIRAM A10、Mapper 119 TQROM CHR-ROM/CHR-RAM window、Mapper 187 保护读/PRG/CHR 扩展、Mapper 198 PRG mask/低区 WRAM，以及 Mapper 208 PRG32 latch/保护 LUT。
 - `fc-core/src/mapper/rambo1.rs:1-310`
   - 新增 Mapper 64 / Tengen RAMBO-1 与 Mapper 158 / Tengen 800037 变体。
   - 覆盖 8KB PRG bank mode、2KB/1KB CHR mode、CHR A12 inversion、mapper-controlled mirroring、Mapper 158 CHR bit7 到 nametable page 映射、CPU/PPU A12 双模式 IRQ、IRQ 延迟与 CPU-mode force-clock。
@@ -87,6 +87,8 @@
 |---:|---|---|---:|---|
 | 21 | `vrc4.rs:1-329` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/21_22_23_25.c` | 33-39 | VRC4a/VRC4c submapper 到地址线 mask 映射 |
 | 21 | `vrc4.rs:1-329` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Konami/VRC2_4.h` | 37-48, 223-233 | mapper 21 variant detection 与 submapper 0 OR heuristics cross-check |
+| 12 | `mmc3.rs:19-21,134-139,646-651,710-718,1110-1152,1258-1265,1330-1350; mapper.rs:379-382,821-824,981-984,1138-1141` | `/Users/sunmeng/workspace/fc/fceux/src/boards/mmc3.cpp` | 377-413 | Mapper 12 MMC3 clone：expansion reg0/reg1 控制 pattern table 两半 CHR bit8，reg2 语言读回，reset toggle 并重置 MMC3 寄存器 |
+| 12 | `mmc3.rs:19-21,134-139,646-651,710-718,1110-1152,1258-1265,1330-1350; mapper.rs:379-382,821-824,981-984,1138-1141` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/mmc3.c` | 367-407 | FCEUmm mapper 12 cross-check；submapper 1 转 FFE_Init 记录为后续精修，不混入标准 mapper 12 |
 | 22 | `vrc4.rs:1-329` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/21_22_23_25.c` | 42-48 | VRC2a 地址线和 CHR bank 右移 |
 | 22 | `vrc4.rs:1-329` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Konami/VRC2_4.h` | 51, 121-130, 251-256 | VRC2a 变体识别、CHR 低位忽略、地址翻译 |
 | 23 | `vrc4.rs:1-329` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/21_22_23_25.c` | 51-58 | VRC4f/VRC4e/VRC2b submapper 地址线映射 |

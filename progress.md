@@ -1112,3 +1112,13 @@
   - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 127/127 mapper tests.
   - `cargo test -p fc-core`: PASS, 168/168 fc-core tests.
   - `cargo test`: PASS, workspace tests.
+
+### Mapper 12 MMC3 Expansion Register Batch
+- Implemented mapper 12 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs`: standard MMC3 PRG/IRQ behavior plus `$4100-$5FFF` expansion register writes that add CHR bank bit8 independently for `$0000-$0FFF` and `$1000-$1FFF`, language latch readback, and reset toggle with MMC3 register reset semantics.
+- Wired mapper 12 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs`, updated capability guard tables, and refreshed mapper gap/reference docs; supported mapper count is now 161 and remaining four-reference union gap is 332.
+- Verification:
+  - `cargo fmt --check`: PASS.
+  - `git diff --check`: PASS.
+  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 128/128 mapper tests.
+  - `cargo test -p fc-core`: PASS, 169/169 fc-core tests.
+  - `cargo test`: PASS, workspace tests.

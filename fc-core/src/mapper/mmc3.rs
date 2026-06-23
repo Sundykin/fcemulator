@@ -18,6 +18,7 @@ enum Mmc3ChrLayout {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 enum Mmc3OuterBank {
     None,
+    Mapper12 { regs: [u8; 3] },
     Mapper37 { block: u8 },
     Mapper44 { block: u8 },
     Mapper45 { regs: [u8; 4], index: u8 },
@@ -128,6 +129,13 @@ impl Mmc3 {
             chr_ram: Vec::new(),
             low_wram: Vec::new(),
         }
+    }
+
+    /// Mapper 12 — MMC3 clone with CHR bank bit 8 controlled by expansion regs.
+    pub(super) fn new_12(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
+        let mut m = Mmc3::new(prg_16k, chr_8k, mirroring);
+        m.outer_bank = Mmc3OuterBank::Mapper12 { regs: [0, 0, 1] };
+        m
     }
 
     /// Mapper 37 — PAL-ZZ SMB/Tetris/NWC, MMC3 with a 2-bit outer bank latch.
@@ -518,6 +526,7 @@ impl Mmc3 {
     fn outer_prg_bank(&self, region: u16, bank: usize) -> usize {
         match &self.outer_bank {
             Mmc3OuterBank::None => bank,
+            Mmc3OuterBank::Mapper12 { .. } => bank,
             Mmc3OuterBank::Mapper37 { block } => {
                 let mask = if *block == 2 { 0x0F } else { 0x07 };
                 ((*block as usize) << 3) | (bank & mask)
@@ -637,6 +646,9 @@ impl Mmc3 {
     fn outer_chr_bank(&self, addr: u16, bank: usize) -> usize {
         match &self.outer_bank {
             Mmc3OuterBank::None => bank,
+            Mmc3OuterBank::Mapper12 { regs } => {
+                bank | (((regs[((addr & 0x1000) >> 12) as usize] & 1) as usize) << 8)
+            }
             Mmc3OuterBank::Mapper37 { block } => ((*block as usize) << 6) | (bank & 0x7F),
             Mmc3OuterBank::Mapper44 { block } => {
                 let mask = if *block < 6 { 0x7F } else { 0xFF };
@@ -726,6 +738,16 @@ impl Mmc3 {
         if reg <= 5 {
             self.rebuild_txsrom_nametables();
         }
+    }
+
+    fn reset_standard_registers(&mut self) {
+        self.bank_select = 0;
+        self.banks = [0, 2, 4, 5, 6, 7, 0, 1];
+        self.prg_mode = false;
+        self.chr_mode = false;
+        self.irq = Mmc3A12Irq::new();
+        self.rebuild_chr_layout();
+        self.rebuild_txsrom_nametables();
     }
 
     fn write_standard_register(&mut self, addr: u16, value: u8) {
@@ -1096,6 +1118,11 @@ impl MapperOps for Mmc3 {
     }
 
     fn peek_expansion(&self, addr: u16) -> Option<u8> {
+        if let Mmc3OuterBank::Mapper12 { regs } = &self.outer_bank {
+            if (0x4100..=0x5FFF).contains(&addr) {
+                return Some(regs[2]);
+            }
+        }
         if let Mmc3OuterBank::Mapper187 { regs } = &self.outer_bank {
             if (0x5000..=0x5FFF).contains(&addr) {
                 const SECURITY: [u8; 4] = [0x83, 0x83, 0x42, 0x00];
@@ -1128,6 +1155,11 @@ impl MapperOps for Mmc3 {
 
     fn write_expansion(&mut self, addr: u16, value: u8) {
         match &mut self.outer_bank {
+            Mmc3OuterBank::Mapper12 { regs } if (0x4100..=0x5FFF).contains(&addr) => {
+                regs[0] = value & 0x01;
+                regs[1] = (value >> 4) & 0x01;
+                return;
+            }
             Mmc3OuterBank::Mapper114 { regs, .. } if (0x5000..=0x5FFF).contains(&addr) => {
                 if addr & 1 != 0 {
                     regs[1] = value;
@@ -1234,7 +1266,13 @@ impl MapperOps for Mmc3 {
     }
 
     fn reset(&mut self, _soft: bool) {
+        let mut reset_standard = false;
         match &mut self.outer_bank {
+            Mmc3OuterBank::Mapper12 { regs } => {
+                let language = regs[2] ^ 1;
+                *regs = [0, 0, language];
+                reset_standard = true;
+            }
             Mmc3OuterBank::Mapper45 { regs, index } => {
                 *regs = [0, 0, 0x0F, 0];
                 *index = 0;
@@ -1274,6 +1312,9 @@ impl MapperOps for Mmc3 {
             }
             _ => {}
         }
+        if reset_standard {
+            self.reset_standard_registers();
+        }
     }
 }
 
@@ -1299,6 +1340,29 @@ mod tests {
         let mut mapper = Mmc3::new(4, 0, Mirroring::Horizontal);
         mapper.write_expansion(0x5462, 0x8D);
         assert_eq!(mapper.read_expansion(0x5462), None);
+    }
+
+    #[test]
+    fn mapper12_expansion_regs_select_chr_high_bits_and_language_latch() {
+        let mut mapper = Mmc3::new_12(32, 64, Mirroring::Vertical);
+        assert_eq!(mapper.read_expansion(0x4100), Some(1));
+
+        mapper.write_register(0x8000, 0x00);
+        mapper.write_register(0x8001, 0x04);
+        mapper.write_register(0x8000, 0x02);
+        mapper.write_register(0x8001, 0x09);
+        assert_eq!(mapper.chr_index(0x0004), 0x04 * 0x400 + 4);
+        assert_eq!(mapper.chr_index(0x1004), 0x09 * 0x400 + 4);
+
+        mapper.write_expansion(0x4100, 0x11);
+        assert_eq!(mapper.chr_index(0x0004), 0x104 * 0x400 + 4);
+        assert_eq!(mapper.chr_index(0x1004), 0x109 * 0x400 + 4);
+        assert_eq!(mapper.peek_expansion(0x5FFF), Some(1));
+
+        mapper.reset(true);
+        assert_eq!(mapper.peek_expansion(0x4100), Some(0));
+        assert_eq!(mapper.chr_index(0x0004), 0x0004);
+        assert_eq!(mapper.chr_index(0x1004), 0x04 * 0x400 + 4);
     }
 
     #[test]
