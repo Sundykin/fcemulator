@@ -63,6 +63,70 @@ impl MapperOps for Mapper185 {
 }
 
 // ============================================================================
+// Mapper 188 — Karaoke Studio expansion cartridge
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Mapper188 {
+    prg_16k: usize,
+    latch: u8,
+}
+
+impl Mapper188 {
+    pub(in crate::mapper) fn new(prg_16k: usize) -> Self {
+        Self {
+            prg_16k: prg_16k.max(1),
+            latch: 0,
+        }
+    }
+
+    fn switchable_bank(&self) -> usize {
+        if self.latch == 0 {
+            7 + (self.prg_16k >> 4)
+        } else if self.latch & 0x10 != 0 {
+            (self.latch & 0x07) as usize
+        } else {
+            ((self.latch & 0x07) | 0x08) as usize
+        }
+    }
+}
+
+impl MapperOps for Mapper188 {
+    fn prg_index(&self, addr: u16) -> usize {
+        let bank = if addr < 0xC000 {
+            self.switchable_bank()
+        } else {
+            7
+        };
+        (bank % self.prg_16k) * 0x4000 + (addr as usize & 0x3FFF)
+    }
+
+    fn chr_index(&self, addr: u16) -> usize {
+        (addr & 0x1FFF) as usize
+    }
+
+    fn write_register(&mut self, _addr: u16, value: u8) {
+        self.latch = value;
+    }
+
+    fn read_low_register(&mut self, addr: u16) -> Option<u8> {
+        self.peek_low_register(addr)
+    }
+
+    fn peek_low_register(&self, addr: u16) -> Option<u8> {
+        if (0x6000..=0x7FFF).contains(&addr) {
+            Some(3)
+        } else {
+            None
+        }
+    }
+
+    fn mirroring(&self) -> Mirroring {
+        Mirroring::Horizontal
+    }
+}
+
+// ============================================================================
 // Mapper 193 — MEGA-SOFT War in the Gulf
 // ============================================================================
 
@@ -140,6 +204,23 @@ mod tests {
         mapper.write_register(0x8000, 0x13);
         assert_eq!(mapper.chr_read(0x1004, ChrAccess::Default), Some(0xFF));
         assert_eq!(mapper.mirroring(), Mirroring::Vertical);
+    }
+
+    #[test]
+    fn mapper188_selects_karaoke_prg_and_expansion_read() {
+        let mut mapper = Mapper188::new(16);
+
+        assert_eq!(mapper.prg_index(0x8004), 8 * 0x4000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 7 * 0x4000 + 4);
+        assert_eq!(mapper.read_low_register(0x6000), Some(3));
+        assert_eq!(mapper.chr_index(0x1004), 0x1004);
+
+        mapper.write_register(0x8000, 0x02);
+        assert_eq!(mapper.prg_index(0x8004), 10 * 0x4000 + 4);
+
+        mapper.write_register(0x8000, 0x12);
+        assert_eq!(mapper.prg_index(0x8004), 2 * 0x4000 + 4);
+        assert_eq!(mapper.mirroring(), Mirroring::Horizontal);
     }
 
     #[test]

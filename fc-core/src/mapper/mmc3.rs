@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 enum Mmc3ChrLayout {
     Standard,
     Mapper76 { chr_2k: [usize; 4] },
+    Mapper197 { chr_2k: [usize; 4], submapper: u8 },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -29,6 +30,7 @@ enum Mmc3OuterBank {
     Mapper187 { regs: [u8; 2] },
     Mapper189 { reg: u8 },
     Mapper196 { enabled: bool, reg: u8 },
+    Mapper198,
     Mapper208 { regs: [u8; 6], submapper: u8 },
     Mapper245,
     Mapper254 { unlocked: bool, xor_mask: u8 },
@@ -301,6 +303,29 @@ impl Mmc3 {
         m
     }
 
+    /// Mapper 197 — MMC3 clone with board-specific 2KB CHR bank wiring.
+    pub(super) fn new_197(
+        prg_16k: usize,
+        chr_8k: usize,
+        mirroring: Mirroring,
+        submapper: u8,
+    ) -> Self {
+        let mut m = Mmc3::new(prg_16k, chr_8k, mirroring);
+        m.chr_layout = Mmc3ChrLayout::Mapper197 {
+            chr_2k: [0; 4],
+            submapper,
+        };
+        m.rebuild_chr_layout();
+        m
+    }
+
+    /// Mapper 198 — large MMC3 clone with a low WRAM window and PRG pwrap mask.
+    pub(super) fn new_198(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
+        let mut m = Mmc3::new_with_low_wram(prg_16k, chr_8k, mirroring);
+        m.outer_bank = Mmc3OuterBank::Mapper198;
+        m
+    }
+
     /// Mapper 208 — Gouder 37017, MMC3 with a PRG32 latch and protection LUT.
     pub(super) fn new_208(
         prg_16k: usize,
@@ -350,6 +375,29 @@ impl Mmc3 {
         }
     }
 
+    fn mapper197_chr_write(&mut self, addr: u16, bank: u8) {
+        if let Mmc3ChrLayout::Mapper197 { chr_2k, submapper } = &mut self.chr_layout {
+            let slot = match (*submapper, addr & 0x1C00) {
+                (1, 0x0800) => Some(0),
+                (1, 0x0C00) => Some(1),
+                (1, 0x1800) => Some(2),
+                (1, 0x1C00) => Some(3),
+                (2, 0x0000) => Some(0),
+                (2, 0x0C00) => Some(1),
+                (2, 0x1000) => Some(2),
+                (2, 0x1C00) => Some(3),
+                (_, 0x0000) => Some(0),
+                (_, 0x0400) => Some(1),
+                (_, 0x1000) => Some(2),
+                (_, 0x1400) => Some(3),
+                _ => None,
+            };
+            if let Some(slot) = slot {
+                chr_2k[slot] = bank as usize;
+            }
+        }
+    }
+
     fn rebuild_chr_layout(&mut self) {
         if matches!(self.chr_layout, Mmc3ChrLayout::Mapper76 { .. }) {
             self.chr_layout = Mmc3ChrLayout::Mapper76 { chr_2k: [0; 4] };
@@ -362,6 +410,22 @@ impl Mmc3 {
             self.mapper76_chr_write(cbase ^ 0x1400, self.banks[3]);
             self.mapper76_chr_write(cbase ^ 0x1800, self.banks[4]);
             self.mapper76_chr_write(cbase ^ 0x1C00, self.banks[5]);
+        }
+        if let Mmc3ChrLayout::Mapper197 { submapper, .. } = &self.chr_layout {
+            let submapper = *submapper;
+            self.chr_layout = Mmc3ChrLayout::Mapper197 {
+                chr_2k: [0; 4],
+                submapper,
+            };
+            let cbase = ((self.bank_select & 0x80) as u16) << 5;
+            self.mapper197_chr_write(cbase, self.banks[0] & !1);
+            self.mapper197_chr_write(cbase ^ 0x0400, self.banks[0] | 1);
+            self.mapper197_chr_write(cbase ^ 0x0800, self.banks[1] & !1);
+            self.mapper197_chr_write(cbase ^ 0x0C00, self.banks[1] | 1);
+            self.mapper197_chr_write(cbase ^ 0x1000, self.banks[2]);
+            self.mapper197_chr_write(cbase ^ 0x1400, self.banks[3]);
+            self.mapper197_chr_write(cbase ^ 0x1800, self.banks[4]);
+            self.mapper197_chr_write(cbase ^ 0x1C00, self.banks[5]);
         }
     }
 
@@ -543,6 +607,13 @@ impl Mmc3 {
                     bank
                 }
             }
+            Mmc3OuterBank::Mapper198 => {
+                if bank >= 0x50 {
+                    bank & 0x4F
+                } else {
+                    bank
+                }
+            }
             Mmc3OuterBank::Mapper208 { regs, submapper } => {
                 let base = if *submapper == 1 {
                     ((self.banks[6] as usize) >> 2) << 2
@@ -605,6 +676,7 @@ impl Mmc3 {
             }
             Mmc3OuterBank::Mapper189 { .. } => bank,
             Mmc3OuterBank::Mapper196 { .. } => bank,
+            Mmc3OuterBank::Mapper198 => bank,
             Mmc3OuterBank::Mapper208 { .. } => bank,
             Mmc3OuterBank::Mapper245 => bank & 0x07,
             Mmc3OuterBank::Mapper254 { .. } => bank,
@@ -636,6 +708,19 @@ impl Mmc3 {
                 self.rebuild_chr_layout();
             } else {
                 self.mapper76_chr_write(addr, value);
+            }
+        }
+        if matches!(self.chr_layout, Mmc3ChrLayout::Mapper197 { .. }) && reg <= 5 {
+            let cbase = ((self.bank_select & 0x80) as u16) << 5;
+            let addr = match reg {
+                0 => cbase,
+                1 => cbase ^ 0x0800,
+                _ => cbase ^ (0x1000 + ((reg - 2) as u16) * 0x0400),
+            };
+            if reg <= 1 {
+                self.rebuild_chr_layout();
+            } else {
+                self.mapper197_chr_write(addr, value);
             }
         }
         if reg <= 5 {
@@ -805,6 +890,10 @@ impl MapperOps for Mmc3 {
     fn chr_index(&self, addr: u16) -> usize {
         let a = addr & 0x1FFF;
         if let Mmc3ChrLayout::Mapper76 { chr_2k } = &self.chr_layout {
+            let slot = (a / 0x0800) as usize;
+            return (chr_2k[slot] % (self.chr_1k / 2).max(1)) * 0x0800 + (a as usize & 0x07FF);
+        }
+        if let Mmc3ChrLayout::Mapper197 { chr_2k, .. } = &self.chr_layout {
             let slot = (a / 0x0800) as usize;
             return (chr_2k[slot] % (self.chr_1k / 2).max(1)) * 0x0800 + (a as usize & 0x07FF);
         }
@@ -1174,6 +1263,7 @@ impl MapperOps for Mmc3 {
                 *enabled = false;
                 *reg = 0;
             }
+            Mmc3OuterBank::Mapper198 => {}
             Mmc3OuterBank::Mapper208 { regs, .. } => {
                 *regs = [0; 6];
                 regs[5] = 0x11;
@@ -1471,6 +1561,39 @@ mod tests {
 
         mapper.reset(true);
         assert_eq!(mapper.prg_index(0x8004), 0x12 * 0x2000 + 4);
+    }
+
+    #[test]
+    fn mapper197_uses_board_specific_2k_chr_wiring() {
+        let mut mapper = Mmc3::new_197(16, 64, Mirroring::Vertical, 0);
+
+        mapper.write_register(0x8000, 0x00);
+        mapper.write_register(0x8001, 0x20);
+        assert_eq!(mapper.chr_index(0x0004), 0x20 * 0x0800 + 4);
+        assert_eq!(mapper.chr_index(0x0804), 0x21 * 0x0800 + 4);
+
+        mapper.write_register(0x8000, 0x02);
+        mapper.write_register(0x8001, 0x34);
+        mapper.write_register(0x8000, 0x03);
+        mapper.write_register(0x8001, 0x35);
+        assert_eq!(mapper.chr_index(0x1004), 0x34 * 0x0800 + 4);
+        assert_eq!(mapper.chr_index(0x1804), 0x35 * 0x0800 + 4);
+    }
+
+    #[test]
+    fn mapper198_masks_high_prg_banks_and_maps_low_wram() {
+        let mut mapper = Mmc3::new_198(128, 0, Mirroring::Horizontal);
+
+        assert_eq!(mapper.prg_index(0xC004), 0x4E * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xE004), 0x4F * 0x2000 + 4);
+
+        mapper.write_register(0x8000, 0x06);
+        mapper.write_register(0x8001, 0x52);
+        assert_eq!(mapper.prg_index(0x8004), 0x42 * 0x2000 + 4);
+
+        mapper.write_expansion(0x5004, 0xA5);
+        assert_eq!(mapper.read_expansion(0x5004), Some(0xA5));
+        assert_eq!(mapper.chr_index(0x1804), 0x1804);
     }
 
     #[test]

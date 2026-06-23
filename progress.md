@@ -233,6 +233,11 @@
   - `cargo test -p fc-core mapper::tests::watches_ppu_bus_matches_notify_a12_overrides -- --nocapture`: PASS.
   - `cargo test -p fc-core mapper::tests::clocks_cpu_matches_cpu_clock_overrides -- --nocapture`: PASS.
   - `cargo test -p fc-core mapper::tests::clocks_hblank_matches_hblank_clock_overrides -- --nocapture`: PASS.
+  - `cargo fmt --check`: PASS.
+  - `git diff --check`: PASS.
+  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 124/124 mapper tests.
+  - `cargo test -p fc-core`: PASS, 165/165 fc-core tests.
+  - `cargo test`: PASS, workspace tests.
   - `git diff --check`: PASS.
   - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 74/74 mapper tests.
   - `cargo test -p fc-core`: PASS, 114/114 fc-core tests.
@@ -1069,3 +1074,16 @@
   - `cargo test`: PASS, workspace tests.
 - Error note:
   - First mapper 158 test used `0x80` as the observable CHR bank value, but the 16KB CHR test fixture wraps it to bank 0; changed the assertion input to `0x84` so bit7 nametable selection and CHR bank mapping are both visible.
+
+### Mapper 188 / 197 / 198 Mechanical Board Batch
+- Implemented mapper 188 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/discrete.rs`: Karaoke Studio expansion cartridge PRG16 latch, fixed `$C000` PRG bank 7, fixed CHR8, horizontal mirroring, and `$6000-$7FFF` device read value 3.
+- Implemented mapper 197 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs`: adds an `Mmc3ChrLayout::Mapper197` 2KB CHR cwrap layer while preserving normal MMC3 PRG banking and A12 IRQ behavior. Submapper 0/1/2 CHR layouts are covered; submapper 3 low-register outer PRG/CHR remains future precision work.
+- Implemented mapper 198 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs`: adds a low `$5000-$5FFF` WRAM window through existing helper paths and a PRG pwrap mask for high bank numbers while preserving normal MMC3 CHR/A12 IRQ behavior.
+- Wired 188/197/198 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs`, updated mapper capability guard tests, and refreshed `/Users/sunmeng/workspace/fc/docs/Mapper-适配差距清单.md` plus `/Users/sunmeng/workspace/fc/docs/Mapper-适配引用记录.md`; supported mapper count is now 157 and remaining four-reference union gap is 336.
+- Mapper 199 was examined but intentionally deferred: FCEUX models mixed CHR-RAM/EXPREGS behavior while FCEUmm has a much simpler unbanked CHR-RAM + low WRAM path, so it should be a separate precision batch.
+- Verification:
+  - `cargo test -p fc-core mapper::basic::discrete::tests -- --nocapture`: PASS, 3/3.
+  - `cargo test -p fc-core mapper::mmc3::tests -- --nocapture`: PASS, 29/29.
+  - `cargo test -p fc-core mapper::tests::watches_ppu_bus_matches_notify_a12_overrides -- --nocapture`: PASS.
+  - `cargo test -p fc-core mapper::tests::clocks_cpu_matches_cpu_clock_overrides -- --nocapture`: PASS.
+  - `cargo test -p fc-core mapper::tests::clocks_hblank_matches_hblank_clock_overrides -- --nocapture`: PASS.

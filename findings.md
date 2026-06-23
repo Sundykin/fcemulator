@@ -289,3 +289,7 @@
 - Mapper 48 是 Taito TC0190 的 HBlank IRQ 变体：普通 `$8000-$BFFF` bank 写与 mapper 33 共享，`$C000-$FFFF` 单独处理 IRQ latch/counter/enable 和 `$E000` mirroring；现有 `MapperOps::hblank_clock()` 架构可以直接承载。
 - Mapper 158 是 RAMBO-1 的 board 变体而不是新 IRQ 单元：PRG/CHR/CPU-vs-A12 IRQ 继续复用 mapper 64，差异只在 `$8001` 写入时把 CHR bank bit7 映射到 per-nametable CIRAM page，并忽略 `$A000` 普通 mirroring 写。现有 mapper-owned nametable read/write hook 可以表达，不需要新增 CHR-backed nametable 接口。
 - Mapper 158 参考实现存在 bit 极性差异：FCEUmm/Mesen2 直接使用 `value >> 7`，Nestopia 的 `T800037::UpdateChr()` 对 nametable page 做 `^ 1`。当前第一版按 FCEUmm/Mesen2 直接语义实现，Nestopia 差异已记录为后续具体 ROM 证据驱动的精修项。
+- Mapper 188 虽曾被归在外设风险组，但参考实现实际只需要固定 low-register read value 和 PRG latch；现有 `read_low_register()` / `peek_low_register()` 已足够表达，不需要先建设麦克风或输入外设接口。
+- Mapper 197 适合作为 MMC3 CHR layout 变体，而不是完整新 mapper：FCEUX/FCEUmm 的核心差异在 2KB CHR cwrap，PRG 和 A12 IRQ 继续复用普通 MMC3。FCEUmm submapper 3 还包含低寄存器 outer PRG/CHR 扩展，当前记录为后续精修。
+- Mapper 198 验证了现有 `new_with_low_wram()` 可复用到 MMC3 clone board：低区 `$5000-$5FFF` WRAM 不需要新 Cartridge API，PRG pwrap 只是在 `outer_prg_bank()` 里对 bank `>= 0x50` 做 mask。
+- Mapper 199 不适合和 197/198 混在同一机械批次：FCEUX 的 board 文件包含 mixed CHR-RAM/EXPREGS side effects，FCEUmm 则简化为 unbanked CHR-RAM 与 `$5000-$5FFF` WRAM。应先确认目标 ROM 或选择主参考后再落地。

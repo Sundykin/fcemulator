@@ -230,13 +230,13 @@ pub use basic::{
     Caltron41, Cnrom, Codemasters, ColorDreams, ColorDreams46, Cprom, Gxrom, IremG101, IremLrog017,
     IremTamS1, JalecoJf11_14, JalecoJf13, JalecoJf16, JalecoJfxx, Mapper103, Mapper106, Mapper107,
     Mapper108, Mapper116, Mapper117, Mapper120, Mapper122, Mapper15, Mapper151, Mapper156,
-    Mapper170, Mapper18, Mapper183, Mapper185, Mapper193, Mapper203, Mapper212, Mapper222,
-    Mapper226, Mapper230, Mapper233, Mapper234, Mapper235, Mapper240, Mapper241, Mapper244,
-    Mapper246, Mapper253, Mapper36, Mapper40, Mapper42, Mapper43, Mapper50, Mapper57, Mapper60,
-    Mapper63, Mapper65, Mapper67, Mapper72, Mapper73, Mapper79, Mapper83, Mapper91, Mapper92,
-    Namco108Mapper154, Namco108Mapper206, Namco108Mapper95, Namco118, Nina01, Nina03_06, Nrom,
-    Ntdec112, Sachen133, Sachen149, SachenSa0161m, Subor166, SuborVariant, Sunsoft184, Sunsoft4,
-    Sunsoft89, TaitoTc0190, TaitoX1005, TaitoX1017, UnlPci556, Unrom, UnromVariant,
+    Mapper170, Mapper18, Mapper183, Mapper185, Mapper188, Mapper193, Mapper203, Mapper212,
+    Mapper222, Mapper226, Mapper230, Mapper233, Mapper234, Mapper235, Mapper240, Mapper241,
+    Mapper244, Mapper246, Mapper253, Mapper36, Mapper40, Mapper42, Mapper43, Mapper50, Mapper57,
+    Mapper60, Mapper63, Mapper65, Mapper67, Mapper72, Mapper73, Mapper79, Mapper83, Mapper91,
+    Mapper92, Namco108Mapper154, Namco108Mapper206, Namco108Mapper95, Namco118, Nina01, Nina03_06,
+    Nrom, Ntdec112, Sachen133, Sachen149, SachenSa0161m, Subor166, SuborVariant, Sunsoft184,
+    Sunsoft4, Sunsoft89, TaitoTc0190, TaitoX1005, TaitoX1017, UnlPci556, Unrom, UnromVariant,
     UnromVariantMapper, Vrc1,
 };
 pub use expansion_mappers::{Fme7, Namco163, Vrc6, Vrc6Variant, Vrc7};
@@ -309,6 +309,7 @@ pub enum Mapper {
     Mapper170(Mapper170),
     Mapper183(Mapper183),
     Mapper185(Mapper185),
+    Mapper188(Mapper188),
     Mapper193(Mapper193),
     Mapper212(Mapper212),
     Mapper222(Mapper222),
@@ -492,6 +493,7 @@ impl Mapper {
             183 => Mapper::Mapper183(Mapper183::new(prg_16k, chr_8k)),
             184 => Mapper::Sunsoft184(Sunsoft184::new(mirroring)),
             185 => Mapper::Mapper185(Mapper185::new(prg_16k, mirroring)),
+            188 => Mapper::Mapper188(Mapper188::new(prg_16k)),
             187 => Mapper::Mmc3(Mmc3::new_187(prg_16k, chr_8k, mirroring)),
             189 => Mapper::Mmc3(Mmc3::new_189(prg_16k, chr_8k, mirroring)),
             191 => Mapper::Mmc3(Mmc3::new_191(prg_16k, chr_8k, mirroring)),
@@ -500,6 +502,8 @@ impl Mapper {
             194 => Mapper::Mmc3(Mmc3::new_194(prg_16k, chr_8k, mirroring)),
             195 => Mapper::Mmc3(Mmc3::new_195(prg_16k, chr_8k, mirroring)),
             196 => Mapper::Mmc3(Mmc3::new_196(prg_16k, chr_8k, mirroring)),
+            197 => Mapper::Mmc3(Mmc3::new_197(prg_16k, chr_8k, mirroring, submapper)),
+            198 => Mapper::Mmc3(Mmc3::new_198(prg_16k, chr_8k, mirroring)),
             200 => Mapper::AddrLatch16k(AddrLatch16k::new(AddrLatchVariant::Mapper200)),
             201 => Mapper::AddrLatch16k(AddrLatch16k::new_with_mirroring(
                 AddrLatchVariant::Mapper201,
@@ -615,6 +619,7 @@ macro_rules! dispatch {
             Mapper::Mapper170($m) => $body,
             Mapper::Mapper183($m) => $body,
             Mapper::Mapper185($m) => $body,
+            Mapper::Mapper188($m) => $body,
             Mapper::Mapper193($m) => $body,
             Mapper::Mapper212($m) => $body,
             Mapper::Mapper222($m) => $body,
@@ -896,6 +901,7 @@ mod tests {
             (152, false),  // Bandai 74161/7432
             (174, false),  // Mapper 174
             (183, false),  // Mapper 183 IRQ is CPU-clocked, not PPU-bus-clocked
+            (188, false),  // Mapper 188
             (230, false),  // Mapper 230
             (233, false),  // Mapper 233
             (234, false),  // Mapper 234
@@ -904,6 +910,8 @@ mod tests {
             (192, true),   // Mapper 192 MMC3 A12 IRQ
             (195, true),   // Mapper 195 MMC3 A12 IRQ
             (196, true),   // Mapper 196 MMC3 A12 IRQ
+            (197, true),   // Mapper 197 MMC3 A12 IRQ
+            (198, true),   // Mapper 198 MMC3 A12 IRQ
             (200, false),  // Mapper 200
             (201, false),  // Mapper 201
             (202, false),  // Mapper 202
@@ -1049,6 +1057,7 @@ mod tests {
             (152, false),  // Bandai 74161/7432
             (174, false),  // Mapper 174
             (183, true),   // Mapper 183 IRQ counter clocks per CPU cycle
+            (188, false),  // Mapper 188
             (230, false),  // Mapper 230
             (233, false),  // Mapper 233
             (234, false),  // Mapper 234
@@ -1058,6 +1067,8 @@ mod tests {
             (192, false),  // Mapper 192 uses PPU A12 edges
             (195, false),  // Mapper 195 uses PPU A12 edges
             (196, false),  // Mapper 196 uses PPU A12 edges
+            (197, false),  // Mapper 197 uses PPU A12 edges
+            (198, false),  // Mapper 198 uses PPU A12 edges
             (200, false),  // Mapper 200
             (201, false),  // Mapper 201
             (202, false),  // Mapper 202
@@ -1210,11 +1221,14 @@ mod tests {
             (183, false),
             (184, false),
             (187, false),
+            (188, false),
             (191, false),
             (192, false),
             (194, false),
             (195, false),
             (196, false),
+            (197, false),
+            (198, false),
             (200, false),
             (201, false),
             (202, false),
