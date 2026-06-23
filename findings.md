@@ -306,3 +306,4 @@
 - Mapper 175 验证了现有高区 `read_register()` side-effect hook 足以表达“读 PRG-ROM 同时更新 mapper latch”的板卡：读 `$FFFC` 时提交延迟 PRG bank，debugger `peek` 路径不触发副作用。
 - Mapper 177 是纯 PRG32 latch 板卡，参考实现的 8KB WRAM 不需要新低区映射 hook，继续由 Cartridge 默认 PRG-RAM 路径提供。
 - Mapper 250 进一步验证 MMC3 写协议 helper 方向正确：参考实现只把 CPU 地址线折成普通 MMC3 register address/data，然后复用 GenMMC3/MMC3 core；本项目的 `write_standard_register()` 可以直接承载，不需要扩 `MapperOps`。
+- Mapper 205 继续适合挂在 `Mmc3OuterBank`：低区 `$6000-$7FFF` 只选择 outer block，PRG/CHR wrapper 按 block 做 mask/OR，普通 MMC3 A12 IRQ 不变；FCEUX 的 split-ROM/solder-pad 分支需要更细 ROM-chip 元数据，当前按 Mesen2/FCEUmm single-ROM 语义落第一版。

@@ -32,6 +32,7 @@ enum Mmc3OuterBank {
     Mapper189 { reg: u8 },
     Mapper196 { enabled: bool, reg: u8 },
     Mapper198,
+    Mapper205 { block: u8 },
     Mapper208 { regs: [u8; 6], submapper: u8 },
     Mapper245,
     Mapper250,
@@ -335,6 +336,13 @@ impl Mmc3 {
         m
     }
 
+    /// Mapper 205 — BMC 15-in-1 MMC3 clone with a low-register outer block.
+    pub(super) fn new_205(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
+        let mut m = Mmc3::new(prg_16k, chr_8k, mirroring);
+        m.outer_bank = Mmc3OuterBank::Mapper205 { block: 0 };
+        m
+    }
+
     /// Mapper 208 — Gouder 37017, MMC3 with a PRG32 latch and protection LUT.
     pub(super) fn new_208(
         prg_16k: usize,
@@ -632,6 +640,10 @@ impl Mmc3 {
                     bank
                 }
             }
+            Mmc3OuterBank::Mapper205 { block } => {
+                let mask = if *block <= 1 { 0x1F } else { 0x0F };
+                ((*block as usize) << 4) | (bank & mask)
+            }
             Mmc3OuterBank::Mapper208 { regs, submapper } => {
                 let base = if *submapper == 1 {
                     ((self.banks[6] as usize) >> 2) << 2
@@ -699,6 +711,10 @@ impl Mmc3 {
             Mmc3OuterBank::Mapper189 { .. } => bank,
             Mmc3OuterBank::Mapper196 { .. } => bank,
             Mmc3OuterBank::Mapper198 => bank,
+            Mmc3OuterBank::Mapper205 { block } => {
+                let bank = if *block >= 2 { bank & 0x7F } else { bank };
+                bank | ((*block as usize) << 7)
+            }
             Mmc3OuterBank::Mapper208 { .. } => bank,
             Mmc3OuterBank::Mapper245 => bank & 0x07,
             Mmc3OuterBank::Mapper250 => bank,
@@ -1091,12 +1107,19 @@ impl MapperOps for Mmc3 {
                 *reg = (value & 0x0F) | (value >> 4);
                 true
             }
+            Mmc3OuterBank::Mapper205 { block } => {
+                *block = value & 0x03;
+                true
+            }
             _ => false,
         }
     }
 
     fn low_register_write_falls_through(&self, _addr: u16) -> bool {
-        matches!(self.outer_bank, Mmc3OuterBank::Mapper47 { .. })
+        matches!(
+            self.outer_bank,
+            Mmc3OuterBank::Mapper47 { .. } | Mmc3OuterBank::Mapper205 { .. }
+        )
     }
 
     fn read_low_register(&mut self, addr: u16) -> Option<u8> {
@@ -1319,6 +1342,9 @@ impl MapperOps for Mmc3 {
                 *reg = 0;
             }
             Mmc3OuterBank::Mapper198 => {}
+            Mmc3OuterBank::Mapper205 { block } => {
+                *block = 0;
+            }
             Mmc3OuterBank::Mapper208 { regs, .. } => {
                 *regs = [0; 6];
                 regs[5] = 0x11;
@@ -1651,6 +1677,32 @@ mod tests {
             mapper.notify_a12(0x1000, cycle);
         }
         assert!(mapper.irq());
+    }
+
+    #[test]
+    fn mapper205_low_register_selects_outer_prg_and_chr_block() {
+        let mut mapper = Mmc3::new_205(64, 64, Mirroring::Vertical);
+
+        mapper.write_register(0x8000, 0x06);
+        mapper.write_register(0x8001, 0x1F);
+        assert_eq!(mapper.prg_index(0x8004), 0x1F * 0x2000 + 4);
+
+        assert!(mapper.write_low_register(0x6000, 0x02));
+        assert!(mapper.low_register_write_falls_through(0x6000));
+        mapper.write_register(0x8001, 0x1F);
+        assert_eq!(mapper.prg_index(0x8004), 0x2F * 0x2000 + 4);
+
+        mapper.write_register(0x8000, 0x02);
+        mapper.write_register(0x8001, 0x8A);
+        assert_eq!(mapper.chr_index(0x1004), 0x10A * 0x0400 + 4);
+
+        assert!(mapper.write_low_register(0x7000, 0x03));
+        mapper.write_register(0x8001, 0x8A);
+        assert_eq!(mapper.chr_index(0x1004), 0x18A * 0x0400 + 4);
+
+        mapper.reset(true);
+        mapper.write_register(0x8001, 0x0A);
+        assert_eq!(mapper.chr_index(0x1004), 0x0A * 0x0400 + 4);
     }
 
     #[test]

@@ -536,6 +536,7 @@ impl Mapper {
             202 => Mapper::AddrLatch16k(AddrLatch16k::new(AddrLatchVariant::Mapper202)),
             203 => Mapper::Mapper203(Mapper203::new(mirroring)),
             204 => Mapper::AddrLatch16k(AddrLatch16k::new(AddrLatchVariant::Mapper204)),
+            205 => Mapper::Mmc3(Mmc3::new_205(prg_16k, chr_8k, mirroring)),
             206 => Mapper::Namco108Mapper206(Namco108Mapper206::new(prg_16k, mirroring)),
             207 => Mapper::TaitoX1005(TaitoX1005::new_207(prg_16k)),
             208 => Mapper::Mmc3(Mmc3::new_208(prg_16k, chr_8k, mirroring, submapper)),
@@ -965,6 +966,7 @@ mod tests {
             (201, false),  // Mapper 201
             (202, false),  // Mapper 202
             (204, false),  // Mapper 204
+            (205, true),   // Mapper 205 MMC3 A12 IRQ
             (206, false),  // Namco 108 mapper 206
             (207, false),  // Taito X1-005 mapper 207
             (208, true),   // Mapper 208 MMC3 A12 IRQ
@@ -1136,6 +1138,7 @@ mod tests {
             (201, false),  // Mapper 201
             (202, false),  // Mapper 202
             (204, false),  // Mapper 204
+            (205, false),  // Mapper 205 uses PPU A12 edges
             (206, false),  // Namco 108 mapper 206
             (207, false),  // Taito X1-005 mapper 207
             (208, false),  // Mapper 208 uses PPU A12 edges
@@ -1311,6 +1314,7 @@ mod tests {
             (202, false),
             (203, false),
             (204, false),
+            (205, false),
             (206, false),
             (207, false),
             (208, false),

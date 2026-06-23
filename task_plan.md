@@ -145,6 +145,7 @@ Phase 17: Mapper compatibility gap closure
 - [x] Add latch/special mapper batch 81 / 104
 - [x] Add special mapper batch 175 / 177
 - [x] Add MMC3 address-line protocol mapper 250
+- [x] Add MMC3 outer-block mapper 205
 - **Status:** in_progress
 
 ### Phase 18: Mapper board compatibility layer
