@@ -490,6 +490,7 @@ impl Mapper {
             183 => Mapper::Mapper183(Mapper183::new(prg_16k, chr_8k)),
             184 => Mapper::Sunsoft184(Sunsoft184::new(mirroring)),
             185 => Mapper::Mapper185(Mapper185::new(prg_16k, mirroring)),
+            187 => Mapper::Mmc3(Mmc3::new_187(prg_16k, chr_8k, mirroring)),
             189 => Mapper::Mmc3(Mmc3::new_189(prg_16k, chr_8k, mirroring)),
             191 => Mapper::Mmc3(Mmc3::new_191(prg_16k, chr_8k, mirroring)),
             192 => Mapper::Mmc3(Mmc3::new_192(prg_16k, chr_8k, mirroring)),
@@ -507,6 +508,7 @@ impl Mapper {
             204 => Mapper::AddrLatch16k(AddrLatch16k::new(AddrLatchVariant::Mapper204)),
             206 => Mapper::Namco108Mapper206(Namco108Mapper206::new(prg_16k, mirroring)),
             207 => Mapper::TaitoX1005(TaitoX1005::new_207(prg_16k)),
+            208 => Mapper::Mmc3(Mmc3::new_208(prg_16k, chr_8k, mirroring, submapper)),
             212 => Mapper::Mapper212(Mapper212::new()),
             216 => Mapper::AddrLatch16k(AddrLatch16k::new_with_mirroring(
                 AddrLatchVariant::Mapper216,
@@ -893,6 +895,7 @@ mod tests {
             (230, false),  // Mapper 230
             (233, false),  // Mapper 233
             (234, false),  // Mapper 234
+            (187, true),   // Mapper 187 MMC3 A12 IRQ
             (191, true),   // Mapper 191 MMC3 A12 IRQ
             (192, true),   // Mapper 192 MMC3 A12 IRQ
             (195, true),   // Mapper 195 MMC3 A12 IRQ
@@ -903,6 +906,7 @@ mod tests {
             (204, false),  // Mapper 204
             (206, false),  // Namco 108 mapper 206
             (207, false),  // Taito X1-005 mapper 207
+            (208, true),   // Mapper 208 MMC3 A12 IRQ
             (212, false),  // Mapper 212
             (213, false),  // Mapper 213
             (214, false),  // Mapper 214
@@ -1043,6 +1047,7 @@ mod tests {
             (233, false),  // Mapper 233
             (234, false),  // Mapper 234
             (235, false),  // Mapper 235
+            (187, false),  // Mapper 187 uses PPU A12 edges
             (191, false),  // Mapper 191 uses PPU A12 edges
             (192, false),  // Mapper 192 uses PPU A12 edges
             (195, false),  // Mapper 195 uses PPU A12 edges
@@ -1053,6 +1058,7 @@ mod tests {
             (204, false),  // Mapper 204
             (206, false),  // Namco 108 mapper 206
             (207, false),  // Taito X1-005 mapper 207
+            (208, false),  // Mapper 208 uses PPU A12 edges
             (212, false),  // Mapper 212
             (213, false),  // Mapper 213
             (214, false),  // Mapper 214
@@ -1195,6 +1201,7 @@ mod tests {
             (180, false),
             (183, false),
             (184, false),
+            (187, false),
             (191, false),
             (192, false),
             (194, false),
@@ -1207,6 +1214,7 @@ mod tests {
             (204, false),
             (206, false),
             (207, false),
+            (208, false),
             (212, false),
             (213, false),
             (214, false),

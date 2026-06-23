@@ -132,6 +132,7 @@ Phase 17: Mapper compatibility gap closure
 - [x] Add MMC3 mechanical mapper batch 191 / 245
 - [x] Add MMC3 protocol variant mapper 196
 - [x] Add MMC3 protected WRAM mapper 254
+- [x] Add MMC3 protection/PRG32 mapper batch 187 / 208
 - **Status:** in_progress
 
 ### Phase 18: Mapper board compatibility layer
@@ -192,6 +193,7 @@ Phase 17: Mapper compatibility gap closure
 | Mapper191 test failed to resolve `ChrAccess` | Used `super::ChrAccess` inside the `mmc3.rs` test module | Imported `crate::mapper::ChrAccess` in the test module and reran MMC3 tests |
 | Mapper196 test expected ordinary `$8004/$8005` pair | First assertion used an address pair that remaps to MMC3 command writes differently than intended | Corrected the test to use `$8000/$8002`, which exercises mapper196's address-line remap into normal select/data writes |
 | Mapper254 compile failed for non-exhaustive `Mmc3OuterBank` match | Added a new outer-bank variant but missed the plain PRG wrapper arm | Added `Mapper254` to `outer_prg_bank()` as pass-through MMC3 PRG behavior |
+| Mapper208 initial PRG bank decoded incorrectly | First constructor used compressed latch value `3` while the implementation decoded FCEUmm-style raw register bits | Switched the default latch to raw `0x11`, which decodes to PRG32 bank 3 and matches the reference power state |
 
 ## Notes
 - Preserve the invariant: CPU memory accesses tick the bus before the access; each CPU cycle advances PPU by 3 dots and APU by 1 cycle.

@@ -1038,3 +1038,16 @@
   - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 117/117 mapper tests.
   - `cargo test -p fc-core`: PASS, 158/158 fc-core tests.
   - `cargo test`: PASS, workspace tests.
+
+### Mapper 187 / 208 MMC3 Protection Batch
+- Implemented mapper 187 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs`: adds A98402-style protection reads, `$8000/$8001` command gate, forced PRG16/PRG32 outer modes, and CHR bit8 extension while preserving MMC3 A12 IRQ behavior.
+- Implemented mapper 208 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs`: adds Gouder 37017 PRG32 latch, 256-byte protection LUT/register readback, mapper-controlled mirroring for the default path, and FCEUmm-recorded submapper 1 PRG source behavior.
+- Wired both through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs`, updated capability guard tests, and refreshed mapper gap/reference docs; supported mapper count is now 152 and remaining four-reference union gap is 341.
+- Verification so far:
+  - `cargo test -p fc-core mapper::mmc3::tests -- --nocapture`: PASS, 27/27 MMC3 tests.
+  - `cargo test -p fc-core mapper::tests:: -- --nocapture`: PASS, 38/38 mapper facade tests.
+  - `cargo fmt --check`: PASS.
+  - `git diff --check`: PASS.
+  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 119/119 mapper tests.
+  - `cargo test -p fc-core`: PASS, 160/160 fc-core tests.
+  - `cargo test`: PASS, workspace tests.

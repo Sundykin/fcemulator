@@ -285,3 +285,4 @@
 - Mapper 245 是 MMC3 thin variant：CHR bank 写只保留低 3 位，CHR register 0 的 bit1 作为 PRG outer bit 加到 8KB PRG bank bit6。现有 `Mmc3OuterBank` 可以承载，无需新 mapper 架构。
 - Mapper 196 需要的是 MMC3 write protocol remap，而不是新 mapper trait：高区地址线先折叠到普通 MMC3 register 地址，低区 `$6000-$6FFF` 写启用 PRG32 latch。现有 `write_standard_register()` helper 和 `Mmc3OuterBank` 足够表达。
 - Mapper 254 验证了低区 PRG-RAM 组合读 hook 的价值：参考实现读取 `$6000-$7FFF` WRAM 后按保护寄存器 XOR，本项目的 `read_low_register_with_prg_ram()` 可以直接表达，不需要 Cartridge 泄露更多存储细节给 mapper。
+- Mapper 187 / 208 继续验证 MMC3 variant layer 的方向：两者都不是新 CPU/PPU 时钟模型，而是 MMC3 core 外层的 PRG/CHR wrapper、低/扩展区 protection registers、register read 和少量写协议门控。现有 expansion/low/high handler helper 足够承载，后续同类 MMC3 clone 应优先挂在 `Mmc3OuterBank`。
