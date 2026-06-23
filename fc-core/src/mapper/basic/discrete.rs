@@ -184,6 +184,77 @@ impl MapperOps for Mapper193 {
     }
 }
 
+// ============================================================================
+// Mapper 218 — Magic Floor
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Mapper218 {
+    pattern_ram: Vec<u8>,
+    mirroring: Mirroring,
+}
+
+impl Mapper218 {
+    pub(in crate::mapper) fn new(mirroring: Mirroring) -> Self {
+        let mirroring = match mirroring {
+            Mirroring::FourScreen => Mirroring::SingleScreenLow,
+            other => other,
+        };
+        Self {
+            pattern_ram: vec![0; 0x0800],
+            mirroring,
+        }
+    }
+
+    fn pattern_ram_index(&self, addr: u16) -> usize {
+        let addr = addr & 0x1FFF;
+        let page = (addr as usize / 0x0400) & 0x07;
+        let page_bit = match self.mirroring {
+            Mirroring::Vertical => page & 0x01,
+            Mirroring::Horizontal => (page >> 1) & 0x01,
+            Mirroring::SingleScreenLow => {
+                if page >= 4 {
+                    1
+                } else {
+                    0
+                }
+            }
+            Mirroring::SingleScreenHigh | Mirroring::FourScreen => 0,
+        };
+        page_bit * 0x0400 + (addr as usize & 0x03FF)
+    }
+}
+
+impl MapperOps for Mapper218 {
+    fn prg_index(&self, addr: u16) -> usize {
+        (addr as usize) & 0x7FFF
+    }
+
+    fn chr_index(&self, addr: u16) -> usize {
+        self.pattern_ram_index(addr)
+    }
+
+    fn chr_read(&self, addr: u16, _access: ChrAccess) -> Option<u8> {
+        Some(self.pattern_ram[self.pattern_ram_index(addr)])
+    }
+
+    fn has_chr_read(&self) -> bool {
+        true
+    }
+
+    fn chr_write(&mut self, addr: u16, value: u8) -> bool {
+        let index = self.pattern_ram_index(addr);
+        self.pattern_ram[index] = value;
+        true
+    }
+
+    fn write_register(&mut self, _addr: u16, _value: u8) {}
+
+    fn mirroring(&self) -> Mirroring {
+        self.mirroring
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -243,5 +314,33 @@ mod tests {
         assert_eq!(mapper.chr_index(0x1804), 10 * 0x0400 + 4);
         assert_eq!(mapper.chr_index(0x1C04), 11 * 0x0400 + 4);
         assert_eq!(mapper.mirroring(), Mirroring::Horizontal);
+    }
+
+    #[test]
+    fn mapper218_maps_pattern_table_to_2k_nametable_ram() {
+        let mut vertical = Mapper218::new(Mirroring::Vertical);
+        assert!(vertical.has_chr_read());
+        assert_eq!(vertical.prg_index(0xC004), 0x4004);
+        assert!(vertical.chr_write(0x0004, 0x11));
+        assert!(vertical.chr_write(0x0404, 0x22));
+        assert_eq!(vertical.chr_read(0x0804, ChrAccess::Default), Some(0x11));
+        assert_eq!(vertical.chr_read(0x0C04, ChrAccess::Default), Some(0x22));
+        assert_eq!(vertical.mirroring(), Mirroring::Vertical);
+
+        let mut horizontal = Mapper218::new(Mirroring::Horizontal);
+        assert!(horizontal.chr_write(0x0004, 0x33));
+        assert!(horizontal.chr_write(0x0804, 0x44));
+        assert_eq!(horizontal.chr_read(0x0404, ChrAccess::Default), Some(0x33));
+        assert_eq!(horizontal.chr_read(0x0C04, ChrAccess::Default), Some(0x44));
+
+        let mut screen_a = Mapper218::new(Mirroring::SingleScreenLow);
+        assert!(screen_a.chr_write(0x0004, 0x55));
+        assert!(screen_a.chr_write(0x1004, 0x66));
+        assert_eq!(screen_a.chr_read(0x0C04, ChrAccess::Default), Some(0x55));
+        assert_eq!(screen_a.chr_read(0x1C04, ChrAccess::Default), Some(0x66));
+
+        let mut screen_b = Mapper218::new(Mirroring::SingleScreenHigh);
+        assert!(screen_b.chr_write(0x0004, 0x77));
+        assert_eq!(screen_b.chr_read(0x1C04, ChrAccess::Default), Some(0x77));
     }
 }

@@ -434,6 +434,8 @@
 - `TxcMapper::Mapper136` 对应 FCEUmm `src/boards/txcchip.c:248-276` 与 Mesen2 `Core/NES/Mappers/Sachen/Sachen_136.h:8-58`；本项目采用 Mesen2 的 Sachen_136 PRG32 固定 0、CHR8=`output`，读值保留 open-bus bit6-7。
 - `TxcMapper::Mapper147` 对应 FCEUmm `src/boards/txcchip.c:278-308` 与 Mesen2 `Core/NES/Mappers/Sachen/Sachen_147.h:8-61`；写值使用 `((value & 0xFC) >> 2) | ((value & 0x03) << 6)`，读值反向展开，PRG/CHR 分别取 `output` 的 board-specific bit fields。
 - `TxcMapper::Mapper172` 对应 FCEUmm `src/boards/txcchip.c:310-344` 与 Mesen2 `Core/NES/Mappers/Txc/Txc22211B.h:6-62`；写读值使用 6-bit reverse permutation，CHR8=`output`，mirroring 由 TXC invert flag 选择 vertical/horizontal。
+- `FfeMapper` / `FfeMode::{Mapper6,Mapper17}` 对应 FCEUX `src/boards/ffe.cpp:26-153`；Mapper6 使用 latch 模式的 PRG16/CHR8，Mapper17 使用 `$4504-$4507` PRG8 与 `$4510-$4517` CHR1 寄存器，`$42FE-$42FF` mirroring 和 `$4501-$4503` CPU-cycle IRQ 按同文件 `65-75,108-117` 实现。本项目继续通过 Cartridge 默认 PRG-RAM 路径提供 `$6000-$7FFF` WRAM。
+- `Mapper218` 对应 FCEUX `src/boards/datalatch.cpp:462-493`、FCEUmm `src/boards/218.c:23-34` 与 Mesen2 `Core/NES/Mappers/Homebrew/MagicFloor218.h:4-31`；本项目用 mapper-owned 2KB pattern RAM 表达 `$0000-$1FFF` pattern table 到 NTARAM page A/B 的 1KB 页映射，PRG32 固定 0。Four-screen header 的 bit0 细分目前由 `Mirroring::FourScreen -> SingleScreenLow` 近似，后续若扩 factory/header bit 透传可精修到 FCEUX `mirrorAs2Bits` 语义。
 - `TaitoTc0190::new_48()` / `hblank_clock()` 对应 FCEUX/FCEUmm `33.cpp`/`33.c:66-97,110-115`；普通 TC0190 bank writes 复用同文件 `52-63`。
 - `Rambo1::new_158()` / `set_mapper158_nametable()` / mapper-owned nametable read/write 对应 FCEUmm `tengen.c:198-220` 与 Mesen2 `Rambo1_158.h:5-37`；RAMBO-1 基础 PRG/CHR/IRQ 仍对应 Mesen2 `Rambo1.h:96-177`。
 - `Mapper29::write_register()` / `prg_index()` / `chr_index()` 对应 FCEUX `datalatch.cpp:248-256`、FCEUmm `datalatch.c:186-194` 与 Mesen2 `SealieComputing.h:8-31`；当前第一版按 FCEUX/Mesen2 的高区 register 窗口实现，并在 iNES CHR-RAM 默认容量中补 32KB。
@@ -449,7 +451,8 @@
 - 同批替换 `fc-core/src/mapper/basic/latch/sunsoft.rs` 里 Mapper 68 的新增段，并同步检查 `MapperOps::nametable_chr_index` 与 `Cartridge::mapper_has_nametable_chr_mapping` 是否仍有其他使用者。
 - 同批替换 `fc-core/src/mapper/basic/core.rs` 里 Mapper 232 的新增段。
 - 同批替换 `fc-core/src/mapper/basic/txc.rs` 里 TXC chip/helper 与 Mapper132/136/147/172/173 新增段，并同步检查 `MapperOps::read_expansion_with_open_bus` / `peek_expansion_with_open_bus` 是否仍有使用者。
-- 同批替换 `fc-core/src/mapper/basic/discrete.rs` 里 Mapper 185 / 188 / 193 的新增段，以及 `fc-core/src/mapper/mmc3.rs` 里 Mapper187 / Mapper189 / Mapper191 / Mapper196 / Mapper197 / Mapper198 / Mapper208 / Mapper245 / Mapper254 的 `Mmc3OuterBank` / `Mmc3ChrLayout` 分支、构造、低区写、扩展区读写、低区读、reset 和测试段。
+- 同批替换 `fc-core/src/mapper/basic/discrete.rs` 里 Mapper 185 / 188 / 193 / 218 的新增段，以及 `fc-core/src/mapper/mmc3.rs` 里 Mapper187 / Mapper189 / Mapper191 / Mapper196 / Mapper197 / Mapper198 / Mapper208 / Mapper245 / Mapper254 的 `Mmc3OuterBank` / `Mmc3ChrLayout` 分支、构造、低区写、扩展区读写、低区读、reset 和测试段。
+- 同批替换 `fc-core/src/mapper/basic/irq.rs` 里 FFE Mapper6/17 新增段。
 - 同批替换 `fc-core/src/mapper/basic/konami.rs` 的 VRC1 段、`fc-core/src/mapper/basic/jy.rs` 的 Mapper35/91 段、`fc-core/src/mapper/basic/sl12.rs` 的 Mapper116 段、`fc-core/src/mapper/basic/waixing.rs` 的 Mapper253 段、`fc-core/src/mapper/vrc4.rs` 的 VRC2/VRC4 段、`fc-core/src/mapper/rambo1.rs` 的 Mapper64/158 段，`fc-core/src/mapper/basic/taito.rs` 的 Mapper48 段，以及 `fc-core/src/mapper/mmc3.rs` 的 Mapper37/44/45/47/52/76/119 变体段。
 - 再处理 `fc-core/src/mapper.rs` 里 Mapper 43/60/75/76/83/91/106/183/212/222/235 的导出、枚举、构造和 dispatch 分支。
 - 若替换 Mapper91，请同步检查 `MapperOps::hblank_clock`、`Cartridge::mapper_clocks_hblank` 与 `Bus::clock_ppu_dot()` 的 HBlank hook 是否仍有使用者。

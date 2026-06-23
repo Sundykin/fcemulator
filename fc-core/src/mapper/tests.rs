@@ -11,12 +11,14 @@ fn watches_ppu_bus_matches_notify_a12_overrides() {
         (1, false),    // MMC1
         (2, false),    // UNROM
         (3, false),    // CNROM
+        (6, false),    // FFE F4xxx
         (7, false),    // AxROM
         (8, false),    // Mapper 8
         (11, false),   // ColorDreams
         (12, true),    // Mapper 12 MMC3 A12 IRQ
         (13, false),   // CPROM
         (15, false),   // 100-in-1 multicart
+        (17, false),   // FFE F4xxx full mode
         (18, false),   // Jaleco SS88006
         (19, false),   // Namco 163
         (21, false),   // VRC4 IRQ is CPU-clocked, not PPU-bus-clocked
@@ -148,6 +150,7 @@ fn watches_ppu_bus_matches_notify_a12_overrides() {
         (214, false),  // Mapper 214
         (216, false),  // Mapper 216
         (217, false),  // Mapper 217
+        (218, false),  // Magic Floor
         (221, false),  // Mapper 221
         (222, true),   // Mapper 222 A12 IRQ
         (226, false),  // Mapper 226
@@ -191,6 +194,7 @@ fn clocks_cpu_matches_cpu_clock_overrides() {
         (3, false),    // CNROM
         (4, false),    // MMC3 uses PPU A12 edges
         (5, false),    // MMC5 currently clocks from PPU nametable fetches
+        (6, true),     // FFE IRQ counter clocks per CPU cycle
         (7, false),    // AxROM
         (8, false),    // Mapper 8
         (9, false),    // MMC2 CHR latch watches PPU bus
@@ -199,6 +203,7 @@ fn clocks_cpu_matches_cpu_clock_overrides() {
         (12, false),   // Mapper 12 uses PPU A12 edges
         (13, false),   // CPROM
         (15, false),   // 100-in-1 multicart
+        (17, true),    // FFE IRQ counter clocks per CPU cycle
         (18, true),    // Jaleco SS88006 IRQ counter clocks per CPU cycle
         (19, true),    // Namco 163 IRQ + expansion audio clock per CPU cycle
         (21, true),    // VRC4 IRQ counter clocks per CPU cycle
@@ -331,6 +336,7 @@ fn clocks_cpu_matches_cpu_clock_overrides() {
         (214, false),  // Mapper 214
         (216, false),  // Mapper 216
         (217, false),  // Mapper 217
+        (218, false),  // Magic Floor
         (221, false),  // Mapper 221
         (222, false),  // Mapper 222 uses PPU A12 edges
         (226, false),  // Mapper 226
@@ -370,6 +376,7 @@ fn clocks_hblank_matches_hblank_clock_overrides() {
         (3, false),
         (4, false),
         (5, false),
+        (6, false),
         (7, false),
         (8, false),
         (9, false),
@@ -378,6 +385,7 @@ fn clocks_hblank_matches_hblank_clock_overrides() {
         (12, false),
         (13, false),
         (15, false),
+        (17, false),
         (18, false),
         (19, false),
         (21, false),
@@ -518,6 +526,7 @@ fn clocks_hblank_matches_hblank_clock_overrides() {
         (214, false),
         (216, false),
         (217, false),
+        (218, false),
         (221, false),
         (222, false),
         (225, false),
@@ -860,6 +869,66 @@ fn cprom_switches_only_high_4k_chr_ram() {
     assert_eq!(m.chr_index(0x0008), 0x0008);
     assert_eq!(m.chr_index(0x1008), 3 * 0x1000 + 8);
     assert_eq!(m.mirroring(), Mirroring::Vertical);
+}
+
+#[test]
+fn ffe_mapper6_latch_mode_switches_prg16_chr8_mirroring_and_irq() {
+    let mut m = Mapper::new(6, 16, 4, Mirroring::Horizontal, 0).expect("mapper 6");
+    assert_eq!(m.prg_index(0x8004), 0x0004);
+    assert_eq!(m.prg_index(0xC004), 7 * 0x4000 + 4);
+    assert_eq!(m.chr_index(0x1004), 0x1004);
+    assert_eq!(m.mirroring(), Mirroring::Vertical);
+
+    m.write_register(0x8000, 0x2F);
+    assert_eq!(m.prg_index(0x8004), 11 * 0x4000 + 4);
+    assert_eq!(m.prg_index(0xC004), 7 * 0x4000 + 4);
+    assert_eq!(m.chr_index(0x1004), 3 * 0x2000 + 0x1004);
+
+    m.write_expansion(0x42FE, 0x10);
+    assert_eq!(m.mirroring(), Mirroring::SingleScreenHigh);
+    m.write_expansion(0x42FF, 0x00);
+    assert_eq!(m.mirroring(), Mirroring::Vertical);
+    m.write_expansion(0x42FF, 0x10);
+    assert_eq!(m.mirroring(), Mirroring::Horizontal);
+
+    m.write_expansion(0x4502, 0xFE);
+    m.write_expansion(0x4503, 0xFF);
+    assert!(!m.irq());
+    m.cpu_clock();
+    assert!(!m.irq());
+    m.cpu_clock();
+    assert!(m.irq());
+    m.clear_irq();
+    assert!(!m.irq());
+    m.cpu_clock();
+    assert!(!m.irq());
+}
+
+#[test]
+fn ffe_mapper17_full_mode_switches_8k_prg_and_1k_chr_registers() {
+    let mut m = Mapper::new(17, 16, 16, Mirroring::Horizontal, 0).expect("mapper 17");
+    assert_eq!(m.prg_index(0x8004), 0x0004);
+    assert_eq!(m.prg_index(0xA004), 0x0004);
+    assert_eq!(m.prg_index(0xC004), 0x0004);
+    assert_eq!(m.prg_index(0xE004), 31 * 0x2000 + 4);
+
+    m.write_expansion(0x4504, 3);
+    m.write_expansion(0x4505, 4);
+    m.write_expansion(0x4506, 5);
+    m.write_expansion(0x4507, 6);
+    assert_eq!(m.prg_index(0x8004), 3 * 0x2000 + 4);
+    assert_eq!(m.prg_index(0xA004), 4 * 0x2000 + 4);
+    assert_eq!(m.prg_index(0xC004), 5 * 0x2000 + 4);
+    assert_eq!(m.prg_index(0xE004), 6 * 0x2000 + 4);
+
+    m.write_expansion(0x4510, 0x12);
+    m.write_expansion(0x4517, 0x1F);
+    assert_eq!(m.chr_index(0x0004), 0x12 * 0x0400 + 4);
+    assert_eq!(m.chr_index(0x1C04), 0x1F * 0x0400 + 4);
+
+    m.write_register(0x8000, 0x2F);
+    assert_eq!(m.prg_index(0x8004), 3 * 0x2000 + 4);
+    assert_eq!(m.chr_index(0x0004), 0x12 * 0x0400 + 4);
 }
 
 #[test]

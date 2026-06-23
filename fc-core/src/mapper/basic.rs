@@ -26,10 +26,11 @@ mod waixing;
 
 pub use ave::{Bnrom, Nina01};
 pub use core::{Axrom, Bf9096, Cnrom, Codemasters, ColorDreams, Gxrom, Nrom, Unrom};
-pub use discrete::{Mapper185, Mapper188, Mapper193};
+pub use discrete::{Mapper185, Mapper188, Mapper193, Mapper218};
 pub use irem::{IremG101, IremLrog017};
 pub use irq::{
-    Mapper117, Mapper142, Mapper18, Mapper40, Mapper42, Mapper50, Mapper65, Mapper67, Mapper73,
+    FfeMapper, FfeMode, Mapper117, Mapper142, Mapper18, Mapper40, Mapper42, Mapper50, Mapper65,
+    Mapper67, Mapper73,
 };
 pub use jy::{Mapper35, Mapper91};
 pub use konami::Vrc1;

@@ -4,6 +4,154 @@ use crate::types::Mirroring;
 use serde::{Deserialize, Serialize};
 
 // ============================================================================
+// Mapper 6/17 — FFE F4xxx copier boards
+// ============================================================================
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum FfeMode {
+    Mapper6,
+    Mapper17,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FfeMapper {
+    prg_8k_total: usize,
+    prg_16k_total: usize,
+    chr_1k_total: usize,
+    prg: [u8; 4],
+    chr: [u8; 8],
+    latch: u8,
+    mode: FfeMode,
+    mirroring: Mirroring,
+    irq_enabled: bool,
+    irq_counter: u16,
+    irq_pending: bool,
+}
+
+impl FfeMapper {
+    pub(in crate::mapper) fn new(prg_16k: usize, chr_8k: usize, mode: FfeMode) -> Self {
+        let mut mapper = FfeMapper {
+            prg_8k_total: (prg_16k * 2).max(4),
+            prg_16k_total: prg_16k.max(1),
+            chr_1k_total: (chr_8k * 8).max(8),
+            prg: [0, 0, 0, 0xFF],
+            chr: [0; 8],
+            latch: 0,
+            mode,
+            mirroring: Mirroring::Vertical,
+            irq_enabled: false,
+            irq_counter: 0,
+            irq_pending: false,
+        };
+        mapper.reset(false);
+        mapper
+    }
+
+    fn set_mirroring(&mut self, addr: u16, value: u8) {
+        self.mirroring = match ((addr << 1) & 0x02) | ((value as u16 >> 4) & 0x01) {
+            0 => Mirroring::SingleScreenLow,
+            1 => Mirroring::SingleScreenHigh,
+            2 => Mirroring::Vertical,
+            _ => Mirroring::Horizontal,
+        };
+    }
+}
+
+impl MapperOps for FfeMapper {
+    fn prg_index(&self, addr: u16) -> usize {
+        match self.mode {
+            FfeMode::Mapper6 => {
+                let bank = if addr < 0xC000 {
+                    ((self.latch >> 2) & 0x3F) as usize
+                } else {
+                    0x07
+                };
+                (bank % self.prg_16k_total) * 0x4000 + (addr as usize & 0x3FFF)
+            }
+            FfeMode::Mapper17 => {
+                let slot = ((addr - 0x8000) / 0x2000) as usize;
+                (self.prg[slot] as usize % self.prg_8k_total) * 0x2000 + (addr as usize & 0x1FFF)
+            }
+        }
+    }
+
+    fn chr_index(&self, addr: u16) -> usize {
+        match self.mode {
+            FfeMode::Mapper6 => ((self.latch & 0x03) as usize) * 0x2000 + (addr as usize & 0x1FFF),
+            FfeMode::Mapper17 => {
+                let slot = ((addr >> 10) & 0x07) as usize;
+                (self.chr[slot] as usize % self.chr_1k_total) * 0x0400 + (addr as usize & 0x03FF)
+            }
+        }
+    }
+
+    fn write_register(&mut self, _addr: u16, value: u8) {
+        self.latch = value;
+    }
+
+    fn write_expansion(&mut self, addr: u16, value: u8) {
+        match addr {
+            0x42FE..=0x42FF => self.set_mirroring(addr, value),
+            0x4501 => {
+                self.irq_enabled = false;
+                self.irq_pending = false;
+            }
+            0x4502 => {
+                self.irq_counter = (self.irq_counter & 0xFF00) | value as u16;
+                self.irq_pending = false;
+            }
+            0x4503 => {
+                self.irq_counter = (self.irq_counter & 0x00FF) | ((value as u16) << 8);
+                self.irq_enabled = true;
+                self.irq_pending = false;
+            }
+            0x4504..=0x4507 => self.prg[(addr & 0x03) as usize] = value,
+            0x4510..=0x4517 => self.chr[(addr & 0x07) as usize] = value,
+            _ => {}
+        }
+    }
+
+    fn mirroring(&self) -> Mirroring {
+        self.mirroring
+    }
+
+    fn cpu_clock(&mut self) {
+        if !self.irq_enabled {
+            return;
+        }
+        let (next, overflowed) = self.irq_counter.overflowing_add(1);
+        self.irq_counter = next;
+        if overflowed {
+            self.irq_pending = true;
+            self.irq_enabled = false;
+            self.irq_counter = 0;
+        }
+    }
+
+    fn clocks_cpu(&self) -> bool {
+        true
+    }
+
+    fn irq(&self) -> bool {
+        self.irq_pending
+    }
+
+    fn clear_irq(&mut self) {
+        self.irq_pending = false;
+    }
+
+    fn reset(&mut self, _soft: bool) {
+        self.prg = [0, 0, 0, 0xFF];
+        self.chr = [0; 8];
+        self.latch = 0;
+        self.irq_enabled = false;
+        self.irq_counter = 0;
+        self.irq_pending = false;
+        self.mirroring = Mirroring::Vertical;
+    }
+}
+
+// ============================================================================
 // Mapper 18 — Jaleco SS88006
 // ============================================================================
 

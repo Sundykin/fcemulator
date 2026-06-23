@@ -15,6 +15,7 @@ impl Mapper {
             1 => Mapper::Mmc1(Mmc1::new(prg_16k, chr_8k)),
             2 => Mapper::Unrom(Unrom::new(prg_16k, mirroring)),
             3 => Mapper::Cnrom(Cnrom::new(prg_16k, mirroring)),
+            6 => Mapper::FfeMapper(FfeMapper::new(prg_16k, chr_8k, FfeMode::Mapper6)),
             7 => Mapper::Axrom(Axrom::new()),
             8 => Mapper::Mapper8(Mapper8::new()),
             4 if prg_16k > 32 && chr_8k == 0 => {
@@ -28,6 +29,7 @@ impl Mapper {
             12 => Mapper::Mmc3(Mmc3::new_12(prg_16k, chr_8k, mirroring)),
             13 => Mapper::Cprom(Cprom::new()),
             15 => Mapper::Mapper15(Mapper15::new()),
+            17 => Mapper::FfeMapper(FfeMapper::new(prg_16k, chr_8k, FfeMode::Mapper17)),
             18 => Mapper::Mapper18(Mapper18::new(prg_16k, chr_8k)),
             19 => Mapper::Namco163(Namco163::new(prg_16k, chr_8k, mirroring)),
             21..=23 => Mapper::Vrc4(Vrc4::new(number, prg_16k, chr_8k, submapper)),
@@ -195,6 +197,7 @@ impl Mapper {
                 AddrLatchVariant::Mapper217,
                 mirroring,
             )),
+            218 => Mapper::Mapper218(Mapper218::new(mirroring)),
             221 => Mapper::AddrLatch16k(AddrLatch16k::new_221(prg_16k, submapper)),
             222 => Mapper::Mapper222(Mapper222::new(prg_16k, chr_8k)),
             227 => Mapper::AddrLatch16k(AddrLatch16k::new(AddrLatchVariant::Mapper227)),
