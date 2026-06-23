@@ -232,12 +232,12 @@ pub use basic::{
     Mapper108, Mapper116, Mapper117, Mapper120, Mapper122, Mapper15, Mapper151, Mapper156,
     Mapper170, Mapper18, Mapper183, Mapper185, Mapper188, Mapper193, Mapper203, Mapper212,
     Mapper222, Mapper226, Mapper230, Mapper233, Mapper234, Mapper235, Mapper240, Mapper241,
-    Mapper244, Mapper246, Mapper253, Mapper36, Mapper40, Mapper42, Mapper43, Mapper50, Mapper57,
-    Mapper60, Mapper63, Mapper65, Mapper67, Mapper72, Mapper73, Mapper79, Mapper83, Mapper91,
-    Mapper92, Namco108Mapper154, Namco108Mapper206, Namco108Mapper95, Namco118, Nina01, Nina03_06,
-    Nrom, Ntdec112, Sachen133, Sachen149, SachenSa0161m, Subor166, SuborVariant, Sunsoft184,
-    Sunsoft4, Sunsoft89, TaitoTc0190, TaitoX1005, TaitoX1017, UnlPci556, Unrom, UnromVariant,
-    UnromVariantMapper, Vrc1,
+    Mapper244, Mapper246, Mapper253, Mapper35, Mapper36, Mapper40, Mapper42, Mapper43, Mapper50,
+    Mapper57, Mapper60, Mapper63, Mapper65, Mapper67, Mapper72, Mapper73, Mapper79, Mapper83,
+    Mapper91, Mapper92, Namco108Mapper154, Namco108Mapper206, Namco108Mapper95, Namco118, Nina01,
+    Nina03_06, Nrom, Ntdec112, Sachen133, Sachen149, SachenSa0161m, Subor166, SuborVariant,
+    Sunsoft184, Sunsoft4, Sunsoft89, TaitoTc0190, TaitoX1005, TaitoX1017, UnlPci556, Unrom,
+    UnromVariant, UnromVariantMapper, Vrc1,
 };
 pub use expansion_mappers::{Fme7, Namco163, Vrc6, Vrc6Variant, Vrc7};
 pub use mmc1::Mmc1;
@@ -273,6 +273,7 @@ pub enum Mapper {
     Caltron41(Caltron41),
     ColorDreams46(ColorDreams46),
     Mapper36(Mapper36),
+    Mapper35(Mapper35),
     Mapper40(Mapper40),
     Mapper42(Mapper42),
     Mapper43(Mapper43),
@@ -391,6 +392,7 @@ impl Mapper {
                 Mapper::Nina01(Nina01::new(mirroring))
             }
             34 => Mapper::Bnrom(Bnrom::new(prg_16k, mirroring)),
+            35 => Mapper::Mapper35(Mapper35::new(prg_16k, chr_8k, mirroring)),
             36 => Mapper::Mapper36(Mapper36::new()),
             37 => Mapper::Mmc3(Mmc3::new_37(prg_16k, chr_8k, mirroring)),
             38 => Mapper::UnlPci556(UnlPci556::new(mirroring)),
@@ -524,6 +526,7 @@ impl Mapper {
                 AddrLatchVariant::Mapper217,
                 mirroring,
             )),
+            221 => Mapper::AddrLatch16k(AddrLatch16k::new_221(prg_16k, submapper)),
             222 => Mapper::Mapper222(Mapper222::new(prg_16k, chr_8k)),
             227 => Mapper::AddrLatch16k(AddrLatch16k::new(AddrLatchVariant::Mapper227)),
             228 => Mapper::ActionEnterprises(ActionEnterprises::new()),
@@ -582,6 +585,7 @@ macro_rules! dispatch {
             Mapper::UnlPci556($m) => $body,
             Mapper::Caltron41($m) => $body,
             Mapper::ColorDreams46($m) => $body,
+            Mapper::Mapper35($m) => $body,
             Mapper::Mapper36($m) => $body,
             Mapper::Mapper40($m) => $body,
             Mapper::Mapper42($m) => $body,
@@ -824,6 +828,7 @@ mod tests {
             (32, false),   // Irem G-101
             (33, false),   // Taito TC0190
             (34, false),   // BNROM
+            (35, true),    // Mapper 35 A12 IRQ
             (36, false),   // TXC/Micro Genius simplified mapper
             (37, true),    // Mapper 37 MMC3 A12 IRQ
             (39, false),   // Mapper 39
@@ -924,6 +929,7 @@ mod tests {
             (214, false),  // Mapper 214
             (216, false),  // Mapper 216
             (217, false),  // Mapper 217
+            (221, false),  // Mapper 221
             (222, true),   // Mapper 222 A12 IRQ
             (226, false),  // Mapper 226
             (227, false),  // Mapper 227
@@ -980,6 +986,7 @@ mod tests {
             (32, false),   // Irem G-101
             (33, false),   // Taito TC0190
             (34, false),   // BNROM
+            (35, false),   // Mapper 35 uses PPU A12 edges
             (36, false),   // TXC/Micro Genius simplified mapper
             (37, false),   // Mapper 37 uses PPU A12 edges
             (39, false),   // Mapper 39
@@ -1081,6 +1088,7 @@ mod tests {
             (214, false),  // Mapper 214
             (216, false),  // Mapper 216
             (217, false),  // Mapper 217
+            (221, false),  // Mapper 221
             (222, false),  // Mapper 222 uses PPU A12 edges
             (226, false),  // Mapper 226
             (227, false),  // Mapper 227
@@ -1133,6 +1141,7 @@ mod tests {
             (32, false),
             (33, false),
             (34, false),
+            (35, false),
             (36, false),
             (38, false),
             (37, false),
@@ -1242,6 +1251,7 @@ mod tests {
             (214, false),
             (216, false),
             (217, false),
+            (221, false),
             (222, false),
             (225, false),
             (226, false),
@@ -2230,6 +2240,42 @@ mod tests {
         assert_eq!(m91.mirroring(), Mirroring::Vertical);
         assert!(m91.write_low_register(0x6005, 1));
         assert_eq!(m91.mirroring(), Mirroring::Horizontal);
+    }
+
+    #[test]
+    fn mapper35_switches_jy_banks_and_a12_irq() {
+        let mut m35 = Mapper::new(35, 32, 16, Mirroring::Horizontal, 0).expect("mapper 35");
+        assert!(m35.watches_ppu_bus());
+        assert!(!m35.clocks_cpu());
+
+        m35.write_register(0x8000, 3);
+        m35.write_register(0x8001, 4);
+        m35.write_register(0x8002, 5);
+        m35.write_register(0x9006, 9);
+        assert_eq!(m35.prg_index(0x8004), 3 * 0x2000 + 4);
+        assert_eq!(m35.prg_index(0xA004), 4 * 0x2000 + 4);
+        assert_eq!(m35.prg_index(0xC004), 5 * 0x2000 + 4);
+        assert_eq!(m35.prg_index(0xE004), 63 * 0x2000 + 4);
+        assert_eq!(m35.chr_index(0x1804), 9 * 0x0400 + 4);
+
+        m35.write_register(0xD001, 0);
+        assert_eq!(m35.mirroring(), Mirroring::Vertical);
+        m35.write_register(0xD001, 1);
+        assert_eq!(m35.mirroring(), Mirroring::Horizontal);
+
+        m35.write_register(0xC005, 2);
+        m35.write_register(0xC003, 0);
+        m35.notify_a12(0x0000, 1);
+        m35.notify_a12(0x1000, 12);
+        assert!(!m35.irq());
+        m35.notify_a12(0x0000, 13);
+        m35.notify_a12(0x1000, 24);
+        assert!(m35.irq());
+        m35.clear_irq();
+        assert!(!m35.irq());
+        m35.notify_a12(0x0000, 25);
+        m35.notify_a12(0x1000, 36);
+        assert!(!m35.irq());
     }
 
     #[test]

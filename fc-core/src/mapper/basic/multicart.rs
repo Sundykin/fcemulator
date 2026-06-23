@@ -140,6 +140,12 @@ pub struct AddrLatch16k {
     mirroring: Mirroring,
     variant: AddrLatchVariant,
     #[serde(default)]
+    prg_16k_total: usize,
+    #[serde(default)]
+    mode_latch: u16,
+    #[serde(default)]
+    prg_latch: usize,
+    #[serde(default)]
     mapper59_zero_reads: bool,
 }
 
@@ -163,6 +169,7 @@ pub enum AddrLatchVariant {
     Mapper229,
     Mapper201,
     Mapper217,
+    Mapper221 { submapper: u8 },
     Mapper255,
 }
 
@@ -180,8 +187,17 @@ impl AddrLatch16k {
             chr_bank: 0,
             mirroring,
             variant,
+            prg_16k_total: 0,
+            mode_latch: 0,
+            prg_latch: 0,
             mapper59_zero_reads: false,
         }
+    }
+
+    pub(in crate::mapper) fn new_221(prg_16k: usize, submapper: u8) -> Self {
+        let mut mapper = Self::new(AddrLatchVariant::Mapper221 { submapper });
+        mapper.prg_16k_total = prg_16k.max(1);
+        mapper
     }
 
     fn set_from_addr(&mut self, addr: u16, value: u8) {
@@ -393,6 +409,32 @@ impl AddrLatch16k {
                 self.chr_bank = (addr & 0x0F) as usize;
                 return;
             }
+            AddrLatchVariant::Mapper221 { submapper } => {
+                match addr & 0xC000 {
+                    0x8000 => self.mode_latch = addr,
+                    0xC000 => self.prg_latch = (addr & 0x07) as usize,
+                    _ => {}
+                }
+                let mode = self.mode_latch;
+                let prg = (((mode >> if submapper == 1 { 2 } else { 3 }) & 0x40)
+                    | ((mode >> 2) & 0x38)) as usize
+                    | (self.prg_latch & 0x07);
+                let unrom_bit = if submapper == 1 { 0x0200 } else { 0x0100 };
+                self.prg_pages = if mode & unrom_bit != 0 {
+                    [prg, prg | 0x07]
+                } else if mode & 0x0002 != 0 {
+                    [prg & !1, (prg & !1) + 1]
+                } else {
+                    [prg, prg]
+                };
+                self.chr_bank = 0;
+                self.mirroring = if mode & 0x0001 != 0 {
+                    Mirroring::Horizontal
+                } else {
+                    Mirroring::Vertical
+                };
+                return;
+            }
             AddrLatchVariant::Mapper255 => {
                 let prg_bit = if addr & 0x1000 != 0 { 0 } else { 1 };
                 let bank = (((addr >> 8) & 0x40) | ((addr >> 6) & 0x3F)) as usize;
@@ -428,11 +470,29 @@ impl MapperOps for AddrLatch16k {
     fn read_register(&mut self, addr: u16, prg_value: u8) -> Option<u8> {
         self.peek_register(addr, prg_value)
     }
+    fn read_register_with_open_bus(
+        &mut self,
+        addr: u16,
+        prg_value: u8,
+        open_bus: u8,
+    ) -> Option<u8> {
+        self.peek_register_with_open_bus(addr, prg_value, open_bus)
+    }
     fn peek_register(&self, _addr: u16, _prg_value: u8) -> Option<u8> {
         if matches!(self.variant, AddrLatchVariant::Mapper59) && self.mapper59_zero_reads {
             Some(0)
         } else {
             None
+        }
+    }
+    fn peek_register_with_open_bus(&self, addr: u16, prg_value: u8, open_bus: u8) -> Option<u8> {
+        if matches!(self.variant, AddrLatchVariant::Mapper221 { .. })
+            && self.prg_16k_total > 0
+            && self.prg_pages[if addr < 0xC000 { 0 } else { 1 }] >= self.prg_16k_total
+        {
+            Some(open_bus)
+        } else {
+            self.peek_register(addr, prg_value)
         }
     }
     fn read_expansion(&mut self, addr: u16) -> Option<u8> {
@@ -893,5 +953,30 @@ mod tests {
         assert_eq!(mapper.prg_index(0x8004), 4 * 0x4000 + 4);
         assert_eq!(mapper.prg_index(0xC004), 4 * 0x4000 + 4);
         assert_eq!(mapper.mirroring(), Mirroring::Vertical);
+    }
+
+    #[test]
+    fn mapper221_uses_mode_and_prg_latches() {
+        let mut mapper = AddrLatch16k::new_221(128, 0);
+
+        mapper.write_register(0x8002, 0);
+        mapper.write_register(0xC005, 0);
+        assert_eq!(mapper.prg_index(0x8004), 4 * 0x4000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 5 * 0x4000 + 4);
+        assert_eq!(mapper.chr_index(0x1004), 0x1004);
+        assert_eq!(mapper.mirroring(), Mirroring::Vertical);
+
+        mapper.write_register(0x8101, 0);
+        assert_eq!(mapper.prg_index(0x8004), 5 * 0x4000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), (5 | 7) * 0x4000 + 4);
+        assert_eq!(mapper.mirroring(), Mirroring::Horizontal);
+
+        let mut sub1 = AddrLatch16k::new_221(32, 1);
+        sub1.write_register(0xC007, 0);
+        sub1.write_register(0x8100, 0);
+        assert_eq!(
+            sub1.peek_register_with_open_bus(0x8000, 0x55, 0xA5),
+            Some(0xA5)
+        );
     }
 }

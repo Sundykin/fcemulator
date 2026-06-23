@@ -1087,3 +1087,18 @@
   - `cargo test -p fc-core mapper::tests::watches_ppu_bus_matches_notify_a12_overrides -- --nocapture`: PASS.
   - `cargo test -p fc-core mapper::tests::clocks_cpu_matches_cpu_clock_overrides -- --nocapture`: PASS.
   - `cargo test -p fc-core mapper::tests::clocks_hblank_matches_hblank_clock_overrides -- --nocapture`: PASS.
+
+### Mapper 35 / 221 Architecture Reuse Batch
+- Implemented mapper 35 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/jy.rs`: JY single-cart PRG8/CHR1 registers, `$D001` mirroring, and MMC3-style A12 IRQ using the shared `A12EdgeFilter`.
+- Implemented mapper 221 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/multicart.rs`: mode/address latch plus PRG latch, UNROM/NROM-256/NROM-128 banking, submapper 1 outer bit behavior, fixed CHR8, mirroring, and open-bus reads for unpopulated PRG banks.
+- Wired both through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs`, updated mapper capability guard tests, and refreshed `/Users/sunmeng/workspace/fc/docs/Mapper-适配差距清单.md` plus `/Users/sunmeng/workspace/fc/docs/Mapper-适配引用记录.md`; supported mapper count is now 159 and remaining four-reference union gap is 334.
+- Verification so far:
+  - `cargo test -p fc-core mapper35 -- --nocapture`: PASS, 1/1.
+  - `cargo test -p fc-core mapper221 -- --nocapture`: PASS, 1/1.
+  - `cargo fmt --check`: PASS.
+  - `git diff --check`: PASS.
+  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 126/126 mapper tests.
+  - `cargo test -p fc-core`: PASS, 167/167 fc-core tests.
+  - `cargo test`: PASS, workspace tests.
+- Error note:
+  - Tried to pass `mapper35 mapper221` as two Cargo test filters; Cargo accepts one filter, so the targeted tests were split and rerun.

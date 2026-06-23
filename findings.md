@@ -293,3 +293,5 @@
 - Mapper 197 适合作为 MMC3 CHR layout 变体，而不是完整新 mapper：FCEUX/FCEUmm 的核心差异在 2KB CHR cwrap，PRG 和 A12 IRQ 继续复用普通 MMC3。FCEUmm submapper 3 还包含低寄存器 outer PRG/CHR 扩展，当前记录为后续精修。
 - Mapper 198 验证了现有 `new_with_low_wram()` 可复用到 MMC3 clone board：低区 `$5000-$5FFF` WRAM 不需要新 Cartridge API，PRG pwrap 只是在 `outer_prg_bank()` 里对 bank `>= 0x50` 做 mask。
 - Mapper 199 不适合和 197/198 混在同一机械批次：FCEUX 的 board 文件包含 mixed CHR-RAM/EXPREGS side effects，FCEUmm 则简化为 unbanked CHR-RAM 与 `$5000-$5FFF` WRAM。应先确认目标 ROM 或选择主参考后再落地。
+- Mapper 35 证明 `A12EdgeFilter` 可以继续承载非 MMC3 的 MMC3-style A12 IRQ：PRG/CHR/mirroring register 是独立 JYASIC 逻辑，但 IRQ edge filter 不需要重复实现。
+- Mapper 221 证明当前 CPU high-read open-bus hook 已足够表达未焊接 PRG bank：mode latch 和 PRG latch 仍在 address-latch mapper 内部，读路径只在选中越界 16KB PRG bank 时返回 open bus。
