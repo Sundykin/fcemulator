@@ -62,9 +62,9 @@
 - `fc-core/src/mapper/basic/waixing.rs:1-295`
   - 新增 Mapper 253 / Waixing Dragon Ball pirate。
   - 覆盖 8KB PRG、1KB CHR nibble register、2KB mapper-owned CHR-RAM window、mirroring、CPU-clock IRQ。
-- `fc-core/src/mapper/mmc3.rs:17-1725`
-  - 新增 Mapper 12 / 37 / 44 / 45 / 47 / 49 / 52 / 76 / 114 / 115 / 118 / 119 / 121 / 187 / 189 / 191 / 192 / 195 / 196 / 197 / 198 / 205 / 208 / 245 / 254 的 MMC3 变体布局。
-  - 复用 MMC3 PRG/IRQ 核心，扩展 outer PRG/CHR bank latch、Mapper 12 expansion CHR high-bit/language latch、Mapper 45 serial outer registers、Mapper 49 outer latch、Mapper 76/197 自定义 2KB CHR cwrap、Mapper 114/115/121 写协议与保护寄存器、Mapper 118 TxSROM per-nametable CIRAM A10、Mapper 119 TQROM CHR-ROM/CHR-RAM window、Mapper 187 保护读/PRG/CHR 扩展、Mapper 198 PRG mask/低区 WRAM、Mapper 205 低区 outer block 与 PRG-RAM fall-through，以及 Mapper 208 PRG32 latch/保护 LUT。
+- `fc-core/src/mapper/mmc3.rs:17-1774`
+  - 新增 Mapper 12 / 37 / 44 / 45 / 47 / 49 / 52 / 76 / 114 / 115 / 118 / 119 / 121 / 187 / 189 / 191 / 192 / 195 / 196 / 197 / 198 / 205 / 208 / 245 / 249 / 254 的 MMC3 变体布局。
+  - 复用 MMC3 PRG/IRQ 核心，扩展 outer PRG/CHR bank latch、Mapper 12 expansion CHR high-bit/language latch、Mapper 45 serial outer registers、Mapper 49 outer latch、Mapper 76/197 自定义 2KB CHR cwrap、Mapper 114/115/121 写协议与保护寄存器、Mapper 118 TxSROM per-nametable CIRAM A10、Mapper 119 TQROM CHR-ROM/CHR-RAM window、Mapper 187 保护读/PRG/CHR 扩展、Mapper 198 PRG mask/低区 WRAM、Mapper 205 低区 outer block 与 PRG-RAM fall-through、Mapper 249 security PRG/CHR bit permutation，以及 Mapper 208 PRG32 latch/保护 LUT。
 - `fc-core/src/mapper/rambo1.rs:1-310`
   - 新增 Mapper 64 / Tengen RAMBO-1 与 Mapper 158 / Tengen 800037 变体。
   - 覆盖 8KB PRG bank mode、2KB/1KB CHR mode、CHR A12 inversion、mapper-controlled mirroring、Mapper 158 CHR bit7 到 nametable page 映射、CPU/PPU A12 双模式 IRQ、IRQ 延迟与 CPU-mode force-clock。
@@ -306,6 +306,10 @@
 | 205 | `mmc3.rs:18-38,339-343,643-645,714-717,1110-1121,1345-1346,1682-1705; mapper.rs:539,969,1141,1317` | `/Users/sunmeng/workspace/fc/fceux/src/boards/mmc3.cpp` | 1161-1214 | FCEUX mapper 205 cross-check；记录 low write 后 `CartBW` fall-through、solder pad 与 split-ROM 差异，后两者留作后续精修 |
 | 205 | `mmc3.rs:18-38,339-343,643-645,714-717,1110-1121,1345-1346,1682-1705; mapper.rs:539,969,1141,1317` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/mmc3.c` | 1241-1290 | FCEUmm mapper 205 cross-check；与当前第一版一致使用 single-ROM outer block wrap |
 | 205 | `mmc3.rs:18-38,339-343,643-645,714-717,1110-1121,1345-1346,1682-1705; mapper.rs:539,969,1141,1317` | `/Users/sunmeng/workspace/fc/nestopia/source/core/board/NstBoard.hpp` | 266 | Nestopia BMC_15IN1 board 元数据：mapper 205、512KB PRG、512KB CHR |
+| 249 | `mmc3.rs:18-40,369-373,671-682,746-753,959-971,1268-1270,1393-1394,1752-1773; mapper.rs:568,993,1166,1347` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Mmc3Variants/MMC3_249.h` | 5-57 | Mapper 249 / Waixing security：`$5000` exReg、bit1 选择 PRG/CHR bit permutation，其余继续复用 MMC3 |
+| 249 | `mmc3.rs:18-40,369-373,671-682,746-753,959-971,1268-1270,1393-1394,1752-1773; mapper.rs:568,993,1166,1347` | `/Users/sunmeng/workspace/fc/fceux/src/boards/mmc3.cpp` | 1292-1330 | FCEUX mapper 249 cross-check；PRG 小/大 bank 两条 permutation 分支与 CHR permutation |
+| 249 | `mmc3.rs:18-40,369-373,671-682,746-753,959-971,1268-1270,1393-1394,1752-1773; mapper.rs:568,993,1166,1347` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/mmc3.c` | 1381-1419 | FCEUmm mapper 249 cross-check；同样使用 `$5000` exReg 与普通 MMC3 power |
+| 249 | `mmc3.rs:18-40,369-373,671-682,746-753,959-971,1268-1270,1393-1394,1752-1773; mapper.rs:568,993,1166,1347` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/MapperFactory.cpp` | 516 | mapper 249 归类到 `MMC3_249` |
 | 245 | `mmc3.rs:18-30,262-268,457-460,496-497,1127-1142` | `/Users/sunmeng/workspace/fc/fceux/src/boards/mmc3.cpp` | 1266-1289 | Mapper 245 CHR bank 低 3 位、CHR reg0 bit1 扩展 PRG outer bit、power reset |
 | 245 | `mmc3.rs:18-30,262-268,457-460,496-497,1127-1142` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/mmc3.c` | 1355-1379 | FCEUmm mapper 245 cross-check；同样记录 `M245CW/M245PW` 行为 |
 | 245 | `mmc3.rs:18-30,262-268,457-460,496-497,1127-1142` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Mmc3Variants/MMC3_245.h` | 5-42 | Mesen2 Mapper 245 PRG outer bit 与 CHR-RAM mode cross-check |
@@ -403,6 +407,7 @@
 - `Mapper51::write_low_register()` / `low_prg_index()` / `write_register()` 对应 FCEUX/FCEUmm `51.cpp`/`51.c:31-72`；本项目用现有 low-register + low-PRG-ROM hook 表达 `$6000-$7FFF` 既是 mode 写窗口又是 PRG-ROM 读窗口的行为。
 - `Mmc3::new_250()` / `mapper250_remap_addr()` 对应 FCEUX `mmc3.cpp:1332-1350`、FCEUmm `mmc3.c:1421-1440` 与 Mesen2 `MMC3_250.h:5-11`；本项目把地址线写协议折回 `write_standard_register()`，继续复用普通 MMC3 PRG/CHR/mirroring 和 A12 IRQ。
 - `Mmc3::new_205()` / `Mmc3OuterBank::Mapper205` 对应 Mesen2 `MMC3_205.h:20-49`、FCEUX `mmc3.cpp:1167-1199` 与 FCEUmm `mmc3.c:1245-1270`；本项目按 single-ROM outer block 语义实现，低区写后通过 `low_register_write_falls_through()` 继续写 PRG-RAM 以覆盖 FCEUX `CartBW` 行为。
+- `Mmc3::new_249()` / `mapper249_permute_large_bank()` 对应 Mesen2 `MMC3_249.h:24-55` 与 FCEUX/FCEUmm `mmc3.cpp`/`mmc3.c:1294-1315,1383-1404`；本项目用 `$5000` expansion write 保存 exReg，并在 PRG/CHR wrapper 层复刻 security permutation。
 
 ## 以后替换时的删除边界
 

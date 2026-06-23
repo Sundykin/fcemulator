@@ -35,6 +35,7 @@ enum Mmc3OuterBank {
     Mapper205 { block: u8 },
     Mapper208 { regs: [u8; 6], submapper: u8 },
     Mapper245,
+    Mapper249 { reg: u8 },
     Mapper250,
     Mapper254 { unlocked: bool, xor_mask: u8 },
 }
@@ -365,6 +366,13 @@ impl Mmc3 {
         m
     }
 
+    /// Mapper 249 — Waixing MMC3 security variant with PRG/CHR bit permutation.
+    pub(super) fn new_249(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
+        let mut m = Mmc3::new(prg_16k, chr_8k, mirroring);
+        m.outer_bank = Mmc3OuterBank::Mapper249 { reg: 0 };
+        m
+    }
+
     /// Mapper 250 — MMC3 clone whose register address and data are derived
     /// from CPU address lines.
     pub(super) fn new_250(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
@@ -660,6 +668,19 @@ impl Mmc3 {
                 };
                 (bank & 0x3F) | outer
             }
+            Mmc3OuterBank::Mapper249 { reg } => {
+                if reg & 0x02 == 0 {
+                    bank
+                } else if bank < 0x20 {
+                    (bank & 0x01)
+                        | ((bank >> 3) & 0x02)
+                        | ((bank >> 1) & 0x04)
+                        | ((bank << 2) & 0x18)
+                } else {
+                    let bank = bank - 0x20;
+                    Self::mapper249_permute_large_bank(bank)
+                }
+            }
             Mmc3OuterBank::Mapper250 => bank,
             Mmc3OuterBank::Mapper254 { .. } => bank,
         }
@@ -717,6 +738,13 @@ impl Mmc3 {
             }
             Mmc3OuterBank::Mapper208 { .. } => bank,
             Mmc3OuterBank::Mapper245 => bank & 0x07,
+            Mmc3OuterBank::Mapper249 { reg } => {
+                if reg & 0x02 != 0 {
+                    Self::mapper249_permute_large_bank(bank)
+                } else {
+                    bank
+                }
+            }
             Mmc3OuterBank::Mapper250 => bank,
             Mmc3OuterBank::Mapper254 { .. } => bank,
         }
@@ -929,6 +957,15 @@ impl Mmc3 {
 
     fn mapper250_remap_addr(addr: u16) -> u16 {
         (addr & 0xE000) | ((addr & 0x0400) >> 10)
+    }
+
+    fn mapper249_permute_large_bank(bank: usize) -> usize {
+        (bank & 0x03)
+            | ((bank >> 1) & 0x04)
+            | ((bank >> 4) & 0x08)
+            | ((bank >> 2) & 0x10)
+            | ((bank << 3) & 0x20)
+            | ((bank << 2) & 0xC0)
     }
 }
 
@@ -1228,6 +1265,10 @@ impl MapperOps for Mmc3 {
                 regs[(addr & 0x03) as usize] = value ^ MAPPER208_PROTECTION_LUT[regs[4] as usize];
                 return;
             }
+            Mmc3OuterBank::Mapper249 { reg } if addr == 0x5000 => {
+                *reg = value;
+                return;
+            }
             _ => {}
         }
         if let Mmc3OuterBank::Mapper121 { regs } = &mut self.outer_bank {
@@ -1348,6 +1389,9 @@ impl MapperOps for Mmc3 {
             Mmc3OuterBank::Mapper208 { regs, .. } => {
                 *regs = [0; 6];
                 regs[5] = 0x11;
+            }
+            Mmc3OuterBank::Mapper249 { reg } => {
+                *reg = 0;
             }
             Mmc3OuterBank::Mapper250 => {}
             Mmc3OuterBank::Mapper254 { unlocked, xor_mask } => {
@@ -1703,6 +1747,30 @@ mod tests {
         mapper.reset(true);
         mapper.write_register(0x8001, 0x0A);
         assert_eq!(mapper.chr_index(0x1004), 0x0A * 0x0400 + 4);
+    }
+
+    #[test]
+    fn mapper249_security_register_permutates_prg_and_chr_pages() {
+        let mut mapper = Mmc3::new_249(256, 256, Mirroring::Vertical);
+
+        mapper.write_register(0x8000, 0x06);
+        mapper.write_register(0x8001, 0x1A);
+        assert_eq!(mapper.prg_index(0x8004), 0x1A * 0x2000 + 4);
+
+        mapper.write_expansion(0x5000, 0x02);
+        mapper.write_register(0x8001, 0x1A);
+        assert_eq!(mapper.prg_index(0x8004), 0x0E * 0x2000 + 4);
+
+        mapper.write_register(0x8001, 0x35);
+        assert_eq!(mapper.prg_index(0x8004), 0x61 * 0x2000 + 4);
+
+        mapper.write_register(0x8000, 0x02);
+        mapper.write_register(0x8001, 0x35);
+        assert_eq!(mapper.chr_index(0x1004), 0xE1 * 0x0400 + 4);
+
+        mapper.reset(true);
+        mapper.write_register(0x8001, 0x35);
+        assert_eq!(mapper.chr_index(0x1004), 0x35 * 0x0400 + 4);
     }
 
     #[test]

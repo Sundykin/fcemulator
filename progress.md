@@ -1216,3 +1216,14 @@
   - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 137/137 mapper tests.
   - `cargo test -p fc-core`: PASS, 179/179 fc-core tests.
   - `cargo test`: PASS, workspace tests.
+
+### Mapper 249 MMC3 Security Batch
+- Implemented mapper 249 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs`: `$5000` security register, PRG small/large bank permutation, CHR bank permutation, reset default, and normal MMC3 A12 IRQ reuse.
+- Wired mapper 249 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs`, updated capability guard tests, and refreshed mapper gap/reference docs; supported mapper count is now 173 and remaining four-reference union gap is 320.
+- Verification:
+  - `cargo test -p fc-core mapper249 -- --nocapture`: PASS, 1/1.
+  - `cargo fmt --check`: PASS.
+  - `git diff --check`: PASS.
+  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 138/138 mapper tests.
+  - `cargo test -p fc-core`: PASS, 180/180 fc-core tests.
+  - `cargo test`: PASS, workspace tests.
