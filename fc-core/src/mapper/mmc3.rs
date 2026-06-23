@@ -28,6 +28,7 @@ enum Mmc3OuterBank {
     Mapper114 { regs: [u8; 2], cmd_pending: bool },
     Mapper115 { regs: [u8; 3] },
     Mapper121 { regs: [u8; 8] },
+    Mapper134 { regs: [u8; 4], dip: u8 },
     Mapper187 { regs: [u8; 2] },
     Mapper189 { reg: u8 },
     Mapper196 { enabled: bool, reg: u8 },
@@ -229,6 +230,16 @@ impl Mmc3 {
         let mut regs = [0; 8];
         regs[3] = 0x80;
         m.outer_bank = Mmc3OuterBank::Mapper121 { regs };
+        m
+    }
+
+    /// Mapper 134 — WX-KB4K/T4A54A/BS-5652 MMC3 multicart variant.
+    pub(super) fn new_134(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
+        let mut m = Mmc3::new(prg_16k, chr_8k, mirroring);
+        m.outer_bank = Mmc3OuterBank::Mapper134 {
+            regs: [0; 4],
+            dip: 0,
+        };
         m
     }
 
@@ -615,6 +626,21 @@ impl Mmc3 {
                     (bank & 0x1F) | or
                 }
             }
+            Mmc3OuterBank::Mapper134 { regs, .. } => {
+                let prg_and = if regs[1] & 0x04 != 0 { 0x0F } else { 0x1F };
+                let prg_or =
+                    (((regs[1] as usize) << 4) & 0x30) | (((regs[0] as usize) << 2) & 0x40);
+                let bank = if regs[1] & 0x80 != 0 {
+                    if regs[1] & 0x08 != 0 {
+                        (self.banks[6] as usize & !1) | (region as usize & 1)
+                    } else {
+                        (self.banks[6] as usize & !3) | region as usize
+                    }
+                } else {
+                    bank
+                };
+                (bank & prg_and) | (prg_or & !prg_and)
+            }
             Mmc3OuterBank::Mapper187 { regs } => {
                 if regs[0] & 0x80 != 0 {
                     let ex = (regs[0] & 0x1F) as usize;
@@ -721,6 +747,17 @@ impl Mmc3 {
                 } else {
                     bank
                 }
+            }
+            Mmc3OuterBank::Mapper134 { regs, .. } => {
+                let chr_and = if regs[1] & 0x40 != 0 { 0x7F } else { 0xFF };
+                let chr_or =
+                    (((regs[1] as usize) << 3) & 0x180) | (((regs[0] as usize) << 4) & 0x200);
+                let bank = if regs[0] & 0x08 != 0 {
+                    ((regs[2] as usize) << 3) | (((addr >> 10) & 0x07) as usize)
+                } else {
+                    bank
+                };
+                (bank & chr_and) | (chr_or & !chr_and)
             }
             Mmc3OuterBank::Mapper187 { .. } => {
                 if (addr & 0x1000) == (((self.bank_select & 0x80) as u16) << 5) {
@@ -1068,6 +1105,19 @@ impl MapperOps for Mmc3 {
         }
     }
 
+    fn read_register(&mut self, addr: u16, prg_value: u8) -> Option<u8> {
+        self.peek_register(addr, prg_value)
+    }
+
+    fn peek_register(&self, _addr: u16, _prg_value: u8) -> Option<u8> {
+        if let Mmc3OuterBank::Mapper134 { regs, dip } = &self.outer_bank {
+            if regs[0] & 0x40 != 0 {
+                return Some(*dip);
+            }
+        }
+        None
+    }
+
     fn write_low_register(&mut self, addr: u16, value: u8) -> bool {
         match &mut self.outer_bank {
             Mmc3OuterBank::Mapper37 { block } => {
@@ -1118,6 +1168,14 @@ impl MapperOps for Mmc3 {
                 Self::mapper115_write_extra(regs, addr, value);
                 true
             }
+            Mmc3OuterBank::Mapper134 { regs, .. } => {
+                if regs[0] & 0x80 == 0 {
+                    regs[(addr & 0x03) as usize] = value;
+                } else if (addr & 0x03) == 2 {
+                    regs[2] = (regs[2] & !0x03) | (value & 0x03);
+                }
+                true
+            }
             Mmc3OuterBank::Mapper187 { regs } if (0x6000..=0x6FFF).contains(&addr) => {
                 if addr == 0x6000 {
                     regs[0] = value;
@@ -1155,7 +1213,9 @@ impl MapperOps for Mmc3 {
     fn low_register_write_falls_through(&self, _addr: u16) -> bool {
         matches!(
             self.outer_bank,
-            Mmc3OuterBank::Mapper47 { .. } | Mmc3OuterBank::Mapper205 { .. }
+            Mmc3OuterBank::Mapper47 { .. }
+                | Mmc3OuterBank::Mapper134 { .. }
+                | Mmc3OuterBank::Mapper205 { .. }
         )
     }
 
@@ -1372,6 +1432,11 @@ impl MapperOps for Mmc3 {
                 *regs = [0; 8];
                 regs[3] = 0x80;
             }
+            Mmc3OuterBank::Mapper134 { regs, dip } => {
+                *dip = dip.wrapping_add(1) & 0x0F;
+                *regs = [0; 4];
+                reset_standard = true;
+            }
             Mmc3OuterBank::Mapper187 { regs } => {
                 *regs = [0; 2];
             }
@@ -1548,6 +1613,65 @@ mod tests {
 
         mapper.write_low_register(0x6000, 0x00);
         assert_eq!(mapper.prg_index(0x8004), 0x10 * 0x2000 + 4);
+    }
+
+    #[test]
+    fn mapper134_switches_mmc3_outer_banks_and_cnrom_mode() {
+        let mut mapper = Mmc3::new_134(128, 128, Mirroring::Vertical);
+
+        mapper.write_register(0x8000, 0x06);
+        mapper.write_register(0x8001, 0x2A);
+        assert_eq!(mapper.prg_index(0x8004), 0x0A * 0x2000 + 4);
+
+        assert!(mapper.write_low_register(0x6000, 0x10));
+        assert!(mapper.write_low_register(0x6001, 0x02));
+        assert_eq!(mapper.prg_index(0x8004), 0x6A * 0x2000 + 4);
+
+        mapper.write_low_register(0x6001, 0x04);
+        assert_eq!(mapper.prg_index(0x8004), 0x4A * 0x2000 + 4);
+
+        mapper.write_register(0x8000, 0x02);
+        mapper.write_register(0x8001, 0x35);
+        mapper.write_low_register(0x6000, 0x20);
+        mapper.write_low_register(0x6001, 0x20);
+        assert_eq!(mapper.chr_index(0x1004), 0x335 * 0x0400 + 4);
+
+        mapper.write_low_register(0x6000, 0x08);
+        mapper.write_low_register(0x6002, 0x1B);
+        assert_eq!(mapper.chr_index(0x0004), 0x1D8 * 0x0400 + 4);
+        assert_eq!(mapper.chr_index(0x1C04), 0x1DF * 0x0400 + 4);
+    }
+
+    #[test]
+    fn mapper134_nrom_modes_lock_and_dip_read() {
+        let mut mapper = Mmc3::new_134(128, 128, Mirroring::Horizontal);
+
+        mapper.write_register(0x8000, 0x06);
+        mapper.write_register(0x8001, 0x2B);
+        mapper.write_low_register(0x6001, 0x80);
+        assert_eq!(mapper.prg_index(0x8004), 0x08 * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xA004), 0x09 * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 0x0A * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xE004), 0x0B * 0x2000 + 4);
+
+        mapper.write_low_register(0x6001, 0x88);
+        assert_eq!(mapper.prg_index(0x8004), 0x0A * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xA004), 0x0B * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 0x0A * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xE004), 0x0B * 0x2000 + 4);
+
+        mapper.write_low_register(0x6000, 0xC8);
+        mapper.write_low_register(0x6001, 0x00);
+        assert_eq!(mapper.peek_register(0x8000, 0x5A), Some(0));
+        mapper.reset(true);
+        mapper.write_low_register(0x6000, 0x40);
+        assert_eq!(mapper.peek_register(0x8000, 0x5A), Some(1));
+
+        mapper.write_low_register(0x6001, 0x20);
+        mapper.write_low_register(0x6002, 0x0F);
+        mapper.write_low_register(0x6000, 0x88);
+        mapper.write_low_register(0x6002, 0x01);
+        assert_eq!(mapper.chr_index(0x0004), 0x168 * 0x0400 + 4);
     }
 
     #[test]
