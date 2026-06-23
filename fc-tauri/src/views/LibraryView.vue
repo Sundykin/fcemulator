@@ -14,7 +14,11 @@ type Cat = "all" | "fav" | "recent";
 const cat = ref<Cat>("all");
 const mode = ref<"grid" | "list">("grid");
 const page = ref(1);
-const PAGE = 18;
+const PAGE = 20;
+
+// batch-selection state
+const selecting = ref(false);
+const sel = ref<Set<string>>(new Set());
 
 const cats = computed(() => [
   { key: "all" as Cat, icon: "library", label: "所有游戏", count: library.items.length },
@@ -32,9 +36,62 @@ const base = computed(() => {
 });
 const pageCount = computed(() => Math.max(1, Math.ceil(base.value.length / PAGE)));
 const pageItems = computed(() => base.value.slice((page.value - 1) * PAGE, page.value * PAGE));
-const pageList = computed(() => Array.from({ length: pageCount.value }, (_, i) => i + 1).slice(0, 7));
 
+// Windowed page list with ellipses: 1 … (cur-2 … cur+2) … N — so the numbers
+// always slide around the current page (the old code froze on pages 1–7).
+const pageList = computed<(number | "…")[]>(() => {
+  const n = pageCount.value;
+  const c = page.value;
+  if (n <= 7) return Array.from({ length: n }, (_, i) => i + 1);
+  const out: (number | "…")[] = [1];
+  const lo = Math.max(2, c - 2);
+  const hi = Math.min(n - 1, c + 2);
+  if (lo > 2) out.push("…");
+  for (let p = lo; p <= hi; p++) out.push(p);
+  if (hi < n - 1) out.push("…");
+  out.push(n);
+  return out;
+});
+
+// keep `page` in range when the filtered set shrinks (e.g. after a batch delete)
+watch(pageCount, (n) => {
+  if (page.value > n) page.value = n;
+});
 watch([cat, () => library.query], () => (page.value = 1));
+
+// Lazy-load covers for whatever is on screen (both grid and list modes); deduped
+// + cached in the store, so paging back is instant.
+watch(
+  pageItems,
+  (items) => items.forEach((it) => library.ensureCover(it.id)),
+  { immediate: true }
+);
+
+// ---- batch selection ----
+function toggleSelecting() {
+  selecting.value = !selecting.value;
+  if (!selecting.value) sel.value = new Set();
+}
+function toggleSelect(id: string) {
+  const s = new Set(sel.value);
+  s.has(id) ? s.delete(id) : s.add(id);
+  sel.value = s;
+}
+const pageAllSelected = computed(() => pageItems.value.length > 0 && pageItems.value.every((it) => sel.value.has(it.id)));
+function toggleSelectPage() {
+  const s = new Set(sel.value);
+  if (pageAllSelected.value) pageItems.value.forEach((it) => s.delete(it.id));
+  else pageItems.value.forEach((it) => s.add(it.id));
+  sel.value = s;
+}
+async function deleteSelected() {
+  const ids = [...sel.value];
+  if (!ids.length) return;
+  await library.removeBatch(ids);
+  store.status = `已删除 ${ids.length} 个游戏`;
+  sel.value = new Set();
+  selecting.value = false;
+}
 
 const loading = ref(false);
 async function openFile() {
@@ -99,6 +156,14 @@ onMounted(() => {
           <template #prefix><Icon name="search" :size="15" /></template>
         </n-input>
         <div class="spacer"></div>
+        <template v-if="selecting">
+          <button class="selbtn" @click="toggleSelectPage">{{ pageAllSelected ? "取消本页" : "全选本页" }}</button>
+          <button class="selbtn danger" :disabled="!sel.size" @click="deleteSelected">删除 ({{ sel.size }})</button>
+          <button class="selbtn" @click="toggleSelecting">取消</button>
+        </template>
+        <button v-else class="selbtn" title="批量选择删除" @click="toggleSelecting">
+          <Icon name="trash" :size="14" /><span>批量删除</span>
+        </button>
         <div class="viewtoggle">
           <button :class="{ on: mode === 'grid' }" title="网格" @click="mode = 'grid'"><Icon name="library" :size="16" /></button>
           <button :class="{ on: mode === 'list' }" title="列表" @click="mode = 'list'"><Icon name="list" :size="16" /></button>
@@ -113,19 +178,31 @@ onMounted(() => {
               :key="it.id"
               :item="it"
               removable
+              :selectable="selecting"
+              :selected="sel.has(it.id)"
               @play="play(it.id)"
               @favorite="library.toggleFavorite(it.id)"
               @remove="library.remove(it.id)"
+              @toggleselect="toggleSelect(it.id)"
             />
           </div>
           <div v-else class="list">
-            <div v-for="it in pageItems" :key="it.id" class="row" @click="play(it.id)">
-              <img v-if="it.cover" :src="it.cover" class="rcover" />
+            <div
+              v-for="it in pageItems"
+              :key="it.id"
+              class="row"
+              :class="{ selected: selecting && sel.has(it.id) }"
+              @click="selecting ? toggleSelect(it.id) : play(it.id)"
+            >
+              <div v-if="selecting" class="rcheck" :class="{ on: sel.has(it.id) }">✓</div>
+              <img v-if="library.covers[it.id]" :src="library.covers[it.id]" class="rcover" loading="lazy" />
               <div v-else class="rcover none">NES</div>
               <div class="rtitle">{{ it.title }}</div>
               <div class="rmeta">mapper {{ it.mapper }}</div>
-              <button class="ricon" :class="{ on: it.favorite }" @click.stop="library.toggleFavorite(it.id)"><Icon name="star" :size="15" /></button>
-              <button class="ricon" @click.stop="library.remove(it.id)"><Icon name="trash" :size="15" /></button>
+              <template v-if="!selecting">
+                <button class="ricon" :class="{ on: it.favorite }" @click.stop="library.toggleFavorite(it.id)"><Icon name="star" :size="15" /></button>
+                <button class="ricon" @click.stop="library.remove(it.id)"><Icon name="trash" :size="15" /></button>
+              </template>
             </div>
           </div>
         </template>
@@ -139,7 +216,10 @@ onMounted(() => {
       <div class="pager">
         <div class="pages">
           <button class="pbtn" :disabled="page <= 1" @click="page--">‹</button>
-          <button v-for="p in pageList" :key="p" class="pbtn" :class="{ on: p === page }" @click="page = p">{{ p }}</button>
+          <template v-for="(p, i) in pageList" :key="i">
+            <span v-if="p === '…'" class="pellipsis">…</span>
+            <button v-else class="pbtn" :class="{ on: p === page }" @click="page = p">{{ p }}</button>
+          </template>
           <button class="pbtn" :disabled="page >= pageCount" @click="page++">›</button>
         </div>
         <span class="total">共 {{ base.length }} 个游戏</span>
@@ -357,5 +437,64 @@ onMounted(() => {
   right: 18px;
   font-size: 12px;
   color: var(--text-mute);
+}
+/* batch-selection controls */
+.selbtn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-dim);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 13px;
+}
+.selbtn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.selbtn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.selbtn.danger {
+  color: #ff6b6b;
+  border-color: #5a2a2a;
+}
+.selbtn.danger:hover:not(:disabled) {
+  background: #3a1d1d;
+  border-color: #ff6b6b;
+  color: #ff8a8a;
+}
+.pellipsis {
+  min-width: 20px;
+  text-align: center;
+  color: var(--text-mute);
+  align-self: center;
+}
+.row.selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.rcheck {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid var(--border-strong);
+  color: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  flex: none;
+}
+.rcheck.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
 }
 </style>

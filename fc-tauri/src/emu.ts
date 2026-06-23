@@ -48,9 +48,11 @@ export const openRomId = (id: string) => invoke<RomInfo>("open_rom_id", { id });
 export const listStates = () => invoke<SlotInfo[]>("list_states");
 export const deleteState = (slot: string) => invoke("delete_state", { slot });
 export const listLibrary = () => invoke<LibItem[]>("list_library");
+export const gameCover = (id: string) => invoke<string | null>("game_cover", { id });
 export const scanLibrary = (dir: string) => invoke<number>("scan_library", { dir });
 export const setFavorite = (id: string, fav: boolean) => invoke("set_favorite", { id, fav });
 export const removeFromLibrary = (id: string) => invoke("remove_from_library", { id });
+export const removeFromLibraryBatch = (ids: string[]) => invoke("remove_from_library_batch", { ids });
 
 export const openRomPath = (path: string) => invoke<RomInfo>("open_rom", { path });
 export const setInput = (p1: number, p2: number, seq: number) => invoke("set_input", { p1, p2, seq });
@@ -85,6 +87,34 @@ export interface PpuApuState {
 }
 export const ppuApuState = () => invoke<PpuApuState>("ppu_apu_state");
 export const runtimeStats = () => invoke<Record<string, unknown>>("runtime_stats");
+
+// ---- Event Viewer / break-on-event / access heatmap (debugger L4.3/L4.4) ----
+export interface DebugEvent {
+  type: string; scanline: number; dot: number; addr: number; value: number;
+  rw: "r" | "w" | null; source: "apu_frame" | "dmc" | "mapper" | null;
+}
+export interface EventDump {
+  recording: boolean; region: { scanlines: number; dots: number };
+  count: number; dropped: number; events: DebugEvent[];
+}
+export const eventDump = (enable?: boolean, filter?: number) =>
+  invoke<EventDump>("event_dump", { enable, filter });
+export interface EventBpSpec {
+  kind?: string; addr?: number;
+  scanlineMin?: number; scanlineMax?: number; dotMin?: number; dotMax?: number; clear?: boolean;
+}
+export const setEventBreakpoint = (s: EventBpSpec) =>
+  invoke<number>("set_event_breakpoint", {
+    kind: s.kind, addr: s.addr,
+    scanlineMin: s.scanlineMin, scanlineMax: s.scanlineMax,
+    dotMin: s.dotMin, dotMax: s.dotMax, clear: s.clear,
+  });
+export interface HotAddr {
+  addr: number; read: number; write: number; exec: number; code: boolean; data: boolean; recency: number;
+}
+export interface HeatmapData { enabled: boolean; top?: HotAddr[]; pages?: number[] }
+export const heatmap = (enable?: boolean, reset?: boolean, top?: number) =>
+  invoke<HeatmapData>("heatmap", { enable, reset, top });
 
 // debugger
 export const disassemble = (addr: number, count: number) => invoke<string[]>("disassemble", { addr, count });

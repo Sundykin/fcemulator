@@ -4,7 +4,7 @@
 Improve emulator precision for APU, PPU, and related NES hardware by using the repository's accuracy test ROMs to identify and fix high-value issues without breaking timing invariants.
 
 ## Current Phase
-Phase 16: Chinese RPG mapper compatibility and accuracy
+Phase 17: Mapper compatibility gap closure
 
 ## Phases
 
@@ -107,6 +107,59 @@ Phase 16: Chinese RPG mapper compatibility and accuracy
 - [x] Verify both ROMs visually plus mapper/core regression suites
 - **Status:** in_progress
 
+### Phase 17: Mapper compatibility gap closure
+- [x] Compare current mapper support against FCEUX, FCEUmm, Mesen2, and Nestopia
+- [x] Write a prioritized mapper gap checklist
+- [x] Implement first low-risk common mapper batch: 72, 79, 80, 82
+- [x] Record reference source locations for the new mapper batch
+- [x] Add mapper architecture hooks and next batch: VRC1 mapper 75, MMC3-derived mapper 76, JY mapper 91 with cached HBlank IRQ clocking
+- [x] Team-mode parallel mapper pass: Worker A VRC/Konami, Worker B MMC3-derived, Worker C mapper 253/unlicensed, PM integrates and validates
+- [x] Add mapper 116 / Someri Team SL12 composite VRC2/MMC3/MMC1 board
+- [x] Add mapper 45 / BMC-Hero as an MMC3 outer-bank serial-register variant
+- [x] Add mapper 64 / Tengen RAMBO-1 with CPU/PPU IRQ modes
+- [x] Add mapper 119 / TQROM with MMC3 CHR-ROM/CHR-RAM bank selection
+- [x] Add mapper 95 / Namco 108 Rev. B with CHR-register-controlled nametable pages
+- [x] Add mapper 118 / TxSROM with MMC3 IRQ plus CHR bit7 nametable pages
+- [x] Add mapper 206 / Namco 108 subset and mapper 207 / Taito X1-005 alternate mirroring
+- [x] Add low-risk mapper batch 192 / 195 / 228 / 232 / 255
+- [x] Add mapper 68 / Sunsoft-4 with nametable-to-CHR architecture hook
+- [x] Add low-risk mapper batch 122 / 133 / 149
+- [x] Add low-risk mapper batch 144 / 146 / 148
+- [x] Refactor MMC3 write helpers and add first-pass MMC3 protocol variants 49/114/115/121
+- [x] Continue low-risk latch batch 154/155/108 after current MMC3 variant verification
+- [x] Add low-risk mapper batch 156 / 166 / 167
+- [x] Add mechanical mapper batch 185 / 189 / 193
+- [x] Add MMC3 mechanical mapper batch 191 / 245
+- [x] Add MMC3 protocol variant mapper 196
+- [x] Add MMC3 protected WRAM mapper 254
+- [x] Add MMC3 protection/PRG32 mapper batch 187 / 208
+- [x] Add IRQ/variant mapper batch 48 / 158
+- [x] Add mechanical mapper batch 188 / 197 / 198
+- [x] Add architecture-reuse mapper batch 35 / 221
+- [x] Add PPU-bus latch mapper 96
+- [x] Add MMC3 expansion-register mapper 12
+- [x] Add latch/NSF paging mapper batch 8 / 31
+- [x] Add Action 53 mapper 28
+- [x] Add Sealie Computing mapper 29
+- [x] Add 11-in-1 Ball Games mapper 51
+- [x] Add latch/special mapper batch 81 / 104
+- [x] Add special mapper batch 175 / 177
+- [x] Add MMC3 address-line protocol mapper 250
+- [x] Add MMC3 outer-block mapper 205
+- [x] Add MMC3 security mapper 249
+- **Status:** in_progress
+
+### Phase 18: Mapper board compatibility layer
+- [x] Design a reference-emulator-style board layer for fast mapper translation
+- [x] Add initial reusable bank mapping helpers for PRG/CHR page index translation
+- [x] Extend bank mapping helpers for mixed ROM/RAM windows
+- [x] Add CPU address handler helpers for expansion, low, and high mapper ranges
+- [ ] Extract reusable IRQ units: MMC3 A12, CPU counter, HBlank, VRC/RAMBO-style counters
+- [ ] Standardize reset/power hooks, mapper register reads, side effects, and open-bus paths
+- [ ] Route expansion audio boards through a shared mapper audio interface
+- [ ] Convert the next mapper batch through the new layer before expanding the long tail
+- **Status:** in_progress
+
 ## Key Questions
 1. Which repository test ROMs currently fail deterministically?
 2. Are failures concentrated in APU frame/DMC timing, PPU NMI/scroll/sprite timing, mapper IRQs, or CPU/bus behavior?
@@ -126,10 +179,35 @@ Phase 16: Chinese RPG mapper compatibility and accuracy
 | Keep MMC5 audio and split-screen out of the initial MMC5 patch | Local ROM evidence exercised ExRAM/CHR/nametable/multiply/IRQ status; audio and split-screen need dedicated ROM evidence before adding more timing surface |
 | Split mapper implementations by chip/family behind the existing `Mapper` enum | `mapper.rs` has grown to ~1300 lines; keeping the public facade stable while moving implementations to submodules makes future mapper additions localized |
 | Treat sprite flicker reduction as an optional video enhancement, not a core accuracy change | NES hardware selects only the first 8 sprites per scanline and games/tests can rely on this; enhanced display must default off and avoid changing CPU-visible PPU status/timing |
+| Prioritize mapper gaps by reference-project overlap before numeric order | FCEUmm/FCEUX include a huge NES 2.0 long tail; implementing common <=255 and Mesen2-covered gaps gives better compatibility per change |
+| Add HBlank mapper clocking as a cached capability instead of a direct per-dot dispatch | Mapper 91 and similar FCEUX `GameHBIRQHook` boards need scanline-synchronous IRQs, but ordinary mappers should keep the PPU dot hot path gated by a cached bool |
+| Fold MMC3-derived mapper 76 into `Mmc3` variant layout instead of a standalone clone | Reusing MMC3 PRG/IRQ behavior keeps future MMC3 variants from copying timing-sensitive logic |
+| Run mapper team mode through disjoint ownership and PM integration | VRC/Konami, MMC3-derived, and Waixing/253 touched separable modules; PM-side docs/tests keep parallel changes from landing as unreviewed WIP |
+| Model Mapper 45 as an MMC3 outer-bank variant | References agree its PRG/CHR wrapping and low-register serial latch sit above normal MMC3 IRQ/register behavior, so reusing the existing MMC3 core keeps A12 timing centralized |
+| Implement Mapper 64 as an independent RAMBO-1 ASIC | It has MMC3-like PRG/CHR banking, but its register set and selectable CPU/A12 IRQ source differ enough that a standalone module is cleaner and can later host mapper 158 |
+| Add a nametable-to-CHR mapper hook for Mapper 68 | Sunsoft-4 maps nametable fetches to CHR backing memory, so `MapperOps::nametable_chr_index` lets mappers return a CHR byte index while `Cartridge` still owns CHR-ROM/RAM access |
+| Generalize MMC3 CHR-RAM windows for mapper 119 | TQROM needs a bank range mapped to 8KB CHR-RAM; this also prepares later MMC3_ChrRam variants while preserving mapper 74/194 behavior |
+| Implement Mapper 95 with a small Namco108 variant instead of overloading Namco118 | Mapper 95 masks CHR registers differently and uses CHR register high bits for nametable pages, while mapper 88 keeps fixed header mirroring |
+| Implement Mapper 118 as an MMC3 nametable-layout variant | TxSROM keeps normal MMC3 PRG and A12 IRQ behavior, but disables ordinary A000 mirroring and routes CHR bank bit7 into per-nametable CIRAM A10 |
+| Land mapper 206/207 before deeper architecture work | Both boards reuse already-local Namco108/Taito X1-005 shapes and do not require new CPU/PPU/Cartridge hooks, so they are a clean stable batch before 68 and MMC3 protocol variants |
+| Split mapper expansion into low-risk batches and architecture batches | 192/195/228/232/255 fit existing hooks, while 68 needs nametable-to-CHR access and 114/115/121 should follow MMC3 helper refactoring |
+| Use team-mode research to choose the next mapper batch | Low-risk latch candidates start with 149/122/133; MMC3 candidates should start with helper refactoring then 49; external-device boards such as 99/111/157/188/209/211 should wait for dedicated peripheral hooks |
+| Build a board compatibility layer before pushing the long tail | Reference mapper code is short because mature emulators hide handler registration, bank setup, IRQ units, reset hooks, and side-effect reads in their board framework; reproducing that layer should make future mapper work mostly mechanical |
+| Start CPU handler work as private `Cartridge` helpers | The existing `MapperOps` methods already cover expansion, low, and high ranges; centralizing priority/order first reduces later mapper glue without widening the public trait too early |
 
 ## Errors Encountered
 | Error | Attempt | Resolution |
 |-------|---------|------------|
+| Mapper91 unit test expected fixed banks 62/63 | First mapper91 test assumed FCEUX `~1/~0` fixed PRG banks for all paths | Corrected the test to match the implemented FCEUmm submapper-aware sync path: fixed `0x0E/0x0F` plus outer bank |
+| Cargo rejected multiple test filters | Tried to run three mapper capability tests as separate positional filters in one command | Reran `cargo test -p fc-core mapper::tests -- --nocapture`, which covers all mapper facade/capability tests |
+| Duplicate `tests` module in `basic/core.rs` | Added ColorDreams tests next to an existing BF9096 test module | Moved ColorDreams tests into the existing module and reran targeted mapper tests |
+| Cargo rejected multiple test filters | Tried to run `mapper::bank`, `mapper::basic::core::tests`, and `mapper::basic::latch::sachen::tests` in one command | Split into three `cargo test` invocations; all passed |
+| New `Mmc3A12Irq` unit tests failed | First assertions expected IRQ on the reload edge instead of the next valid A12 clock, and zero-reload suppression setup never passed through counter 1 | Corrected tests to follow MMC3 reload/decrement edge order; migrated MMC3 tests remained green |
+| Cargo rejected multiple test filters | Tried to run mapper191 and mapper245 tests as two positional filters in one command | Reran `cargo test -p fc-core mapper::mmc3::tests -- --nocapture`, which covers both new tests |
+| Mapper191 test failed to resolve `ChrAccess` | Used `super::ChrAccess` inside the `mmc3.rs` test module | Imported `crate::mapper::ChrAccess` in the test module and reran MMC3 tests |
+| Mapper196 test expected ordinary `$8004/$8005` pair | First assertion used an address pair that remaps to MMC3 command writes differently than intended | Corrected the test to use `$8000/$8002`, which exercises mapper196's address-line remap into normal select/data writes |
+| Mapper254 compile failed for non-exhaustive `Mmc3OuterBank` match | Added a new outer-bank variant but missed the plain PRG wrapper arm | Added `Mapper254` to `outer_prg_bank()` as pass-through MMC3 PRG behavior |
+| Mapper208 initial PRG bank decoded incorrectly | First constructor used compressed latch value `3` while the implementation decoded FCEUmm-style raw register bits | Switched the default latch to raw `0x11`, which decodes to PRG32 bank 3 and matches the reference power state |
 
 ## Notes
 - Preserve the invariant: CPU memory accesses tick the bus before the access; each CPU cycle advances PPU by 3 dots and APU by 1 cycle.

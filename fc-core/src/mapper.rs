@@ -46,8 +46,88 @@ pub trait MapperOps {
     }
     /// Handle a CPU write to `$8000..=$FFFF` (mapper register update).
     fn write_register(&mut self, addr: u16, value: u8);
+    /// Optional mapper-owned CPU read inside `$8000..=$FFFF`. Used by boards
+    /// whose high register windows are readable or whose reads update latch
+    /// state. `prg_value` is the byte that the currently mapped PRG-ROM would
+    /// have returned.
+    fn read_register(&mut self, _addr: u16, _prg_value: u8) -> Option<u8> {
+        None
+    }
+    /// CPU read hook for `$8000..=$FFFF` with the current CPU open-bus value.
+    /// Boards such as mapper 235 can return open bus for deliberately unmapped
+    /// PRG selections. Default behavior preserves the older PRG-only hook.
+    fn read_register_with_open_bus(
+        &mut self,
+        addr: u16,
+        prg_value: u8,
+        _open_bus: u8,
+    ) -> Option<u8> {
+        self.read_register(addr, prg_value)
+    }
+    /// Side-effect-free high-register peek for debuggers/disassemblers.
+    fn peek_register(&self, _addr: u16, _prg_value: u8) -> Option<u8> {
+        None
+    }
+    /// Side-effect-free high-register peek with a supplied open-bus value.
+    fn peek_register_with_open_bus(&self, addr: u16, prg_value: u8, _open_bus: u8) -> Option<u8> {
+        self.peek_register(addr, prg_value)
+    }
+    /// Whether CPU writes to mapper registers are ANDed with the currently
+    /// mapped PRG-ROM byte at the same address (discrete-logic bus conflicts).
+    fn has_bus_conflicts(&self) -> bool {
+        false
+    }
+    /// Transform a high-register write value when a board has bus conflicts.
+    /// Most boards use the standard open-collector AND with the currently
+    /// mapped PRG-ROM byte, but a few discrete boards only conflict on some
+    /// lines.
+    fn apply_bus_conflict(&self, value: u8, prg_value: u8) -> u8 {
+        if self.has_bus_conflicts() {
+            value & prg_value
+        } else {
+            value
+        }
+    }
+    /// Optional mapper register write inside `$6000..=$7FFF`. Some boards (e.g.
+    /// NINA-001) decode a few PRG-RAM addresses as bank registers while still
+    /// allowing the write to fall through to PRG-RAM. Returns `true` when the
+    /// address was a mapper register for debugger/event classification.
+    fn write_low_register(&mut self, _addr: u16, _value: u8) -> bool {
+        false
+    }
+    /// Whether a matched low mapper register write should also store into
+    /// cartridge PRG-RAM. NINA-001 mirrors the register write into WRAM; most
+    /// low-register latch boards do not.
+    fn low_register_write_falls_through(&self, _addr: u16) -> bool {
+        false
+    }
+    /// Optional PRG-ROM mapping inside `$6000..=$7FFF`.
+    fn low_prg_index(&self, _addr: u16) -> Option<usize> {
+        None
+    }
+    /// Optional mapper-owned read inside `$6000..=$7FFF`.
+    fn read_low_register(&mut self, _addr: u16) -> Option<u8> {
+        None
+    }
+    /// Optional mapper-owned low read that can combine with the underlying
+    /// PRG-RAM byte (mapper 212 ORs bit 7 onto selected `$6000..=$7FFF` reads).
+    fn read_low_register_with_prg_ram(&mut self, addr: u16, _prg_ram_value: u8) -> Option<u8> {
+        self.read_low_register(addr)
+    }
+    /// Side-effect-free low-register peek.
+    fn peek_low_register(&self, _addr: u16) -> Option<u8> {
+        None
+    }
+    /// Side-effect-free low-register peek with the underlying PRG-RAM byte.
+    fn peek_low_register_with_prg_ram(&self, addr: u16, _prg_ram_value: u8) -> Option<u8> {
+        self.peek_low_register(addr)
+    }
     /// Optional mapper-owned expansion-area read (`$4018..=$5FFF`).
     fn read_expansion(&mut self, _addr: u16) -> Option<u8> {
+        None
+    }
+    /// Optional PRG-ROM mapping inside `$4018..=$5FFF`.
+    fn expansion_prg_index(&self, _addr: u16) -> Option<usize> {
         None
     }
     /// Optional mapper-owned expansion-area peek (`$4018..=$5FFF`) without side
@@ -60,6 +140,16 @@ pub trait MapperOps {
     /// Optional mapper-owned nametable read (`$2000..=$3EFF`).
     fn nametable_read(&mut self, _addr: u16, _ciram: &[u8; 0x1000]) -> Option<u8> {
         None
+    }
+    /// Optional nametable-to-CHR mapping (`$2000..=$3EFF`). Boards such as
+    /// Sunsoft-4 can source nametable bytes from CHR ROM/RAM 1KB pages instead
+    /// of CIRAM; the cartridge resolves the returned CHR byte index.
+    fn nametable_chr_index(&self, _addr: u16) -> Option<usize> {
+        None
+    }
+    /// Whether [`MapperOps::nametable_chr_index`] can ever return `Some`.
+    fn has_nametable_chr_mapping(&self) -> bool {
+        false
     }
     /// Optional mapper-owned nametable peek without side effects.
     fn peek_nametable(&self, _addr: u16, _ciram: &[u8; 0x1000]) -> Option<u8> {
@@ -87,9 +177,27 @@ pub trait MapperOps {
     /// scanlines via a CPU-cycle prescaler) rather than A12 edges; most mappers
     /// ignore it.
     fn cpu_clock(&mut self) {}
+    /// Optional expansion-audio sample for the current CPU cycle, normalized to
+    /// roughly the same scale as the 2A03 mix before the APU's output filter.
+    fn expansion_audio(&self) -> f32 {
+        0.0
+    }
+    /// Whether [`MapperOps::expansion_audio`] is non-zero / should be sampled by
+    /// the APU every CPU cycle.
+    fn has_expansion_audio(&self) -> bool {
+        false
+    }
     /// Whether [`MapperOps::cpu_clock`] has work to do. Cached by the cartridge
     /// so the bus can skip an empty mapper dispatch on every CPU cycle.
     fn clocks_cpu(&self) -> bool {
+        false
+    }
+    /// Clock a mapper once at the PPU's horizontal blanking point. Some older
+    /// FCEUX-style boards expose IRQ hooks as `GameHBIRQHook`; this gives those
+    /// mappers a scanline-synchronous path without approximating with CPU cycles.
+    fn hblank_clock(&mut self, _scanline: u16, _dot: u16) {}
+    /// Whether [`MapperOps::hblank_clock`] has work to do.
+    fn clocks_hblank(&self) -> bool {
         false
     }
     /// Whether a mapper IRQ is currently asserted.
@@ -99,22 +207,47 @@ pub trait MapperOps {
     /// Acknowledge / clear an asserted IRQ (when CPU services it is not enough;
     /// MMC3 clears via register, so this is mostly a no-op).
     fn clear_irq(&mut self) {}
+    /// Mapper reset hook. `soft` follows emulator reset semantics: true for
+    /// console reset after power-on, false when freshly initialized.
+    fn reset(&mut self, _soft: bool) {}
 }
 
+mod bank;
 mod basic;
+mod expansion_audio;
+mod expansion_mappers;
+mod factory;
+mod irq;
 mod mmc1;
 mod mmc2;
 mod mmc3;
 mod mmc4;
 mod mmc5;
+mod rambo1;
 mod vrc4;
 
-pub use basic::{Axrom, Cnrom, Codemasters, ColorDreams, Gxrom, Nrom, Unrom};
+pub use basic::{
+    Action53, ActionEnterprises, AddrLatch16k, AddrLatchVariant, Axrom, Bandai74161, Bf9096, Bnrom,
+    Caltron41, Cnrom, Codemasters, ColorDreams, ColorDreams46, Cprom, Gxrom, IremG101, IremLrog017,
+    IremTamS1, JalecoJf11_14, JalecoJf13, JalecoJf16, JalecoJfxx, Mapper103, Mapper104, Mapper106,
+    Mapper107, Mapper108, Mapper116, Mapper117, Mapper120, Mapper122, Mapper142, Mapper15,
+    Mapper151, Mapper156, Mapper170, Mapper175, Mapper177, Mapper18, Mapper183, Mapper185,
+    Mapper188, Mapper193, Mapper203, Mapper212, Mapper222, Mapper226, Mapper230, Mapper233,
+    Mapper234, Mapper235, Mapper240, Mapper241, Mapper244, Mapper246, Mapper253, Mapper29,
+    Mapper31, Mapper35, Mapper36, Mapper40, Mapper42, Mapper43, Mapper50, Mapper51, Mapper57,
+    Mapper60, Mapper63, Mapper65, Mapper67, Mapper72, Mapper73, Mapper79, Mapper8, Mapper81,
+    Mapper83, Mapper91, Mapper92, Mapper96, Namco108Mapper154, Namco108Mapper206, Namco108Mapper95,
+    Namco118, Nina01, Nina03_06, Nrom, Ntdec112, Sachen133, Sachen149, SachenSa0161m, Subor166,
+    SuborVariant, Sunsoft184, Sunsoft4, Sunsoft89, TaitoTc0190, TaitoX1005, TaitoX1017, UnlPci556,
+    Unrom, UnromVariant, UnromVariantMapper, Vrc1,
+};
+pub use expansion_mappers::{Fme7, Namco163, Vrc6, Vrc6Variant, Vrc7};
 pub use mmc1::Mmc1;
 pub use mmc2::Mmc2;
 pub use mmc3::Mmc3;
 pub use mmc4::Mmc4;
 pub use mmc5::Mmc5;
+pub use rambo1::Rambo1;
 pub use vrc4::Vrc4;
 
 /// Enum dispatch over all supported mappers (keeps the cartridge serializable).
@@ -125,184 +258,115 @@ pub enum Mapper {
     Unrom(Unrom),
     Cnrom(Cnrom),
     Axrom(Axrom),
+    Mapper8(Mapper8),
+    Bnrom(Bnrom),
+    Nina01(Nina01),
+    Cprom(Cprom),
+    Mapper15(Mapper15),
+    Mapper18(Mapper18),
+    Namco163(Namco163),
+    Vrc6(Vrc6),
+    IremG101(IremG101),
+    Action53(Action53),
+    Mapper29(Mapper29),
+    Mapper31(Mapper31),
+    TaitoTc0190(TaitoTc0190),
+    Bandai74161(Bandai74161),
+    JalecoJf16(JalecoJf16),
+    JalecoJfxx(JalecoJfxx),
+    Sunsoft184(Sunsoft184),
+    UnlPci556(UnlPci556),
+    Caltron41(Caltron41),
+    ColorDreams46(ColorDreams46),
+    Mapper36(Mapper36),
+    Mapper35(Mapper35),
+    Mapper40(Mapper40),
+    Mapper42(Mapper42),
+    Mapper43(Mapper43),
+    Mapper50(Mapper50),
+    Mapper51(Mapper51),
+    Mapper57(Mapper57),
+    Mapper60(Mapper60),
+    Mapper63(Mapper63),
+    Rambo1(Rambo1),
+    Mapper65(Mapper65),
+    Mapper67(Mapper67),
+    Sunsoft4(Sunsoft4),
+    Mapper72(Mapper72),
+    Mapper73(Mapper73),
+    Mapper79(Mapper79),
+    TaitoX1005(TaitoX1005),
+    TaitoX1017(TaitoX1017),
+    Vrc1(Vrc1),
+    Mapper81(Mapper81),
+    Mapper83(Mapper83),
+    Mapper91(Mapper91),
+    Mapper92(Mapper92),
+    Mapper96(Mapper96),
+    AddrLatch16k(AddrLatch16k),
+    Mapper103(Mapper103),
+    Mapper104(Mapper104),
+    Mapper106(Mapper106),
+    Mapper108(Mapper108),
+    Mapper116(Mapper116),
+    Mapper117(Mapper117),
+    Mapper120(Mapper120),
+    Mapper122(Mapper122),
+    Sachen133(Sachen133),
+    SachenSa0161m(SachenSa0161m),
+    Sachen149(Sachen149),
+    Mapper142(Mapper142),
+    Mapper156(Mapper156),
+    Subor166(Subor166),
+    Mapper170(Mapper170),
+    Mapper175(Mapper175),
+    Mapper177(Mapper177),
+    Mapper183(Mapper183),
+    Mapper185(Mapper185),
+    Mapper188(Mapper188),
+    Mapper193(Mapper193),
+    Mapper212(Mapper212),
+    Mapper222(Mapper222),
+    Mapper226(Mapper226),
+    Mapper230(Mapper230),
+    Mapper233(Mapper233),
+    Mapper234(Mapper234),
+    Mapper235(Mapper235),
+    Mapper240(Mapper240),
+    Mapper241(Mapper241),
+    Mapper244(Mapper244),
+    Mapper246(Mapper246),
+    Mapper253(Mapper253),
+    IremLrog017(IremLrog017),
+    Namco108Mapper154(Namco108Mapper154),
+    Namco108Mapper95(Namco108Mapper95),
+    Namco108Mapper206(Namco108Mapper206),
+    Namco118(Namco118),
+    ActionEnterprises(ActionEnterprises),
+    Bf9096(Bf9096),
+    JalecoJf13(JalecoJf13),
+    Sunsoft89(Sunsoft89),
+    UnromVariant(UnromVariantMapper),
+    IremTamS1(IremTamS1),
+    Mapper107(Mapper107),
+    Ntdec112(Ntdec112),
+    Nina03_06(Nina03_06),
+    JalecoJf11_14(JalecoJf11_14),
+    Mapper151(Mapper151),
+    Mapper203(Mapper203),
     Mmc3(Mmc3),
     Mmc5(Mmc5),
     Mmc2(Mmc2),
     Mmc4(Mmc4),
     ColorDreams(ColorDreams),
     Gxrom(Gxrom),
+    Fme7(Fme7),
     Codemasters(Codemasters),
+    Vrc7(Vrc7),
     Vrc4(Vrc4),
 }
 
-impl Mapper {
-    /// Construct a mapper. `prg_16k` = number of 16KB PRG banks, `chr_8k` =
-    /// number of 8KB CHR banks (0 ⇒ CHR-RAM).
-    pub fn new(
-        number: u16,
-        prg_16k: usize,
-        chr_8k: usize,
-        mirroring: Mirroring,
-    ) -> Result<Mapper, u16> {
-        Ok(match number {
-            0 => Mapper::Nrom(Nrom::new(prg_16k, mirroring)),
-            1 => Mapper::Mmc1(Mmc1::new(prg_16k, chr_8k)),
-            2 => Mapper::Unrom(Unrom::new(prg_16k, mirroring)),
-            3 => Mapper::Cnrom(Cnrom::new(prg_16k, mirroring)),
-            7 => Mapper::Axrom(Axrom::new()),
-            4 if prg_16k > 32 && chr_8k == 0 => {
-                Mapper::Mmc3(Mmc3::new_with_low_wram(prg_16k, chr_8k, mirroring))
-            }
-            4 => Mapper::Mmc3(Mmc3::new(prg_16k, chr_8k, mirroring)),
-            5 => Mapper::Mmc5(Mmc5::new(prg_16k, chr_8k)),
-            9 => Mapper::Mmc2(Mmc2::new(prg_16k, mirroring)),
-            10 => Mapper::Mmc4(Mmc4::new(prg_16k, mirroring)),
-            11 => Mapper::ColorDreams(ColorDreams::new(mirroring)),
-            66 => Mapper::Gxrom(Gxrom::new(mirroring)),
-            71 => Mapper::Codemasters(Codemasters::new(prg_16k, mirroring)),
-            25 => Mapper::Vrc4(Vrc4::new(prg_16k, chr_8k)),
-            74 => Mapper::Mmc3(Mmc3::new_74(prg_16k, chr_8k, mirroring)),
-            194 => Mapper::Mmc3(Mmc3::new_194(prg_16k, chr_8k, mirroring)),
-            other => return Err(other),
-        })
-    }
-}
-
-macro_rules! dispatch {
-    ($self:ident, $m:ident => $body:expr) => {
-        match $self {
-            Mapper::Nrom($m) => $body,
-            Mapper::Mmc1($m) => $body,
-            Mapper::Unrom($m) => $body,
-            Mapper::Cnrom($m) => $body,
-            Mapper::Axrom($m) => $body,
-            Mapper::Mmc3($m) => $body,
-            Mapper::Mmc5($m) => $body,
-            Mapper::Mmc2($m) => $body,
-            Mapper::Mmc4($m) => $body,
-            Mapper::ColorDreams($m) => $body,
-            Mapper::Gxrom($m) => $body,
-            Mapper::Codemasters($m) => $body,
-            Mapper::Vrc4($m) => $body,
-        }
-    };
-}
-
-impl MapperOps for Mapper {
-    fn prg_index(&self, addr: u16) -> usize {
-        dispatch!(self, m => m.prg_index(addr))
-    }
-    fn chr_index(&self, addr: u16) -> usize {
-        dispatch!(self, m => m.chr_index(addr))
-    }
-    fn chr_index_for(&self, addr: u16, access: ChrAccess) -> usize {
-        dispatch!(self, m => m.chr_index_for(addr, access))
-    }
-    fn chr_read(&self, addr: u16, access: ChrAccess) -> Option<u8> {
-        dispatch!(self, m => m.chr_read(addr, access))
-    }
-    fn has_chr_read(&self) -> bool {
-        dispatch!(self, m => m.has_chr_read())
-    }
-    fn chr_write(&mut self, addr: u16, value: u8) -> bool {
-        dispatch!(self, m => m.chr_write(addr, value))
-    }
-    fn write_register(&mut self, addr: u16, value: u8) {
-        dispatch!(self, m => m.write_register(addr, value))
-    }
-    fn read_expansion(&mut self, addr: u16) -> Option<u8> {
-        dispatch!(self, m => m.read_expansion(addr))
-    }
-    fn peek_expansion(&self, addr: u16) -> Option<u8> {
-        dispatch!(self, m => m.peek_expansion(addr))
-    }
-    fn write_expansion(&mut self, addr: u16, value: u8) {
-        dispatch!(self, m => m.write_expansion(addr, value))
-    }
-    fn nametable_read(&mut self, addr: u16, ciram: &[u8; 0x1000]) -> Option<u8> {
-        dispatch!(self, m => m.nametable_read(addr, ciram))
-    }
-    fn peek_nametable(&self, addr: u16, ciram: &[u8; 0x1000]) -> Option<u8> {
-        dispatch!(self, m => m.peek_nametable(addr, ciram))
-    }
-    fn nametable_write(&mut self, addr: u16, value: u8, ciram: &mut [u8; 0x1000]) -> bool {
-        dispatch!(self, m => m.nametable_write(addr, value, ciram))
-    }
-    fn mirroring(&self) -> Mirroring {
-        dispatch!(self, m => m.mirroring())
-    }
-    fn notify_a12(&mut self, addr: u16, cycle: u64) {
-        dispatch!(self, m => m.notify_a12(addr, cycle))
-    }
-    fn watches_ppu_bus(&self) -> bool {
-        dispatch!(self, m => m.watches_ppu_bus())
-    }
-    fn cpu_clock(&mut self) {
-        dispatch!(self, m => m.cpu_clock())
-    }
-    fn clocks_cpu(&self) -> bool {
-        dispatch!(self, m => m.clocks_cpu())
-    }
-    fn irq(&self) -> bool {
-        dispatch!(self, m => m.irq())
-    }
-    fn clear_irq(&mut self) {
-        dispatch!(self, m => m.clear_irq())
-    }
-}
+mod dispatch;
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// Locks the `watches_ppu_bus` table to exactly the mappers that override
-    /// `notify_a12`. If a new mapper hooks the PPU bus, add it here AND set its
-    /// flag, or the PPU fast path will silently drop its A12/CHR-latch events.
-    #[test]
-    fn watches_ppu_bus_matches_notify_a12_overrides() {
-        let mir = Mirroring::Horizontal;
-        let cases = [
-            (0u16, false), // NROM
-            (1, false),    // MMC1
-            (2, false),    // UNROM
-            (3, false),    // CNROM
-            (7, false),    // AxROM
-            (11, false),   // ColorDreams
-            (25, false),   // VRC4 IRQ is CPU-clocked, not PPU-bus-clocked
-            (66, false),   // GxROM
-            (71, false),   // Codemasters
-            (4, true),     // MMC3
-            (5, true),     // MMC5
-            (9, true),     // MMC2
-            (10, true),    // MMC4
-        ];
-        for (num, expected) in cases {
-            let m = Mapper::new(num, 2, 1, mir).expect("construct mapper");
-            assert_eq!(m.watches_ppu_bus(), expected, "mapper {num}");
-        }
-    }
-
-    #[test]
-    fn clocks_cpu_matches_cpu_clock_overrides() {
-        let mir = Mirroring::Horizontal;
-        let cases = [
-            (0u16, false), // NROM
-            (1, false),    // MMC1
-            (2, false),    // UNROM
-            (3, false),    // CNROM
-            (4, false),    // MMC3 uses PPU A12 edges
-            (5, false),    // MMC5 currently clocks from PPU nametable fetches
-            (7, false),    // AxROM
-            (9, false),    // MMC2 CHR latch watches PPU bus
-            (10, false),   // MMC4 CHR latch watches PPU bus
-            (11, false),   // ColorDreams
-            (25, true),    // VRC4 IRQ counter clocks per CPU cycle
-            (66, false),   // GxROM
-            (71, false),   // Codemasters
-        ];
-        for (num, expected) in cases {
-            let m = Mapper::new(num, 2, 1, mir).expect("construct mapper");
-            assert_eq!(m.clocks_cpu(), expected, "mapper {num}");
-        }
-    }
-}
+mod tests;

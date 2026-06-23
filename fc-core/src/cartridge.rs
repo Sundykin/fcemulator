@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 const INES_MAGIC: [u8; 4] = [0x4E, 0x45, 0x53, 0x1A]; // "NES\x1A"
+const MAX_DECLARED_ROM_BYTES: usize = 0x4000_0000; // 1 GiB sanity cap for malformed NES 2.0 headers.
 
 #[derive(Debug, Clone, Copy)]
 struct MapperCorrection {
@@ -22,6 +23,29 @@ const MAPPER_CORRECTIONS: &[MapperCorrection] = &[
     },
 ];
 
+#[derive(Debug, Clone, Copy)]
+struct MapperCaps {
+    watches_ppu_bus: bool,
+    clocks_cpu: bool,
+    clocks_hblank: bool,
+    has_expansion_audio: bool,
+    has_chr_read: bool,
+    has_nametable_chr_mapping: bool,
+}
+
+impl MapperCaps {
+    fn from_mapper(mapper: &Mapper) -> Self {
+        Self {
+            watches_ppu_bus: mapper.watches_ppu_bus(),
+            clocks_cpu: mapper.clocks_cpu(),
+            clocks_hblank: mapper.clocks_hblank(),
+            has_expansion_audio: mapper.has_expansion_audio(),
+            has_chr_read: mapper.has_chr_read(),
+            has_nametable_chr_mapping: mapper.has_nametable_chr_mapping(),
+        }
+    }
+}
+
 fn corrected_mapper_number(header_mapper: u16, data: &[u8]) -> u16 {
     let crc32 = crc32fast::hash(data);
     MAPPER_CORRECTIONS
@@ -37,9 +61,19 @@ pub struct Cartridge {
     pub chr_rom: Vec<u8>,
     pub chr_ram: Vec<u8>,
     pub prg_ram: Vec<u8>,
+    #[serde(default)]
+    pub prg_ram_size: usize,
+    #[serde(default)]
+    pub prg_nvram_size: usize,
+    #[serde(default)]
+    pub chr_ram_size: usize,
+    #[serde(default)]
+    pub chr_nvram_size: usize,
     pub uses_chr_ram: bool,
     pub has_battery: bool,
     pub mapper_number: u16,
+    #[serde(default)]
+    pub submapper: u8,
     pub mapper: Mapper,
     /// Cached `mapper.watches_ppu_bus()` — lets the PPU skip the per-fetch
     /// `notify_a12` call for mappers that don't react to the PPU bus. Derived
@@ -50,10 +84,22 @@ pub struct Cartridge {
     /// counter, so `Bus::tick` can skip an empty dispatch.
     #[serde(skip)]
     pub mapper_clocks_cpu: bool,
+    /// Cached `mapper.clocks_hblank()` — most mappers have no FCEUX-style
+    /// HBlank IRQ hook, so the PPU dot path can skip an empty mapper dispatch.
+    #[serde(skip)]
+    pub mapper_clocks_hblank: bool,
+    /// Cached `mapper.has_expansion_audio()` — most mappers are silent beyond
+    /// the 2A03 APU, so `Bus::tick` can skip probing expansion audio.
+    #[serde(skip)]
+    pub mapper_has_expansion_audio: bool,
     /// Cached `mapper.has_chr_read()` — most mappers do not own CHR RAM, so the
     /// PPU hot path can skip probing `chr_read` on every pattern fetch.
     #[serde(skip)]
     mapper_has_chr_read: bool,
+    /// Cached `mapper.has_nametable_chr_mapping()` — almost all boards source
+    /// nametables from CIRAM or mapper-owned RAM, not CHR ROM/RAM.
+    #[serde(skip)]
+    mapper_has_nametable_chr_mapping: bool,
     /// Power-of-two wrap masks for the backing memories. `None` keeps the
     /// generic modulo path for odd-sized dumps.
     #[serde(skip)]
@@ -162,8 +208,26 @@ impl Cartridge {
         let is_nes20 = (flags7 & 0x0C) == 0x08;
         let region_hint = Self::region_hint_from_header(data);
 
-        let prg_16k = data[4] as usize;
-        let chr_8k = data[5] as usize;
+        let prg_bytes = prg_rom_size(data[4], data[9], is_nes20);
+        let chr_bytes = chr_rom_size(data[5], data[9], is_nes20);
+        let prg_16k = prg_bytes.div_ceil(0x4000);
+        let chr_8k = chr_bytes.div_ceil(0x2000);
+        let (prg_ram_size, prg_nvram_size, mut chr_ram_size, chr_nvram_size) = if is_nes20 {
+            (
+                nes20_ram_size(data[10] & 0x0F),
+                nes20_ram_size(data[10] >> 4),
+                nes20_ram_size(data[11] & 0x0F),
+                nes20_ram_size(data[11] >> 4),
+            )
+        } else {
+            let prg_ram_banks = data[8] as usize;
+            let prg_ram = prg_ram_banks.max(1) * 0x2000;
+            if flags6 & 0x02 != 0 {
+                (0, prg_ram, 0x2000, 0)
+            } else {
+                (prg_ram, 0, 0x2000, 0)
+            }
+        };
 
         let mapper_lo = (flags6 >> 4) as u16;
         let mapper_hi = (flags7 & 0xF0) as u16;
@@ -171,7 +235,11 @@ impl Cartridge {
         if is_nes20 {
             mapper_number |= ((data[8] & 0x0F) as u16) << 8;
         }
+        let submapper = if is_nes20 { data[8] >> 4 } else { 0 };
         mapper_number = corrected_mapper_number(mapper_number, data);
+        if !is_nes20 && chr_bytes == 0 {
+            chr_ram_size = default_ines_chr_ram_size(mapper_number);
+        }
 
         let has_battery = flags6 & 0x02 != 0;
         let has_trainer = flags6 & 0x04 != 0;
@@ -184,11 +252,15 @@ impl Cartridge {
             Mirroring::Horizontal
         };
 
-        let prg_bytes = prg_16k * 0x4000;
-        let chr_bytes = chr_8k * 0x2000;
-        let mut offset = 16 + if has_trainer { 512 } else { 0 };
+        let mut offset: usize = 16 + if has_trainer { 512 } else { 0 };
 
-        let expected = offset + prg_bytes + chr_bytes;
+        let expected = offset
+            .checked_add(prg_bytes)
+            .and_then(|n| n.checked_add(chr_bytes))
+            .ok_or(CartridgeError::Truncated {
+                expected: usize::MAX,
+                actual: data.len(),
+            })?;
         if data.len() < expected {
             return Err(CartridgeError::Truncated {
                 expected,
@@ -202,16 +274,24 @@ impl Cartridge {
         let (chr_rom, chr_ram, uses_chr_ram) = if chr_8k > 0 {
             (data[offset..offset + chr_bytes].to_vec(), Vec::new(), false)
         } else {
-            (Vec::new(), vec![0u8; 0x2000], true)
+            let ram_size = if is_nes20 {
+                chr_ram_size + chr_nvram_size
+            } else {
+                chr_ram_size
+            };
+            (Vec::new(), vec![0u8; ram_size], true)
         };
 
-        let prg_ram = vec![0u8; 0x2000]; // 8KB at $6000-$7FFF
+        let prg_ram_size_total = if is_nes20 {
+            prg_ram_size + prg_nvram_size
+        } else {
+            prg_ram_size
+        };
+        let prg_ram = vec![0u8; prg_ram_size_total];
 
-        let mapper = Mapper::new(mapper_number, prg_16k, chr_8k, header_mirroring)
+        let mapper = Mapper::new(mapper_number, prg_16k, chr_8k, header_mirroring, submapper)
             .map_err(CartridgeError::UnsupportedMapper)?;
-        let mapper_watches_ppu_bus = mapper.watches_ppu_bus();
-        let mapper_clocks_cpu = mapper.clocks_cpu();
-        let mapper_has_chr_read = mapper.has_chr_read();
+        let mapper_caps = MapperCaps::from_mapper(&mapper);
         let prg_rom_mask = pow2_mask(prg_rom.len());
         let chr_rom_mask = pow2_mask(chr_rom.len());
         let chr_ram_mask = pow2_mask(chr_ram.len());
@@ -222,13 +302,21 @@ impl Cartridge {
             chr_rom,
             chr_ram,
             prg_ram,
+            prg_ram_size,
+            prg_nvram_size,
+            chr_ram_size,
+            chr_nvram_size,
             uses_chr_ram,
             has_battery,
             mapper_number,
+            submapper,
             mapper,
-            mapper_watches_ppu_bus,
-            mapper_clocks_cpu,
-            mapper_has_chr_read,
+            mapper_watches_ppu_bus: mapper_caps.watches_ppu_bus,
+            mapper_clocks_cpu: mapper_caps.clocks_cpu,
+            mapper_clocks_hblank: mapper_caps.clocks_hblank,
+            mapper_has_expansion_audio: mapper_caps.has_expansion_audio,
+            mapper_has_chr_read: mapper_caps.has_chr_read,
+            mapper_has_nametable_chr_mapping: mapper_caps.has_nametable_chr_mapping,
             prg_rom_mask,
             chr_rom_mask,
             chr_ram_mask,
@@ -243,13 +331,22 @@ impl Cartridge {
     /// Re-derive cached mapper capabilities. Call after a save-state load, which
     /// replaces `mapper` wholesale (the cache is `#[serde(skip)]`).
     pub fn refresh_mapper_caps(&mut self) {
-        self.mapper_watches_ppu_bus = self.mapper.watches_ppu_bus();
-        self.mapper_clocks_cpu = self.mapper.clocks_cpu();
-        self.mapper_has_chr_read = self.mapper.has_chr_read();
+        let mapper_caps = MapperCaps::from_mapper(&self.mapper);
+        self.mapper_watches_ppu_bus = mapper_caps.watches_ppu_bus;
+        self.mapper_clocks_cpu = mapper_caps.clocks_cpu;
+        self.mapper_clocks_hblank = mapper_caps.clocks_hblank;
+        self.mapper_has_expansion_audio = mapper_caps.has_expansion_audio;
+        self.mapper_has_chr_read = mapper_caps.has_chr_read;
+        self.mapper_has_nametable_chr_mapping = mapper_caps.has_nametable_chr_mapping;
         self.prg_rom_mask = pow2_mask(self.prg_rom.len());
         self.chr_rom_mask = pow2_mask(self.chr_rom.len());
         self.chr_ram_mask = pow2_mask(self.chr_ram.len());
         self.prg_ram_mask = pow2_mask(self.prg_ram.len());
+    }
+
+    pub fn reset_mapper(&mut self, soft: bool) {
+        self.mapper.reset(soft);
+        self.refresh_mapper_caps();
     }
 
     /// A minimal valid NROM ROM (used as a placeholder before a game loads).
@@ -273,48 +370,155 @@ impl Cartridge {
     // ---- CPU bus ($4018-$FFFF) ----
 
     pub fn cpu_read(&mut self, addr: u16) -> u8 {
+        self.cpu_read_with_open_bus(addr, 0)
+    }
+
+    pub(crate) fn cpu_read_with_open_bus(&mut self, addr: u16, open_bus: u8) -> u8 {
         match addr {
-            0x4018..=0x5FFF => self.mapper.read_expansion(addr).unwrap_or(0),
+            0x4018..=0x5FFF => self.cpu_read_expansion_with_open_bus(addr, open_bus),
+            0x6000..=0x7FFF => self.cpu_read_low(addr),
+            0x8000..=0xFFFF => self.cpu_read_high_with_open_bus(addr, open_bus),
             _ => self.cpu_peek(addr),
         }
     }
 
     pub fn cpu_peek(&self, addr: u16) -> u8 {
+        self.cpu_peek_with_open_bus(addr, 0)
+    }
+
+    pub(crate) fn cpu_peek_with_open_bus(&self, addr: u16, open_bus: u8) -> u8 {
         match addr {
-            0x4018..=0x5FFF => self.mapper.peek_expansion(addr).unwrap_or(0),
-            0x6000..=0x7FFF => {
-                let i = (addr - 0x6000) as usize;
-                read_wrapped(&self.prg_ram, i, self.prg_ram_mask)
-            }
-            0x8000..=0xFFFF => {
-                let i = self.mapper.prg_index(addr);
-                let v = read_wrapped(&self.prg_rom, i, self.prg_rom_mask);
-                // Game Genie ROM read substitution.
-                if !self.patches.is_empty() {
-                    if let Some(&(patch, compare)) = self.patches.get(&addr) {
-                        if compare.map_or(true, |c| c == v) {
-                            return patch;
-                        }
-                    }
-                }
-                v
-            }
+            0x4018..=0x5FFF => self.cpu_peek_expansion_with_open_bus(addr, open_bus),
+            0x6000..=0x7FFF => self.cpu_peek_low(addr),
+            0x8000..=0xFFFF => self.cpu_peek_high_with_open_bus(addr, open_bus),
             _ => 0,
         }
     }
 
-    pub fn cpu_write(&mut self, addr: u16, value: u8) {
+    pub fn cpu_write(&mut self, addr: u16, value: u8) -> bool {
         match addr {
-            0x4018..=0x5FFF => self.mapper.write_expansion(addr, value),
-            0x6000..=0x7FFF => {
-                let i = (addr - 0x6000) as usize;
-                if let Some(b) = self.prg_ram.get_mut(i) {
-                    *b = value;
-                }
-            }
-            0x8000..=0xFFFF => self.mapper.write_register(addr, value),
-            _ => {}
+            0x4018..=0x5FFF => self.cpu_write_expansion(addr, value),
+            0x6000..=0x7FFF => self.cpu_write_low(addr, value),
+            0x8000..=0xFFFF => self.cpu_write_high(addr, value),
+            _ => false,
         }
+    }
+
+    fn cpu_read_expansion_with_open_bus(&mut self, addr: u16, open_bus: u8) -> u8 {
+        self.mapper
+            .read_expansion(addr)
+            .or_else(|| self.expansion_prg_rom_value(addr))
+            .unwrap_or(open_bus)
+    }
+
+    fn cpu_peek_expansion_with_open_bus(&self, addr: u16, open_bus: u8) -> u8 {
+        self.mapper
+            .peek_expansion(addr)
+            .or_else(|| self.expansion_prg_rom_value(addr))
+            .unwrap_or(open_bus)
+    }
+
+    fn expansion_prg_rom_value(&self, addr: u16) -> Option<u8> {
+        self.mapper
+            .expansion_prg_index(addr)
+            .map(|i| read_wrapped(&self.prg_rom, i, self.prg_rom_mask))
+    }
+
+    fn cpu_read_low(&mut self, addr: u16) -> u8 {
+        let prg_ram_value = self.low_prg_ram_value(addr);
+        if let Some(b) = self
+            .mapper
+            .read_low_register_with_prg_ram(addr, prg_ram_value)
+        {
+            return b;
+        }
+        self.low_prg_rom_value(addr).unwrap_or(prg_ram_value)
+    }
+
+    fn cpu_peek_low(&self, addr: u16) -> u8 {
+        let prg_ram_value = self.low_prg_ram_value(addr);
+        if let Some(b) = self
+            .mapper
+            .peek_low_register_with_prg_ram(addr, prg_ram_value)
+        {
+            return b;
+        }
+        self.low_prg_rom_value(addr).unwrap_or(prg_ram_value)
+    }
+
+    fn low_prg_ram_value(&self, addr: u16) -> u8 {
+        read_wrapped(&self.prg_ram, (addr - 0x6000) as usize, self.prg_ram_mask)
+    }
+
+    fn low_prg_rom_value(&self, addr: u16) -> Option<u8> {
+        self.mapper
+            .low_prg_index(addr)
+            .map(|i| read_wrapped(&self.prg_rom, i, self.prg_rom_mask))
+    }
+
+    fn cpu_read_high_with_open_bus(&mut self, addr: u16, open_bus: u8) -> u8 {
+        let prg_value = self.high_prg_rom_value(addr);
+        let value = self
+            .mapper
+            .read_register_with_open_bus(addr, prg_value, open_bus)
+            .unwrap_or(prg_value);
+        self.apply_cpu_patch(addr, value)
+    }
+
+    fn cpu_peek_high_with_open_bus(&self, addr: u16, open_bus: u8) -> u8 {
+        let prg_value = self.high_prg_rom_value(addr);
+        let value = self
+            .mapper
+            .peek_register_with_open_bus(addr, prg_value, open_bus)
+            .unwrap_or(prg_value);
+        self.apply_cpu_patch(addr, value)
+    }
+
+    fn high_prg_rom_value(&self, addr: u16) -> u8 {
+        read_wrapped(
+            &self.prg_rom,
+            self.mapper.prg_index(addr),
+            self.prg_rom_mask,
+        )
+    }
+
+    fn apply_cpu_patch(&self, addr: u16, value: u8) -> u8 {
+        if self.patches.is_empty() {
+            return value;
+        }
+        if let Some(&(patch, compare)) = self.patches.get(&addr) {
+            if compare.map_or(true, |c| c == value) {
+                return patch;
+            }
+        }
+        value
+    }
+
+    fn cpu_write_expansion(&mut self, addr: u16, value: u8) -> bool {
+        self.mapper.write_expansion(addr, value);
+        true
+    }
+
+    fn cpu_write_low(&mut self, addr: u16, value: u8) -> bool {
+        let mapper_register = self.mapper.write_low_register(addr, value);
+        if !mapper_register || self.mapper.low_register_write_falls_through(addr) {
+            let i = (addr - 0x6000) as usize;
+            if let Some(b) = self.prg_ram.get_mut(i) {
+                *b = value;
+            }
+        }
+        mapper_register
+    }
+
+    fn cpu_write_high(&mut self, addr: u16, value: u8) -> bool {
+        let value = if self.mapper.has_bus_conflicts() {
+            let prg_value = self.high_prg_rom_value(addr);
+            self.mapper.apply_bus_conflict(value, prg_value)
+        } else {
+            value
+        };
+        self.mapper.write_register(addr, value);
+        true
     }
 
     // ---- PPU bus ($0000-$1FFF) ----
@@ -357,14 +561,41 @@ impl Cartridge {
     }
 
     pub fn nametable_read(&mut self, addr: u16, ciram: &[u8; 0x1000]) -> Option<u8> {
+        if self.mapper_has_nametable_chr_mapping {
+            if let Some(i) = self.mapper.nametable_chr_index(addr) {
+                return Some(if self.uses_chr_ram {
+                    read_wrapped(&self.chr_ram, i, self.chr_ram_mask)
+                } else {
+                    read_wrapped(&self.chr_rom, i, self.chr_rom_mask)
+                });
+            }
+        }
         self.mapper.nametable_read(addr, ciram)
     }
 
     pub fn peek_nametable(&self, addr: u16, ciram: &[u8; 0x1000]) -> Option<u8> {
+        if self.mapper_has_nametable_chr_mapping {
+            if let Some(i) = self.mapper.nametable_chr_index(addr) {
+                return Some(if self.uses_chr_ram {
+                    read_wrapped(&self.chr_ram, i, self.chr_ram_mask)
+                } else {
+                    read_wrapped(&self.chr_rom, i, self.chr_rom_mask)
+                });
+            }
+        }
         self.mapper.peek_nametable(addr, ciram)
     }
 
     pub fn nametable_write(&mut self, addr: u16, value: u8, ciram: &mut [u8; 0x1000]) -> bool {
+        if self.mapper_has_nametable_chr_mapping {
+            if let Some(i) = self.mapper.nametable_chr_index(addr) {
+                if self.uses_chr_ram && !self.chr_ram.is_empty() {
+                    let i = wrap_index(i, self.chr_ram.len(), self.chr_ram_mask);
+                    self.chr_ram[i] = value;
+                }
+                return true;
+            }
+        }
         self.mapper.nametable_write(addr, value, ciram)
     }
 
@@ -424,6 +655,54 @@ fn pow2_mask(len: usize) -> Option<usize> {
     }
 }
 
+fn prg_rom_size(count: u8, upper: u8, is_nes20: bool) -> usize {
+    if is_nes20 {
+        nes20_rom_size(count, upper & 0x0F, 0x4000)
+    } else {
+        let banks = if count == 0 { 256 } else { count as usize };
+        banks * 0x4000
+    }
+}
+
+fn chr_rom_size(count: u8, upper: u8, is_nes20: bool) -> usize {
+    if is_nes20 {
+        nes20_rom_size(count, upper >> 4, 0x2000)
+    } else {
+        count as usize * 0x2000
+    }
+}
+
+fn nes20_rom_size(count: u8, upper_nibble: u8, unit: usize) -> usize {
+    if upper_nibble == 0x0F {
+        nes20_exponent_size(count)
+    } else {
+        ((((upper_nibble as usize) << 8) | count as usize) * unit).min(MAX_DECLARED_ROM_BYTES)
+    }
+}
+
+fn nes20_exponent_size(value: u8) -> usize {
+    let exponent = ((value >> 2) as u32).min(30);
+    let multiplier = ((value & 0x03) as usize) * 2 + 1;
+    multiplier
+        .saturating_mul(1usize << exponent)
+        .min(MAX_DECLARED_ROM_BYTES)
+}
+
+fn nes20_ram_size(nibble: u8) -> usize {
+    match nibble & 0x0F {
+        0 => 0,
+        n => 64usize << n,
+    }
+}
+
+fn default_ines_chr_ram_size(mapper_number: u16) -> usize {
+    match mapper_number {
+        13 => 16 * 1024,
+        29 => 32 * 1024,
+        _ => 8 * 1024,
+    }
+}
+
 #[inline]
 fn wrap_index(index: usize, len: usize, mask: Option<usize>) -> usize {
     match mask {
@@ -460,6 +739,92 @@ mod tests {
             .any(|c| c.crc32 == 0xD0F6_CBCF && c.mapper == 194));
     }
 
+    #[test]
+    fn parses_nes20_extended_rom_and_ram_sizes() {
+        assert_eq!(prg_rom_size(0, 0, false), 256 * 0x4000);
+        assert_eq!(prg_rom_size(2, 0, true), 2 * 0x4000);
+        assert_eq!(prg_rom_size(1, 1, true), 0x101 * 0x4000);
+        assert_eq!(chr_rom_size(1, 0x10, true), 0x101 * 0x2000);
+        // Exponent/multiplier form: byte count = ((low2 * 2) + 1) << (byte >> 2).
+        assert_eq!(prg_rom_size(0b0001_0110, 0x0F, true), 5 << 5);
+        assert_eq!(nes20_ram_size(0), 0);
+        assert_eq!(nes20_ram_size(1), 128);
+        assert_eq!(nes20_ram_size(6), 4096);
+        assert_eq!(nes20_ram_size(15), 2 * 1024 * 1024);
+    }
+
+    #[test]
+    fn cartridge_keeps_nes20_submapper_and_memory_metadata() {
+        let mut rom = vec![0u8; 16 + 0x4000];
+        rom[0..4].copy_from_slice(&INES_MAGIC);
+        rom[4] = 1; // 16KB PRG-ROM
+        rom[5] = 0; // CHR-RAM
+        rom[7] = 0x08; // NES 2.0
+        rom[8] = 0x30; // submapper 3, mapper high bits 0
+        rom[10] = 0x76; // 4KB PRG-RAM + 8KB PRG-NVRAM
+        rom[11] = 0x54; // 1KB CHR-RAM + 2KB CHR-NVRAM
+
+        let cart = Cartridge::from_bytes(&rom).expect("nes 2.0 rom");
+        assert!(cart.is_nes20);
+        assert_eq!(cart.mapper_number, 0);
+        assert_eq!(cart.submapper, 3);
+        assert_eq!(cart.prg_rom.len(), 0x4000);
+        assert_eq!(cart.prg_ram_size, 4096);
+        assert_eq!(cart.prg_nvram_size, 8192);
+        assert_eq!(cart.prg_ram.len(), 4096 + 8192);
+        assert!(cart.uses_chr_ram);
+        assert_eq!(cart.chr_ram_size, 1024);
+        assert_eq!(cart.chr_nvram_size, 2048);
+        assert_eq!(cart.chr_ram.len(), 1024 + 2048);
+    }
+
+    #[test]
+    fn ines_mapper13_defaults_to_16k_chr_ram() {
+        let mut rom = vec![0u8; 16 + 0x8000];
+        rom[0..4].copy_from_slice(&INES_MAGIC);
+        rom[4] = 2;
+        rom[5] = 0;
+        rom[6] = 0xD0;
+
+        let cart = Cartridge::from_bytes(&rom).expect("cprom");
+        assert_eq!(cart.mapper_number, 13);
+        assert!(cart.uses_chr_ram);
+        assert_eq!(cart.chr_ram_size, 16 * 1024);
+        assert_eq!(cart.chr_ram.len(), 16 * 1024);
+    }
+
+    #[test]
+    fn ines_mapper29_defaults_to_32k_chr_ram() {
+        let mut rom = vec![0u8; 16 + 8 * 0x4000];
+        rom[0..4].copy_from_slice(&INES_MAGIC);
+        rom[4] = 8;
+        rom[5] = 0;
+        rom[6] = 0xD0;
+        rom[7] = 0x10;
+
+        let cart = Cartridge::from_bytes(&rom).expect("sealie computing");
+        assert_eq!(cart.mapper_number, 29);
+        assert!(cart.uses_chr_ram);
+        assert_eq!(cart.chr_ram_size, 32 * 1024);
+        assert_eq!(cart.chr_ram.len(), 32 * 1024);
+    }
+
+    #[test]
+    fn bnrom_applies_bus_conflict_before_register_write() {
+        let mut rom = vec![0u8; 16 + 4 * 0x4000];
+        rom[0..4].copy_from_slice(&INES_MAGIC);
+        rom[4] = 4; // two 32KB PRG banks
+        rom[5] = 0; // CHR-RAM selects BNROM for mapper 34/submapper 0
+        rom[6] = 0x20;
+        rom[7] = 0x20;
+        rom[16] = 0x01; // current PRG byte at $8000
+        rom[16 + 0x8000] = 0xAB; // bank 1 byte at $8000
+
+        let mut cart = Cartridge::from_bytes(&rom).expect("bnrom");
+        assert!(cart.cpu_write(0x8000, 0x03)); // 0x03 & PRG[$8000](0x01) => bank 1
+        assert_eq!(cart.cpu_peek(0x8000), 0xAB);
+    }
+
     /// Build a minimal mapper-4 (MMC3) iNES image: 2×16K PRG + 1×8K CHR.
     fn mmc3_rom() -> Vec<u8> {
         let mut rom = vec![0u8; 16 + 2 * 0x4000 + 0x2000];
@@ -470,13 +835,37 @@ mod tests {
         rom
     }
 
+    /// Build a minimal mapper-91 iNES image: 2×16K PRG + 1×8K CHR.
+    fn mapper91_rom() -> Vec<u8> {
+        let mut rom = vec![0u8; 16 + 2 * 0x4000 + 0x2000];
+        rom[0..4].copy_from_slice(&INES_MAGIC);
+        rom[4] = 2;
+        rom[5] = 1;
+        rom[6] = 0xB0; // mapper low nibble = $B
+        rom[7] = 0x50; // mapper high nibble = $5
+        rom
+    }
+
+    /// Build a minimal mapper-68 (Sunsoft-4) iNES image: 2×16K PRG + CHR-RAM.
+    fn mapper68_rom() -> Vec<u8> {
+        let mut rom = vec![0u8; 16 + 2 * 0x4000];
+        rom[0..4].copy_from_slice(&INES_MAGIC);
+        rom[4] = 2;
+        rom[5] = 0;
+        rom[6] = 0x40; // mapper low nibble = 4
+        rom[7] = 0x40; // mapper high nibble = 4 => mapper 68
+        rom
+    }
+
     #[test]
     fn mapper_watches_ppu_bus_cache_set_and_refreshed() {
         let cart = Cartridge::from_bytes(&mmc3_rom()).expect("mmc3 rom");
         // MMC3 hooks the PPU bus → cache must be set at construction.
         assert!(cart.mapper_watches_ppu_bus);
         assert!(!cart.mapper_clocks_cpu);
+        assert!(!cart.mapper_clocks_hblank);
         assert!(!cart.mapper_has_chr_read);
+        assert!(!cart.mapper_has_nametable_chr_mapping);
 
         // Simulate a load-state: the #[serde(skip)] cache deserializes to false;
         // refresh_mapper_caps must restore it from the (correct) mapper so the
@@ -484,16 +873,59 @@ mod tests {
         let mut loaded = cart;
         loaded.mapper_watches_ppu_bus = false;
         loaded.mapper_clocks_cpu = false;
+        loaded.mapper_clocks_hblank = true;
         loaded.mapper_has_chr_read = false;
+        loaded.mapper_has_nametable_chr_mapping = true;
         loaded.refresh_mapper_caps();
         assert!(loaded.mapper_watches_ppu_bus);
         assert!(!loaded.mapper_clocks_cpu);
+        assert!(!loaded.mapper_clocks_hblank);
         assert!(!loaded.mapper_has_chr_read);
+        assert!(!loaded.mapper_has_nametable_chr_mapping);
 
         // NROM does not hook the bus.
         let empty = Cartridge::empty();
         assert!(!empty.mapper_watches_ppu_bus);
         assert!(!empty.mapper_clocks_cpu);
+        assert!(!empty.mapper_clocks_hblank);
         assert!(!empty.mapper_has_chr_read);
+        assert!(!empty.mapper_has_nametable_chr_mapping);
+    }
+
+    #[test]
+    fn mapper68_nametable_chr_mapping_cache_and_chr_ram_bridge() {
+        let mut cart = Cartridge::from_bytes(&mapper68_rom()).expect("mapper68 rom");
+        assert!(cart.mapper_has_nametable_chr_mapping);
+
+        let mut ciram = [0u8; 0x1000];
+        assert_eq!(cart.nametable_read(0x2004, &ciram), None);
+
+        assert!(cart.cpu_write(0xC000, 0x05));
+        assert!(cart.cpu_write(0xD000, 0x06));
+        assert!(cart.cpu_write(0xE000, 0x10));
+
+        assert!(cart.nametable_write(0x2004, 0xA5, &mut ciram));
+        assert_eq!(cart.peek_nametable(0x2004, &ciram), Some(0xA5));
+        assert_eq!(cart.nametable_read(0x2004, &ciram), Some(0xA5));
+        assert_eq!(ciram, [0; 0x1000]);
+
+        let mut loaded = cart;
+        loaded.mapper_has_nametable_chr_mapping = false;
+        loaded.refresh_mapper_caps();
+        assert!(loaded.mapper_has_nametable_chr_mapping);
+        assert_eq!(loaded.peek_nametable(0x2004, &ciram), Some(0xA5));
+    }
+
+    #[test]
+    fn mapper_hblank_clock_cache_set_and_refreshed() {
+        let cart = Cartridge::from_bytes(&mapper91_rom()).expect("mapper91 rom");
+        assert!(!cart.mapper_watches_ppu_bus);
+        assert!(!cart.mapper_clocks_cpu);
+        assert!(cart.mapper_clocks_hblank);
+
+        let mut loaded = cart;
+        loaded.mapper_clocks_hblank = false;
+        loaded.refresh_mapper_caps();
+        assert!(loaded.mapper_clocks_hblank);
     }
 }

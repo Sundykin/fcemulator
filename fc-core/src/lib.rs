@@ -21,7 +21,9 @@ pub mod control_deck;
 pub mod cpu;
 pub mod debug;
 pub mod disasm;
+pub mod event;
 pub mod expr;
+pub mod heatmap;
 pub mod input;
 pub mod mapper;
 pub mod palette;
@@ -35,6 +37,8 @@ pub use cheat::Cheat;
 pub use control_deck::ControlDeck;
 pub use cpu::TraceRecord;
 pub use debug::{BpKind, Breakpoint, Debugger};
+pub use event::{Event, EventKind, IrqSource};
+pub use heatmap::{Heatmap, HotAddr};
 pub use palette::{Palette, Rgb};
 pub use types::{Button, Mirroring, Region, SCREEN_HEIGHT, SCREEN_WIDTH};
 

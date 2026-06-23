@@ -12,3 +12,4 @@ bitflags = { workspace = true }
 thiserror = { workspace = true }
 log = { workspace = true }
 crc32fast = "1"
+oxideav-nsf = { version = "0.0.3", default-features = false }

@@ -1052,6 +1052,7 @@ dependencies = [
  "bitflags 2.13.0",
  "crc32fast",
  "log",
+ "oxideav-nsf",
  "serde",
  "thiserror 2.0.18",
 ]
@@ -2911,6 +2912,12 @@ name = "option-ext"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
+
+[[package]]
+name = "oxideav-nsf"
+version = "0.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "476d590170dec34afce556f6d44f6368dde51cf1d9ad92a9573543d686d51929"
 
 [[package]]
 name = "pango"

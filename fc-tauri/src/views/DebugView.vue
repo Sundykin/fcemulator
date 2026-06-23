@@ -18,6 +18,50 @@ const ppuApu = ref<emu.PpuApuState | null>(null);
 const preview = ref<HTMLCanvasElement | null>(null);
 let previewFrameId = 0;
 
+// Event Viewer (scanline×dot) + access heatmap (L4.3 / L4.4)
+const evRecOn = ref(false);
+const heatOn = ref(false);
+const evCanvas = ref<HTMLCanvasElement | null>(null);
+const evInfo = ref<emu.EventDump | null>(null);
+const heat = ref<emu.HotAddr[]>([]);
+const bpKind = ref("");
+const EV_KINDS = [
+  "ppu_write", "ppu_read", "apu_write", "apu_read", "ctrl_read",
+  "mapper_write", "nmi", "irq", "sprite0", "oam_dma", "dmc_dma",
+];
+const EV_COLORS: Record<string, string> = {
+  ppu_write: "#4fc3f7", ppu_read: "#0277bd", apu_write: "#ba68c8", apu_read: "#7b1fa2",
+  ctrl_read: "#9ccc65", mapper_write: "#ff8a65", nmi: "#ffd54f", irq: "#ff5252",
+  sprite0: "#ff4081", oam_dma: "#26c6da", dmc_dma: "#a1887f",
+};
+async function toggleEvRec() {
+  evRecOn.value = !evRecOn.value;
+  await emu.eventDump(evRecOn.value);
+}
+async function toggleHeat() {
+  heatOn.value = !heatOn.value;
+  await emu.heatmap(heatOn.value);
+}
+async function applyEvBp() {
+  if (!bpKind.value) await emu.setEventBreakpoint({ clear: true });
+  else await emu.setEventBreakpoint({ kind: bpKind.value });
+}
+function drawEvents() {
+  const c = evCanvas.value;
+  const info = evInfo.value;
+  const ctx = c?.getContext("2d");
+  if (!c || !ctx) return;
+  ctx.fillStyle = "#0a0a14";
+  ctx.fillRect(0, 0, c.width, c.height);
+  if (!info) return;
+  const sx = c.width / info.region.dots;
+  const sy = c.height / info.region.scanlines;
+  for (const e of info.events) {
+    ctx.fillStyle = EV_COLORS[e.type] ?? "#fff";
+    ctx.fillRect(e.dot * sx, e.scanline * sy, Math.max(1, sx) + 0.5, Math.max(1, sy) + 0.5);
+  }
+}
+
 const hex = (v: number, w = 2) => v.toString(16).toUpperCase().padStart(w, "0");
 const flags = computed(() => {
   const p = regs.value?.p ?? 0;
@@ -70,6 +114,14 @@ async function refresh() {
       const view = new DataView(buf, 0, 8);
       previewFrameId = Number(view.getBigUint64(0, true));
       ctx.putImageData(new ImageData(new Uint8ClampedArray(buf.slice(8)), 256, 240), 0, 0);
+    }
+
+    if (evRecOn.value) {
+      evInfo.value = await emu.eventDump();
+      drawEvents();
+    }
+    if (heatOn.value) {
+      heat.value = (await emu.heatmap(undefined, undefined, 12)).top ?? [];
     }
   } catch {
     /* not under Tauri / no rom */
@@ -269,6 +321,51 @@ const kindLabel = (k: string) => (k.toLowerCase() === "read" ? "读" : "写");
           <span class="mascii">{{ r.ascii }}</span>
         </div>
         <div v-if="!memRows.length" class="muted">—</div>
+      </div>
+    </div>
+
+    <!-- Event Viewer (scanline×dot) + access heatmap (L4.3 / L4.4) -->
+    <div class="evrow">
+      <div class="panel ev-panel">
+        <div class="phead">
+          事件可视化
+          <div class="evctl">
+            <button class="evbtn" :class="{ on: evRecOn }" @click="toggleEvRec">{{ evRecOn ? "● 录制中" : "录制" }}</button>
+            <span class="evsep">断点</span>
+            <select v-model="bpKind" class="evsel" @change="applyEvBp">
+              <option value="">关</option>
+              <option v-for="k in EV_KINDS" :key="k" :value="k">{{ k }}</option>
+            </select>
+          </div>
+        </div>
+        <div class="evbody">
+          <canvas ref="evCanvas" width="341" height="262" class="evcanvas"></canvas>
+          <div class="evside">
+            <div class="evstat" v-if="evInfo">{{ evInfo.count }} 事件 · 丢 {{ evInfo.dropped }}</div>
+            <div class="evlegend">
+              <span v-for="k in EV_KINDS" :key="k" class="evleg"><i :style="{ background: EV_COLORS[k] }"></i>{{ k }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel heat-panel">
+        <div class="phead">
+          访问热力图
+          <div class="evctl">
+            <button class="evbtn" :class="{ on: heatOn }" @click="toggleHeat">{{ heatOn ? "● 统计中" : "统计" }}</button>
+            <button class="evbtn" @click="emu.heatmap(undefined, true)">清零</button>
+          </div>
+        </div>
+        <div class="heatlist">
+          <div class="heathead"><span>地址</span><span>读</span><span>写</span><span>执行</span><span>类型</span></div>
+          <div v-for="h in heat" :key="h.addr" class="heatrow">
+            <span class="ha">${{ hex(h.addr, 4) }}</span>
+            <span>{{ h.read }}</span><span>{{ h.write }}</span><span>{{ h.exec }}</span>
+            <span :class="h.code ? 'tcode' : 'tdata'">{{ h.code ? "CODE" : h.data ? "data" : "—" }}</span>
+          </div>
+          <div v-if="!heat.length" class="muted small">{{ heatOn ? "采集中…" : "未开启" }}</div>
+        </div>
       </div>
     </div>
     </div>
@@ -770,5 +867,112 @@ const kindLabel = (k: string) => (k.toLowerCase() === "read" ? "读" : "写");
   .mem-panel {
     height: 260px;
   }
+}
+
+/* ---- Event Viewer + heatmap (L4.3 / L4.4) ---- */
+.evrow {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 10px;
+}
+.evctl {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+}
+.evbtn {
+  background: #1b1b2a;
+  border: 1px solid #33334d;
+  color: #cdd;
+  border-radius: 5px;
+  padding: 2px 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.evbtn.on {
+  background: #3a1d2a;
+  border-color: #ff4081;
+  color: #ff8ab0;
+}
+.evsep {
+  color: #889;
+  margin-left: 4px;
+}
+.evsel {
+  background: #1b1b2a;
+  border: 1px solid #33334d;
+  color: #cdd;
+  border-radius: 5px;
+  font-size: 11px;
+  padding: 1px 4px;
+}
+.evbody {
+  display: flex;
+  gap: 10px;
+  padding: 8px;
+}
+.evcanvas {
+  width: 341px;
+  height: 262px;
+  image-rendering: pixelated;
+  background: #0a0a14;
+  border: 1px solid #26263a;
+  border-radius: 4px;
+  flex: none;
+}
+.evside {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.evstat {
+  font-size: 11px;
+  color: #9aa;
+}
+.evlegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+.evleg {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: #99a;
+}
+.evleg i {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  display: inline-block;
+}
+.heatlist {
+  padding: 6px 8px;
+  font-size: 11px;
+  font-family: ui-monospace, monospace;
+}
+.heathead,
+.heatrow {
+  display: grid;
+  grid-template-columns: 60px 1fr 1fr 1fr 48px;
+  gap: 4px;
+  padding: 1px 0;
+}
+.heathead {
+  color: #778;
+  border-bottom: 1px solid #26263a;
+  margin-bottom: 2px;
+}
+.heatrow .ha {
+  color: #6cf;
+}
+.tcode {
+  color: #ffd54f;
+}
+.tdata {
+  color: #9ccc65;
 }
 </style>

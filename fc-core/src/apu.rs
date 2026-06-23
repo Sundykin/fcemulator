@@ -699,6 +699,8 @@ pub struct Apu {
     #[serde(skip)]
     filter: Option<NesFilter>,
     #[serde(skip)]
+    expansion_audio: f32,
+    #[serde(skip)]
     pub samples: Vec<f32>,
 }
 
@@ -816,6 +818,7 @@ impl Apu {
             audio_dirty: true,
             profile_no_resample: false,
             filter: None,
+            expansion_audio: 0.0,
             samples: Vec::with_capacity(1024),
         }
     }
@@ -828,10 +831,17 @@ impl Apu {
         self.last_amp = 0;
         self.frame_clock = 0;
         self.audio_dirty = true;
+        self.expansion_audio = 0.0;
     }
 
     pub fn irq(&self) -> bool {
         self.frame_irq || self.dmc.irq_flag
+    }
+
+    /// Whether the pending IRQ (if any) is from the DMC (vs the frame counter) —
+    /// used by the Event Viewer to tag IRQ source.
+    pub fn dmc_irq(&self) -> bool {
+        self.dmc.irq_flag
     }
 
     pub fn reset(&mut self) {
@@ -844,6 +854,7 @@ impl Apu {
         self.last_amp = 0;
         self.frame_clock = 0;
         self.audio_dirty = true;
+        self.expansion_audio = 0.0;
         if let Some(b) = &mut self.blip {
             b.clear();
         }
@@ -865,7 +876,7 @@ impl Apu {
     }
 
     /// One CPU cycle.
-    pub fn tick(&mut self) {
+    pub fn tick(&mut self, expansion_audio: f32) {
         // Triangle timer runs at CPU rate; pulses/noise at CPU/2. Each clock
         // reports whether it could change the channel output, so the resampler
         // recomputes the mix only when something actually moved.
@@ -877,6 +888,10 @@ impl Apu {
             changed |= self.noise.clock_timer();
         }
         self.even = !self.even;
+        if (self.expansion_audio - expansion_audio).abs() > f32::EPSILON {
+            self.expansion_audio = expansion_audio;
+            changed = true;
+        }
         self.audio_dirty |= changed;
 
         self.clock_frame_sequencer();
@@ -1098,7 +1113,7 @@ impl Apu {
         let n = self.noise.output() as usize;
         let d = self.dmc.output() as usize;
         let tab = mix_tables();
-        tab.pulse[p] + tab.tnd[(t * 16 + n) * 128 + d]
+        tab.pulse[p] + tab.tnd[(t * 16 + n) * 128 + d] + self.expansion_audio
     }
 
     // ------------------------------------------------------------ registers
@@ -1333,7 +1348,7 @@ impl ApuPreview {
     /// preview), accumulating resampled output.
     pub fn tick_cycles(&mut self, cycles: u32) {
         for _ in 0..cycles {
-            self.apu.tick();
+            self.apu.tick(0.0);
             if let Some(req) = self.apu.dmc_dma() {
                 self.apu.dmc_supply(req, 0);
             }
