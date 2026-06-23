@@ -111,6 +111,57 @@ impl MapperOps for Mapper120 {
 }
 
 // ============================================================================
+// Mapper 104 — Pegasus 5-in-1 / Golden Five
+//
+// References:
+// - FCEUmm `src/boards/104.c`
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Mapper104 {
+    prg: [u8; 2],
+}
+
+impl Mapper104 {
+    pub(in crate::mapper) fn new(_mirroring: Mirroring) -> Self {
+        Mapper104 { prg: [0, 0x0F] }
+    }
+}
+
+impl MapperOps for Mapper104 {
+    fn prg_index(&self, addr: u16) -> usize {
+        let slot = usize::from(addr >= 0xC000);
+        (self.prg[slot] as usize) * 0x4000 + (addr as usize & 0x3FFF)
+    }
+
+    fn chr_index(&self, addr: u16) -> usize {
+        chr_8k(0, addr)
+    }
+
+    fn write_register(&mut self, addr: u16, value: u8) {
+        match addr {
+            0x8000..=0x9FFF => {
+                if value & 0x08 != 0 {
+                    let outer = (value << 4) & 0x70;
+                    self.prg[0] = outer | (self.prg[0] & 0x0F);
+                    self.prg[1] = outer | 0x0F;
+                }
+            }
+            0xC000..=0xFFFF => self.prg[0] = (self.prg[0] & 0x70) | (value & 0x0F),
+            _ => {}
+        }
+    }
+
+    fn mirroring(&self) -> Mirroring {
+        Mirroring::Vertical
+    }
+
+    fn reset(&mut self, _soft: bool) {
+        self.prg = [0, 0x0F];
+    }
+}
+
+// ============================================================================
 // Mapper 108 — FDS conversion with switchable $6000-$7FFF PRG-ROM window
 // ============================================================================
 

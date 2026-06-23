@@ -301,3 +301,5 @@
 - Mapper 28 / Action 53 是独立 multicart board 而不是普通 address latch：它用 `$5000-$5FFF` 先选择 `reg`，再由高区写更新 `chr/prg/mode/outer`，PRG16 映射由 `mode & 0x3c` 的 12 种组合决定。现有 expansion write、reset hook 和 mirroring enum 足够表达第一版，不需要新 trait。
 - Mapper 29 / Sealie Computing 可以作为小型 latch board 直接落地：参考实现一致指向低 16KB PRG 可切、末 16KB PRG 固定、CHR8 两位 latch 和 32KB CHR-RAM 默认容量。第一版按 FCEUX/Mesen2 的 `$8000-$FFFF` register 窗口保留普通 `$6000-$7FFF` WRAM；FCEUmm 的 `$6000-$FFFF` latch 写窗口差异记录为后续精修项。
 - Mapper 51 / 11-in-1 Ball Games 验证了现有 low-register + low-PRG-ROM hook 可以表达 `$6000-$7FFF` 同时作为写寄存器窗口和 PRG-ROM 读窗口的板卡，不需要扩 MapperOps。高区写更新 bank 和部分 mode，低区写更新 mode，reset 恢复 `bank=0, mode=2`。
+- Mapper 81 / NTDEC N715062 仍属于现有 latch 架构可直接承载的板卡：FCEUmm 的 `Latch_Init` 隐含保存写地址和写数据，本项目等价拆成 `addr_latch` / `data_latch`，无需新增 trait hook。
+- Mapper 104 / Pegasus 5-in-1 也不需要扩 MapperOps：PRG16 双 register、固定 CHR8、固定 vertical mirroring 和 reset defaults 都在 mapper 内部完成；参考里的 8KB WRAM mapping 由本项目 Cartridge 低区 PRG-RAM fallback 覆盖。

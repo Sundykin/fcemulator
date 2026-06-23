@@ -1168,3 +1168,16 @@
   - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 133/133 mapper tests.
   - `cargo test -p fc-core`: PASS, 175/175 fc-core tests.
   - `cargo test`: PASS, workspace tests.
+
+### Mapper 81 / 104 Latch Batch
+- Implemented mapper 81 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/latch/discrete.rs`: address latch selects the low 16KB PRG bank, high 16KB PRG is fixed to the last bank, data latch selects CHR8, and mirroring is fixed vertical.
+- Implemented mapper 104 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/special.rs`: Pegasus 5-in-1 dual PRG16 registers, `$8000-$9FFF` outer-bank write gate, `$C000-$FFFF` inner-bank write, fixed CHR8, fixed vertical mirroring, reset defaults, and ordinary `$6000-$7FFF` WRAM fallback through Cartridge.
+- Wired both through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs`, updated capability guard tests, and refreshed mapper gap/reference docs; supported mapper count is now 168 and remaining four-reference union gap is 325.
+- Verification:
+  - `cargo test -p fc-core mapper81 -- --nocapture`: PASS, 1/1.
+  - `cargo test -p fc-core mapper104 -- --nocapture`: PASS, 1/1.
+  - `cargo fmt --check`: PASS.
+  - `git diff --check`: PASS.
+  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 135/135 mapper tests.
+  - `cargo test -p fc-core`: PASS, 177/177 fc-core tests.
+  - `cargo test`: PASS, workspace tests.

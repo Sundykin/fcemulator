@@ -150,6 +150,54 @@ impl MapperOps for Mapper36 {
 }
 
 // ============================================================================
+// Mapper 81 — NTDEC N715062
+//
+// References:
+// - FCEUmm `src/boards/81.c`
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Mapper81 {
+    prg_16k: usize,
+    addr_latch: u16,
+    data_latch: u8,
+}
+
+impl Mapper81 {
+    pub(in crate::mapper) fn new(prg_16k: usize) -> Self {
+        Mapper81 {
+            prg_16k: prg_16k.max(1),
+            addr_latch: 0,
+            data_latch: 0,
+        }
+    }
+}
+
+impl MapperOps for Mapper81 {
+    fn prg_index(&self, addr: u16) -> usize {
+        let bank = if addr < 0xC000 {
+            ((self.addr_latch >> 2) & 0x03) as usize
+        } else {
+            self.prg_16k - 1
+        };
+        bank * 0x4000 + (addr as usize & 0x3FFF)
+    }
+
+    fn chr_index(&self, addr: u16) -> usize {
+        ((self.data_latch & 0x03) as usize) * 0x2000 + (addr as usize & 0x1FFF)
+    }
+
+    fn write_register(&mut self, addr: u16, value: u8) {
+        self.addr_latch = addr;
+        self.data_latch = value;
+    }
+
+    fn mirroring(&self) -> Mirroring {
+        Mirroring::Vertical
+    }
+}
+
+// ============================================================================
 // Mapper 8 — FFE/FJ-007 style PRG16 + CHR8 latch
 //
 // References:

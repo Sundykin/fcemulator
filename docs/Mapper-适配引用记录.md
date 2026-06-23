@@ -9,8 +9,8 @@
   - 新增 Mapper 43 / 60 / 83 / 106 / 183 / 212 / 222 / 235。
   - 覆盖 PRG/CHR bank 译码、低地址 PRG-ROM 窗口、mapper register read、open-bus 读侧效应、reset hook、CPU clock IRQ、A12 IRQ。
 - `fc-core/src/mapper/basic/latch/discrete.rs`
-  - 新增 Mapper 8 / 29 / 31 / 36 / 72 / 79 / 92 / 96 / 122。
-  - 覆盖 FFE/FJ-007 PRG16/CHR8 latch、Sealie Computing PRG16/CHR8 latch 与 32KB CHR-RAM 默认容量、NSF/INL 4KB PRG-ROM paging、TXC/Micro Genius 简化 latch、$4100 读回、bus conflict、Jaleco 2-in-1/JF-17 PRG/CHR 写位规则、Mapper 96 的 PPU nametable latch、NINA-003/006 扩展区 latch，以及 Mapper 122 双 4KB CHR latch。
+  - 新增 Mapper 8 / 29 / 31 / 36 / 72 / 79 / 81 / 92 / 96 / 122。
+  - 覆盖 FFE/FJ-007 PRG16/CHR8 latch、Sealie Computing PRG16/CHR8 latch 与 32KB CHR-RAM 默认容量、NSF/INL 4KB PRG-ROM paging、TXC/Micro Genius 简化 latch、$4100 读回、bus conflict、NTDEC N715062 address/data latch、Jaleco 2-in-1/JF-17 PRG/CHR 写位规则、Mapper 96 的 PPU nametable latch、NINA-003/006 扩展区 latch，以及 Mapper 122 双 4KB CHR latch。
 - `fc-core/src/mapper/basic/latch/sachen.rs:1-135`
   - 新增 Mapper 133 / Sachen SA72008、Mapper 146 / Sachen SA016-1M、Mapper 148 / Sachen SA0037 与 Mapper 149 / Sachen SA0036。
   - 覆盖 SA72008 PRG32/CHR8 latch、SA016-1M/SA0037 PRG32/CHR8 latch 和 SA0036 CHR bit7 latch。
@@ -38,9 +38,9 @@
 - `fc-core/src/mapper/basic/namco.rs:1-356`
   - 新增 Mapper 95 / Namco 108 Rev. B、Mapper 154 / Namco 108 单屏变体与 Mapper 206 / Namco 108 子集。
   - 覆盖 Namco108 风格高区寄存器、固定 PRG/CHR mode、CHR register bit5 到 per-nametable CIRAM A10 映射、Mapper 154 的 command bit6 单屏 mirroring，以及 Mapper 206 的无 IRQ PRG8/CHR2+1 bank mask。
-- `fc-core/src/mapper/basic/special.rs:113-165`
-  - 新增 Mapper 108 / FDS conversion。
-  - 覆盖 `$6000-$7FFF` switchable PRG-ROM window、固定最后 32KB PRG-ROM、固定 CHR8 和 `$8000-$8FFF`/`$F000-$FFFF` 写窗口。
+- `fc-core/src/mapper/basic/special.rs:113-212`
+  - 新增 Mapper 104 / Pegasus 5-in-1 与 Mapper 108 / FDS conversion。
+  - 覆盖 Mapper 104 的双 16KB PRG register、固定 CHR8、固定垂直 mirroring、普通 `$6000-$7FFF` WRAM fallback，以及 Mapper 108 的 `$6000-$7FFF` switchable PRG-ROM window、固定最后 32KB PRG-ROM、固定 CHR8 和 `$8000-$8FFF`/`$F000-$FFFF` 写窗口。
 - `fc-core/src/mapper/basic/opencorp.rs:1-121`
   - 新增 Mapper 156 / OpenCorp Daou306。
   - 覆盖 16KB PRG bank、固定最后 16KB PRG、8 个 1KB CHR low/high register、`$C014` mirroring register 与 reset hook。
@@ -161,6 +161,7 @@
 | 79 | `latch/discrete.rs` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/79.c` | 32-49, 56-60 | `$4100-$5FFF` 且 `A&0x100` 写门控 cross-check |
 | 80 | `taito.rs` | `/Users/sunmeng/workspace/fc/fceux/src/boards/80.cpp` | 58-103, 136-176 | Taito X1-005 PRG/CHR/mirroring/256B WRAM enable |
 | 80 | `taito.rs` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/80.c` | 58-103, 136-176 | mapper 80 行为 cross-check |
+| 81 | `latch/discrete.rs:153-198; mapper.rs:228-242,300,450,627,903,1070,1234,1454-1466` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/81.c` | 24-31 | Mapper 81 / NTDEC N715062：写入地址 latch 的 bit2-3 选择低 16KB PRG bank，高 16KB 固定末 bank，写入数据 bit0-1 选择 CHR8，固定垂直 mirroring |
 | 82 | `taito.rs` | `/Users/sunmeng/workspace/fc/fceux/src/boards/82.cpp` | 37-63, 66-96 | Taito X1-017 PRG/CHR swap/mirroring |
 | 82 | `taito.rs` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/82_552.c` | 38-71, 92-107 | mapper 82 与 552 PRG bit 译码差异 cross-check；当前只落地 mapper 82 |
 | 91 | `jy.rs:1-133` | `/Users/sunmeng/workspace/fc/fceux/src/boards/91.cpp` | 35-48, 51-57, 67-74, 80-83 | JY PRG/CHR low-register decode、HBlank IRQ hook |
@@ -182,6 +183,7 @@
 | 206 | `namco.rs:86-154,275-301` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/MapperFactory.cpp` | 479 | mapper 206 归类到 Namco108 |
 | 106 | `unlicensed.rs:339-431` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Unlicensed/Mapper106.h` | 14-16, 18-26, 36-73 | PRG/CHR register decode、CPU-cycle IRQ |
 | 106 | `unlicensed.rs:339-431` | `/Users/sunmeng/workspace/fc/fceux/src/boards/106.cpp` | 36-59, 81-87 | FCEUX PRG/CHR sync 和 IRQ overflow cross-check |
+| 104 | `special.rs:113-162; mapper.rs:228-242,307,475,637,915,1082,1251,1468-1489` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/104.c` | 35-69,77-91 | Mapper 104 / Pegasus 5-in-1：`preg[0]/preg[1]` 双 16KB PRG register、`$8000-$9FFF` outer bank 写、`$C000-$FFFF` inner bank 写、固定 CHR8、固定垂直 mirroring、8KB WRAM |
 | 116 | `sl12.rs:1-344` | `/Users/sunmeng/workspace/fc/fceux/src/boards/116.cpp` | 64-163, 165-260, 264-305 | SL12 VRC2/MMC3/MMC1 PRG/CHR/mirroring、mode write、MMC3 HBlank IRQ、power defaults |
 | 116 | `sl12.rs:1-344` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/116.c` | 42-73, 79-120, 122-145 | 新版 ASIC 复用设计、submapper/game 轮换记录；当前仅实现主线行为 |
 | 116 | `sl12.rs:1-344` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Unlicensed/Mapper116.h` | 31-78, 102-123, 126-291 | mapper 116 register range、A12 IRQ、三模式 PRG/CHR/mirroring 与写寄存器 |
@@ -375,6 +377,8 @@
 - `Namco108Mapper206::write_register()` / `chr_index()` / `prg_index()` 对应 FCEUX/FCEUmm `206.cpp`/`206_486.c:33-78`；Mesen2 `Namco108.h:15-27` 用于确认地址 mask 与固定 PRG/CHR mode。
 - `TaitoX1005::new_207()` / `set_chr_2k()` alternate mirroring 对应 FCEUX/FCEUmm `80.cpp`/`80.c:87-103,145-190` 与 Mesen2 `TaitoX1005.h:50-97,110-113`。
 - `TaitoX1017::chr_index()` 的 pattern half swap 对应 FCEUX `82.cpp:37-50` 与 FCEUmm `82_552.c:45-58`。
+- `Mapper81::write_register()` / `prg_index()` / `chr_index()` 对应 FCEUmm `81.c:24-31`；本项目显式保存地址 latch 和数据 latch，以等价表达 FCEUmm `Latch_Init` 提供的 `latch.addr` / `latch.data`。
+- `Mapper104::write_register()` / `prg_index()` 对应 FCEUmm `104.c:35-69,77-91`；`setprg8r(0x10,0x6000,0)` 由本项目 Cartridge 的普通低区 PRG-RAM fallback 提供，mapper 内只保存两个 PRG16 register 并固定 vertical mirroring。
 - `TaitoTc0190::new_48()` / `hblank_clock()` 对应 FCEUX/FCEUmm `33.cpp`/`33.c:66-97,110-115`；普通 TC0190 bank writes 复用同文件 `52-63`。
 - `Rambo1::new_158()` / `set_mapper158_nametable()` / mapper-owned nametable read/write 对应 FCEUmm `tengen.c:198-220` 与 Mesen2 `Rambo1_158.h:5-37`；RAMBO-1 基础 PRG/CHR/IRQ 仍对应 Mesen2 `Rambo1.h:96-177`。
 - `Mapper29::write_register()` / `prg_index()` / `chr_index()` 对应 FCEUX `datalatch.cpp:248-256`、FCEUmm `datalatch.c:186-194` 与 Mesen2 `SealieComputing.h:8-31`；当前第一版按 FCEUX/Mesen2 的高区 register 窗口实现，并在 iNES CHR-RAM 默认容量中补 32KB。

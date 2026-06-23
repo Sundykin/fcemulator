@@ -228,16 +228,17 @@ mod vrc4;
 pub use basic::{
     Action53, ActionEnterprises, AddrLatch16k, AddrLatchVariant, Axrom, Bandai74161, Bf9096, Bnrom,
     Caltron41, Cnrom, Codemasters, ColorDreams, ColorDreams46, Cprom, Gxrom, IremG101, IremLrog017,
-    IremTamS1, JalecoJf11_14, JalecoJf13, JalecoJf16, JalecoJfxx, Mapper103, Mapper106, Mapper107,
-    Mapper108, Mapper116, Mapper117, Mapper120, Mapper122, Mapper15, Mapper151, Mapper156,
-    Mapper170, Mapper18, Mapper183, Mapper185, Mapper188, Mapper193, Mapper203, Mapper212,
-    Mapper222, Mapper226, Mapper230, Mapper233, Mapper234, Mapper235, Mapper240, Mapper241,
-    Mapper244, Mapper246, Mapper253, Mapper29, Mapper31, Mapper35, Mapper36, Mapper40, Mapper42,
-    Mapper43, Mapper50, Mapper51, Mapper57, Mapper60, Mapper63, Mapper65, Mapper67, Mapper72,
-    Mapper73, Mapper79, Mapper8, Mapper83, Mapper91, Mapper92, Mapper96, Namco108Mapper154,
-    Namco108Mapper206, Namco108Mapper95, Namco118, Nina01, Nina03_06, Nrom, Ntdec112, Sachen133,
-    Sachen149, SachenSa0161m, Subor166, SuborVariant, Sunsoft184, Sunsoft4, Sunsoft89, TaitoTc0190,
-    TaitoX1005, TaitoX1017, UnlPci556, Unrom, UnromVariant, UnromVariantMapper, Vrc1,
+    IremTamS1, JalecoJf11_14, JalecoJf13, JalecoJf16, JalecoJfxx, Mapper103, Mapper104, Mapper106,
+    Mapper107, Mapper108, Mapper116, Mapper117, Mapper120, Mapper122, Mapper15, Mapper151,
+    Mapper156, Mapper170, Mapper18, Mapper183, Mapper185, Mapper188, Mapper193, Mapper203,
+    Mapper212, Mapper222, Mapper226, Mapper230, Mapper233, Mapper234, Mapper235, Mapper240,
+    Mapper241, Mapper244, Mapper246, Mapper253, Mapper29, Mapper31, Mapper35, Mapper36, Mapper40,
+    Mapper42, Mapper43, Mapper50, Mapper51, Mapper57, Mapper60, Mapper63, Mapper65, Mapper67,
+    Mapper72, Mapper73, Mapper79, Mapper8, Mapper81, Mapper83, Mapper91, Mapper92, Mapper96,
+    Namco108Mapper154, Namco108Mapper206, Namco108Mapper95, Namco118, Nina01, Nina03_06, Nrom,
+    Ntdec112, Sachen133, Sachen149, SachenSa0161m, Subor166, SuborVariant, Sunsoft184, Sunsoft4,
+    Sunsoft89, TaitoTc0190, TaitoX1005, TaitoX1017, UnlPci556, Unrom, UnromVariant,
+    UnromVariantMapper, Vrc1,
 };
 pub use expansion_mappers::{Fme7, Namco163, Vrc6, Vrc6Variant, Vrc7};
 pub use mmc1::Mmc1;
@@ -296,12 +297,14 @@ pub enum Mapper {
     TaitoX1005(TaitoX1005),
     TaitoX1017(TaitoX1017),
     Vrc1(Vrc1),
+    Mapper81(Mapper81),
     Mapper83(Mapper83),
     Mapper91(Mapper91),
     Mapper92(Mapper92),
     Mapper96(Mapper96),
     AddrLatch16k(AddrLatch16k),
     Mapper103(Mapper103),
+    Mapper104(Mapper104),
     Mapper106(Mapper106),
     Mapper108(Mapper108),
     Mapper116(Mapper116),
@@ -444,6 +447,7 @@ impl Mapper {
             78 => Mapper::JalecoJf16(JalecoJf16::new(prg_16k, submapper)),
             79 => Mapper::Mapper79(Mapper79::new(mirroring)),
             80 => Mapper::TaitoX1005(TaitoX1005::new(prg_16k)),
+            81 => Mapper::Mapper81(Mapper81::new(prg_16k)),
             82 => Mapper::TaitoX1017(TaitoX1017::new(prg_16k)),
             83 => Mapper::Mapper83(Mapper83::new(prg_16k, chr_8k)),
             85 => Mapper::Vrc7(Vrc7::new(prg_16k, chr_8k)),
@@ -468,6 +472,7 @@ impl Mapper {
             97 => Mapper::IremTamS1(IremTamS1::new(prg_16k)),
             101 => Mapper::JalecoJfxx(JalecoJfxx::new(true, mirroring)),
             103 => Mapper::Mapper103(Mapper103::new(prg_16k, mirroring)),
+            104 => Mapper::Mapper104(Mapper104::new(mirroring)),
             106 => Mapper::Mapper106(Mapper106::new(prg_16k, chr_8k)),
             107 => Mapper::Mapper107(Mapper107::new(mirroring)),
             108 => Mapper::Mapper108(Mapper108::new(prg_16k, mirroring)),
@@ -619,6 +624,7 @@ macro_rules! dispatch {
             Mapper::Mapper72($m) => $body,
             Mapper::Mapper73($m) => $body,
             Mapper::Mapper79($m) => $body,
+            Mapper::Mapper81($m) => $body,
             Mapper::TaitoX1005($m) => $body,
             Mapper::TaitoX1017($m) => $body,
             Mapper::Vrc1($m) => $body,
@@ -628,6 +634,7 @@ macro_rules! dispatch {
             Mapper::Mapper96($m) => $body,
             Mapper::AddrLatch16k($m) => $body,
             Mapper::Mapper103($m) => $body,
+            Mapper::Mapper104($m) => $body,
             Mapper::Mapper106($m) => $body,
             Mapper::Mapper108($m) => $body,
             Mapper::Mapper116($m) => $body,
@@ -893,6 +900,7 @@ mod tests {
             (78, false),   // Jaleco JF-16
             (79, false),   // Mapper 79
             (80, false),   // Taito X1-005
+            (81, false),   // Mapper 81
             (82, false),   // Taito X1-017
             (83, false),   // Mapper 83 IRQ is CPU-clocked, not PPU-bus-clocked
             (85, false),   // VRC7
@@ -904,6 +912,7 @@ mod tests {
             (95, false),   // Namco 108 mapper 95
             (101, false),  // Jaleco JF-xx ordered bits
             (103, false),  // Mapper 103
+            (104, false),  // Mapper 104
             (106, false),  // Mapper 106 IRQ is CPU-clocked, not PPU-bus-clocked
             (108, false),  // Mapper 108
             (114, true),   // Mapper 114 MMC3 A12 IRQ
@@ -1058,6 +1067,7 @@ mod tests {
             (78, false),   // Jaleco JF-16
             (79, false),   // Mapper 79
             (80, false),   // Taito X1-005
+            (81, false),   // Mapper 81
             (82, false),   // Taito X1-017
             (83, true),    // Mapper 83 IRQ counter clocks per CPU cycle
             (85, true),    // VRC7 IRQ + expansion audio clock per CPU cycle
@@ -1069,6 +1079,7 @@ mod tests {
             (95, false),   // Namco 108 mapper 95
             (101, false),  // Jaleco JF-xx ordered bits
             (103, false),  // Mapper 103
+            (104, false),  // Mapper 104
             (106, true),   // Mapper 106 IRQ counter clocks per CPU cycle
             (108, false),  // Mapper 108
             (114, false),  // Mapper 114 uses PPU A12 edges
@@ -1220,6 +1231,7 @@ mod tests {
             (78, false),
             (79, false),
             (80, false),
+            (81, false),
             (82, false),
             (83, false),
             (85, false),
@@ -1236,6 +1248,7 @@ mod tests {
             (97, false),
             (101, false),
             (103, false),
+            (104, false),
             (106, false),
             (107, false),
             (108, false),
@@ -1436,6 +1449,43 @@ mod tests {
         assert_eq!(m51.prg_index(0x8004), 0x0004);
         assert_eq!(m51.prg_index(0xC004), 0x4000 + 4);
         assert_eq!(m51.mirroring(), Mirroring::Vertical);
+    }
+
+    #[test]
+    fn mapper81_uses_address_latch_for_prg16_and_data_latch_for_chr8() {
+        let mut m81 = Mapper::new(81, 8, 4, Mirroring::Vertical, 0).expect("mapper 81");
+        assert_eq!(m81.prg_index(0x8004), 0x0004);
+        assert_eq!(m81.prg_index(0xC004), 7 * 0x4000 + 4);
+        assert_eq!(m81.chr_index(0x1010), 0x1010);
+
+        m81.write_register(0x800C, 0x03);
+        assert_eq!(m81.prg_index(0x8004), 3 * 0x4000 + 4);
+        assert_eq!(m81.prg_index(0xC004), 7 * 0x4000 + 4);
+        assert_eq!(m81.chr_index(0x1010), 3 * 0x2000 + 0x1010);
+        assert_eq!(m81.mirroring(), Mirroring::Vertical);
+    }
+
+    #[test]
+    fn mapper104_switches_inner_and_outer_prg16_banks() {
+        let mut m104 = Mapper::new(104, 128, 0, Mirroring::Vertical, 0).expect("mapper 104");
+        assert_eq!(m104.prg_index(0x8004), 0x0004);
+        assert_eq!(m104.prg_index(0xC004), 0x0F * 0x4000 + 4);
+        assert_eq!(m104.chr_index(0x1010), 0x1010);
+        assert_eq!(m104.mirroring(), Mirroring::Vertical);
+
+        m104.write_register(0xC000, 0x06);
+        assert_eq!(m104.prg_index(0x8004), 0x06 * 0x4000 + 4);
+        assert_eq!(m104.prg_index(0xC004), 0x0F * 0x4000 + 4);
+
+        m104.write_register(0x8000, 0x0B);
+        assert_eq!(m104.prg_index(0x8004), 0x36 * 0x4000 + 4);
+        assert_eq!(m104.prg_index(0xC004), 0x3F * 0x4000 + 4);
+        m104.write_register(0x9000, 0x04);
+        assert_eq!(m104.prg_index(0x8004), 0x36 * 0x4000 + 4);
+
+        m104.reset(true);
+        assert_eq!(m104.prg_index(0x8004), 0x0004);
+        assert_eq!(m104.prg_index(0xC004), 0x0F * 0x4000 + 4);
     }
 
     #[test]

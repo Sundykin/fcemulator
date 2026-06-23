@@ -33,8 +33,8 @@ pub use konami::Vrc1;
 pub use latch::{
     Bandai74161, Caltron41, ColorDreams46, Cprom, IremTamS1, JalecoJf11_14, JalecoJf13, JalecoJf16,
     JalecoJfxx, Mapper107, Mapper122, Mapper151, Mapper203, Mapper29, Mapper31, Mapper36, Mapper72,
-    Mapper79, Mapper8, Mapper92, Mapper96, Nina03_06, Sachen133, Sachen149, SachenSa0161m,
-    Sunsoft184, Sunsoft4, Sunsoft89, UnlPci556, UnromVariant, UnromVariantMapper,
+    Mapper79, Mapper8, Mapper81, Mapper92, Mapper96, Nina03_06, Sachen133, Sachen149,
+    SachenSa0161m, Sunsoft184, Sunsoft4, Sunsoft89, UnlPci556, UnromVariant, UnromVariantMapper,
 };
 pub use multicart::{
     Action53, ActionEnterprises, AddrLatch16k, AddrLatchVariant, Mapper15, Mapper226, Mapper240,
@@ -44,7 +44,9 @@ pub use namco::{Namco108Mapper154, Namco108Mapper206, Namco108Mapper95, Namco118
 pub use ntdec::Ntdec112;
 pub use opencorp::Mapper156;
 pub use sl12::Mapper116;
-pub use special::{Mapper103, Mapper108, Mapper120, Mapper170, Mapper230, Mapper233, Mapper234};
+pub use special::{
+    Mapper103, Mapper104, Mapper108, Mapper120, Mapper170, Mapper230, Mapper233, Mapper234,
+};
 pub use subor::{Subor166, SuborVariant};
 pub use taito::{TaitoTc0190, TaitoX1005, TaitoX1017};
 pub use unlicensed::{
