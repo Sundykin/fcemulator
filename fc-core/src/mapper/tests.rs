@@ -84,6 +84,7 @@ fn watches_ppu_bus_matches_notify_a12_overrides() {
         (101, false),  // Jaleco JF-xx ordered bits
         (103, false),  // Mapper 103
         (104, false),  // Mapper 104
+        (105, false),  // Mapper 105 IRQ is CPU-clocked, not PPU-bus-clocked
         (106, false),  // Mapper 106 IRQ is CPU-clocked, not PPU-bus-clocked
         (108, false),  // Mapper 108
         (114, true),   // Mapper 114 MMC3 A12 IRQ
@@ -256,6 +257,7 @@ fn clocks_cpu_matches_cpu_clock_overrides() {
         (101, false),  // Jaleco JF-xx ordered bits
         (103, false),  // Mapper 103
         (104, false),  // Mapper 104
+        (105, true),   // Mapper 105 NWC timer clocks per CPU cycle
         (106, true),   // Mapper 106 IRQ counter clocks per CPU cycle
         (108, false),  // Mapper 108
         (114, false),  // Mapper 114 uses PPU A12 edges
@@ -430,6 +432,7 @@ fn clocks_hblank_matches_hblank_clock_overrides() {
         (101, false),
         (103, false),
         (104, false),
+        (105, false),
         (106, false),
         (107, false),
         (108, false),

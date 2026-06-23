@@ -111,6 +111,7 @@ impl Mapper {
             101 => Mapper::JalecoJfxx(JalecoJfxx::new(true, mirroring)),
             103 => Mapper::Mapper103(Mapper103::new(prg_16k, mirroring)),
             104 => Mapper::Mapper104(Mapper104::new(mirroring)),
+            105 => Mapper::Mmc1(Mmc1::new_105(prg_16k, chr_8k)),
             106 => Mapper::Mapper106(Mapper106::new(prg_16k, chr_8k)),
             107 => Mapper::Mapper107(Mapper107::new(mirroring)),
             108 => Mapper::Mapper108(Mapper108::new(prg_16k, mirroring)),

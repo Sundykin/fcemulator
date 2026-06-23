@@ -50,9 +50,10 @@
 - `fc-core/src/mapper/basic/discrete.rs:1-247`
   - 新增 Mapper 185 / CNROM copy-protection CHR disable、Mapper 188 / Karaoke Studio expansion cartridge 与 Mapper 193 / MEGA-SOFT War in the Gulf。
   - 覆盖 mapper-owned dummy CHR read/write gating、Mapper 188 PRG16 latch 与 `$6000-$7FFF` 固定设备读、固定首/尾 16KB PRG、低区 `$6000-$6003` register、固定尾部 8KB PRG pages，以及 4KB/2KB/2KB CHR bank 译码。
-- `fc-core/src/mapper/mmc1.rs:10-43`
-  - 新增 Mapper 155 / MMC1 WRAM-always-enabled 变体入口。
-  - 当前本项目 MMC1 尚未实现 WRAM disable gating，因此先记录 variant 标记；后续补 PRG-RAM enable/disable 时可保留 mapper 155 的 always-enabled 语义。
+- `fc-core/src/mapper/mmc1.rs:23-318`
+  - 新增 Mapper 105 / Nintendo World Championships MMC1 变体与 Mapper 155 / MMC1 WRAM-always-enabled 变体入口。
+  - 覆盖 Mapper 105 的 NWC 初始化状态机、CHR reg0 bit4 控制 CPU-cycle IRQ timer、CHR reg0 bit3 控制 MMC1/32KB PRG 模式、固定 CHR8、PRG bank bit3 强制，以及 Mapper 155 variant intent。
+  - 当前本项目 MMC1 尚未实现 WRAM disable gating，因此 Mapper 155 先记录 variant 标记；后续补 PRG-RAM enable/disable 时可保留 mapper 155 的 always-enabled 语义。
 - `fc-core/src/mapper/mmc3.rs:18-38,360-365,651,704,914-916,973-974,1326,1626-1654`
   - 新增 Mapper 250 / MMC3 地址线写协议变体。
   - 覆盖 register address remap、写入 data=`addr & 0xff`、普通 MMC3 PRG/CHR/mirroring/A12 IRQ 复用，以及 reset pass-through。
@@ -73,9 +74,13 @@
   - 覆盖 mapper/submapper 地址线变体、VRC2a CHR 右移、VRC2 无 IRQ、VRC4 CPU-clock IRQ。
 - `fc-core/src/bus.rs:262-268` 与 `fc-core/src/cartridge.rs:64-67,267-313,748-790`
   - 新增 mapper HBlank clock 架构钩子和缓存能力位。
-- `fc-core/src/mapper.rs:129-141, 215-225, 236-322, 335-482, 504-690`
-  - mapper facade 的导出、枚举、构造表和 dispatch 接入。
-- `fc-core/src/mapper.rs:680-998, 1373-1961`
+- `fc-core/src/mapper.rs:20-212, 215-371`
+  - mapper facade 的 trait 扩展接口、模块声明、导出和 enum 定义。
+- `fc-core/src/mapper/factory.rs:3-224`
+  - mapper 构造表接入。
+- `fc-core/src/mapper/dispatch.rs:3-249`
+  - mapper enum dispatch 接入。
+- `fc-core/src/mapper/tests.rs:1-1894`
   - mapper capability 快路径守门测试和新增 unlicensed mapper 行为测试。
 - `fc-core/src/cartridge.rs:76-79, 269-321, 524-560, 840-860`
   - 新增 nametable-to-CHR 映射缓存与 Cartridge 侧 CHR-ROM/CHR-RAM 解析。
@@ -187,6 +192,9 @@
 | 106 | `unlicensed.rs:339-431` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Unlicensed/Mapper106.h` | 14-16, 18-26, 36-73 | PRG/CHR register decode、CPU-cycle IRQ |
 | 106 | `unlicensed.rs:339-431` | `/Users/sunmeng/workspace/fc/fceux/src/boards/106.cpp` | 36-59, 81-87 | FCEUX PRG/CHR sync 和 IRQ overflow cross-check |
 | 104 | `special.rs:113-162; mapper.rs:228-242,307,475,637,915,1082,1251,1468-1489` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/104.c` | 35-69,77-91 | Mapper 104 / Pegasus 5-in-1：`preg[0]/preg[1]` 双 16KB PRG register、`$8000-$9FFF` outer bank 写、`$C000-$FFFF` inner bank 写、固定 CHR8、固定垂直 mirroring、8KB WRAM |
+| 105 | `mmc1.rs:23-318; factory.rs:111-116; tests.rs:86-88,258-260,432-434` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Nintendo/MMC1_105.h` | 6-70 | Mapper 105 / NWC：`chrReg0` bit4 初始化与 IRQ enable/reset、CPU-clock timer、初始化完成前固定 PRG32 bank 0、bit3 选择 MMC1/32KB PRG 模式、PRG bank bit3 强制 |
+| 105 | `mmc1.rs:23-318; factory.rs:111-116; tests.rs:86-88,258-260,432-434` | `/Users/sunmeng/workspace/fc/fceux/src/boards/mmc1.cpp` | 230-258 | NWC CHR/PRG hook cross-check：`NWCCHRHook` bit4 清 IRQ/计数、bit3 选择 MMC1 PRG 或 32KB PRG、`NWCPRGHook` 强制 PRG bit3 |
+| 105 | `mmc1.rs:23-318; factory.rs:111-116; tests.rs:86-88,258-260,432-434` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/mmc1.c` | 252-284 | FCEUmm NWC hook 与 reset/power cross-check；记录 DIP 扩展计时值为后续输入/比赛模式精修项 |
 | 116 | `sl12.rs:1-344` | `/Users/sunmeng/workspace/fc/fceux/src/boards/116.cpp` | 64-163, 165-260, 264-305 | SL12 VRC2/MMC3/MMC1 PRG/CHR/mirroring、mode write、MMC3 HBlank IRQ、power defaults |
 | 116 | `sl12.rs:1-344` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/116.c` | 42-73, 79-120, 122-145 | 新版 ASIC 复用设计、submapper/game 轮换记录；当前仅实现主线行为 |
 | 116 | `sl12.rs:1-344` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Unlicensed/Mapper116.h` | 31-78, 102-123, 126-291 | mapper 116 register range、A12 IRQ、三模式 PRG/CHR/mirroring 与写寄存器 |
