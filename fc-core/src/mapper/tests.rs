@@ -104,6 +104,7 @@ fn watches_ppu_bus_matches_notify_a12_overrides() {
         (149, false),  // Sachen SA0036
         (156, false),  // Mapper 156
         (158, true),   // Mapper 158 RAMBO-1 can use PPU A12 IRQ mode
+        (165, true),   // Mapper 165 MMC3 A12 IRQ and CHR latch
         (166, false),  // Subor 166
         (167, false),  // Subor 167
         (112, false),  // NTDEC ASDER
@@ -279,6 +280,7 @@ fn clocks_cpu_matches_cpu_clock_overrides() {
         (149, false),  // Sachen SA0036
         (156, false),  // Mapper 156
         (158, true),   // Mapper 158 RAMBO-1 can use CPU-cycle IRQ mode
+        (165, false),  // Mapper 165 uses PPU A12/CHR latch
         (166, false),  // Subor 166
         (167, false),  // Subor 167
         (112, false),  // NTDEC ASDER
@@ -459,6 +461,7 @@ fn clocks_hblank_matches_hblank_clock_overrides() {
         (149, false),
         (156, false),
         (158, false),
+        (165, false),
         (140, false),
         (142, false),
         (151, false),

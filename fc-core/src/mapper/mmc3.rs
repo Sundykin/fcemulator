@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 enum Mmc3ChrLayout {
     Standard,
     Mapper76 { chr_2k: [usize; 4] },
+    Mapper165 { latch: [bool; 2] },
     Mapper197 { chr_2k: [usize; 4], submapper: u8 },
 }
 
@@ -292,6 +293,17 @@ impl Mmc3 {
         Mmc3::new(prg_16k, chr_8k, mirroring).with_chr_ram_window(0x40, 0x7F, 0x2000)
     }
 
+    /// Mapper 165 — Waixing SH2, MMC3 with MMC2-style 4KB CHR latches and a
+    /// 4KB CHR-RAM page selected when the active latch register is zero.
+    pub(super) fn new_165(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
+        let mut m = Mmc3::new(prg_16k, chr_8k, mirroring);
+        m.chr_layout = Mmc3ChrLayout::Mapper165 {
+            latch: [false, false],
+        };
+        m.chr_ram = vec![0u8; 0x1000];
+        m
+    }
+
     /// Mapper 191 — Waixing Type B, MMC3 clone with 2KB CHR-RAM selected by
     /// CHR banks $80..=$FF.
     pub(super) fn new_191(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
@@ -442,6 +454,42 @@ impl Mmc3 {
         }
     }
 
+    fn mapper165_active_reg(&self, half: usize) -> Option<usize> {
+        let Mmc3ChrLayout::Mapper165 { latch } = &self.chr_layout else {
+            return None;
+        };
+        Some(match (half, latch[half]) {
+            (0, false) => 0,
+            (0, true) => 1,
+            (1, false) => 2,
+            (1, true) => 4,
+            _ => unreachable!("mapper 165 CHR half is always 0 or 1"),
+        })
+    }
+
+    fn mapper165_chr_ram_index(&self, addr: u16) -> Option<usize> {
+        if self.chr_ram.len() != 0x1000 {
+            return None;
+        }
+        let a = addr & 0x1FFF;
+        let half = (a >> 12) as usize;
+        let reg = self.mapper165_active_reg(half)?;
+        if self.banks[reg] == 0 {
+            Some((a & 0x0FFF) as usize)
+        } else {
+            None
+        }
+    }
+
+    fn mapper165_notify_ppu_addr(&mut self, addr: u16) {
+        if let Mmc3ChrLayout::Mapper165 { latch } = &mut self.chr_layout {
+            match addr & 0x2FF8 {
+                0x0FD0 | 0x0FE8 => latch[((addr >> 12) & 1) as usize] = addr & 0x08 != 0,
+                _ => {}
+            }
+        }
+    }
+
     fn rebuild_chr_layout(&mut self) {
         if matches!(self.chr_layout, Mmc3ChrLayout::Mapper76 { .. }) {
             self.chr_layout = Mmc3ChrLayout::Mapper76 { chr_2k: [0; 4] };
@@ -540,6 +588,9 @@ impl Mmc3 {
 
     /// Index into mapper-owned CHR-RAM for CPU-visible PPU reads/writes.
     fn chr_ram_read_index(&self, a: u16) -> Option<usize> {
+        if matches!(self.chr_layout, Mmc3ChrLayout::Mapper165 { .. }) {
+            return self.mapper165_chr_ram_index(a);
+        }
         let window = self.chr_ram_window.or_else(|| {
             let first = self.chr_ram_bank_base? as u16;
             Some(ChrRamWindow::new(first, first + 1))
@@ -1024,6 +1075,15 @@ impl MapperOps for Mmc3 {
             let slot = (a / 0x0800) as usize;
             return (chr_2k[slot] % (self.chr_1k / 2).max(1)) * 0x0800 + (a as usize & 0x07FF);
         }
+        if let Mmc3ChrLayout::Mapper165 { .. } = &self.chr_layout {
+            let half = (a >> 12) as usize;
+            let reg = self.mapper165_active_reg(half).unwrap_or(0);
+            let page = self.banks[reg] as usize;
+            if page == 0 {
+                return a as usize & 0x0FFF;
+            }
+            return ((page >> 2) % (self.chr_1k / 4).max(1)) * 0x1000 + (a as usize & 0x0FFF);
+        }
         // Flat 8KB CHR-RAM: the bank registers don't affect CHR (the RAM is wired
         // straight through), so uploads land where the game expects.
         if self.chr_is_ram {
@@ -1395,6 +1455,7 @@ impl MapperOps for Mmc3 {
         true // A12 rising edge clocks the scanline IRQ counter
     }
     fn notify_a12(&mut self, addr: u16, cycle: u64) {
+        self.mapper165_notify_ppu_addr(addr);
         self.irq.notify_a12(addr, cycle);
     }
 
@@ -1732,6 +1793,64 @@ mod tests {
         mapper.write_register(0x8001, 0x7F);
         assert!(!mapper.chr_write(0x1004, 0x11));
         assert_eq!(mapper.chr_read(0x1004, ChrAccess::Default), None);
+    }
+
+    #[test]
+    fn mapper165_uses_latched_4k_chr_pages_and_chr_ram_page_zero() {
+        let mut mapper = Mmc3::new_165(32, 128, Mirroring::Vertical);
+
+        mapper.write_register(0x8000, 0x00);
+        mapper.write_register(0x8001, 0x08);
+        mapper.write_register(0x8000, 0x01);
+        mapper.write_register(0x8001, 0x10);
+        mapper.write_register(0x8000, 0x02);
+        mapper.write_register(0x8001, 0x14);
+        mapper.write_register(0x8000, 0x04);
+        mapper.write_register(0x8001, 0x1C);
+
+        assert_eq!(mapper.chr_index(0x0004), 0x02 * 0x1000 + 4);
+        assert_eq!(mapper.chr_index(0x1004), 0x05 * 0x1000 + 4);
+
+        mapper.notify_a12(0x0FE8, 1);
+        mapper.notify_a12(0x1FE8, 2);
+        assert_eq!(mapper.chr_index(0x0004), 0x04 * 0x1000 + 4);
+        assert_eq!(mapper.chr_index(0x1004), 0x07 * 0x1000 + 4);
+
+        mapper.write_register(0x8000, 0x01);
+        mapper.write_register(0x8001, 0x20);
+        assert_eq!(mapper.chr_index(0x0004), 0x08 * 0x1000 + 4);
+
+        mapper.write_register(0x8001, 0x00);
+        assert!(mapper.chr_write(0x0004, 0x5A));
+        assert_eq!(mapper.chr_read(0x0004, ChrAccess::Default), Some(0x5A));
+        assert_eq!(mapper.chr_read(0x1004, ChrAccess::Default), None);
+
+        mapper.notify_a12(0x0FD0, 3);
+        assert_eq!(mapper.chr_read(0x0004, ChrAccess::Default), None);
+        assert_eq!(mapper.chr_index(0x0004), 0x02 * 0x1000 + 4);
+    }
+
+    #[test]
+    fn mapper165_keeps_standard_mmc3_prg_and_irq_behavior() {
+        let mut mapper = Mmc3::new_165(16, 32, Mirroring::Vertical);
+
+        mapper.write_register(0x8000, 0x06);
+        mapper.write_register(0x8001, 7);
+        mapper.write_register(0x8000, 0x07);
+        mapper.write_register(0x8001, 8);
+        assert_eq!(mapper.prg_index(0x8004), 7 * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xA004), 8 * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 30 * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xE004), 31 * 0x2000 + 4);
+
+        mapper.write_register(0xC000, 1);
+        mapper.write_register(0xC001, 0);
+        mapper.write_register(0xE001, 0);
+        mapper.notify_a12(0x0000, 0);
+        mapper.notify_a12(0x1000, 12);
+        mapper.notify_a12(0x0000, 15);
+        mapper.notify_a12(0x1000, 27);
+        assert!(mapper.irq());
     }
 
     #[test]

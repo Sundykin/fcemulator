@@ -148,6 +148,11 @@
 | 64 | `rambo1.rs:1-309` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/tengen.c` | 21-195 | Mapper 64/158 共用 RAMBO-1、现代 trigger-on-reach-zero IRQ 注释、PRG/CHR/mirroring/register 行为 |
 | 64 | `rambo1.rs:1-309` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Tengen/Rambo1.h` | 11-177 | RAMBO-1 PRG/CHR mode、CPU/PPU IRQ source、IRQ delay、force-clock quirk、A12 watcher |
 | 64 | `rambo1.rs:1-309` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/A12Watcher.h` | 26-54 | PPU A12 low-time filter semantics |
+| 165 | `mmc3.rs:15,298-306,457-491,591-592,1078-1085,1412-1426,1457-1459,1799-1853; factory.rs:145; tests.rs:107,283,464` | `/Users/sunmeng/workspace/fc/fceux/src/boards/mmc3.cpp` | 918-973 | Mapper 165：MMC3 基础、`M165CW` 4KB CHR-ROM/CHR-RAM page 0、FD/FE latch、PPU hook、4KB CHR-RAM |
+| 165 | `mmc3.rs:15,298-306,457-491,591-592,1078-1085,1412-1426,1457-1459,1799-1853; factory.rs:145; tests.rs:107,283,464` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/mmc3.c` | 969-1024 | FCEUmm mapper 165 cross-check；同样使用 DRegBuf 0/1 与 2/4、`V == 0` 映射 4KB CHR-RAM |
+| 165 | `mmc3.rs:15,298-306,457-491,591-592,1078-1085,1412-1426,1457-1459,1799-1853; factory.rs:145; tests.rs:107,283,464` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Mmc3Variants/MMC3_165.h` | 5-54 | Mesen2 mapper 165：两个 4KB latch、CHR page size/CHR-RAM size、VRAM address hook 与 latch 地址掩码 cross-check |
+| 165 | `mmc3.rs:15,298-306,457-491,591-592,1078-1085,1412-1426,1457-1459,1799-1853; factory.rs:145; tests.rs:107,283,464` | `/Users/sunmeng/workspace/fc/nestopia/source/core/board/NstBoard.hpp` | 589-590 | Nestopia WAIXING_SH2 mapper 165 metadata：512KB PRG、256KB CHR、可选 WRAM、4KB CHR-RAM |
+| 165 | `mmc3.rs:15,298-306,457-491,591-592,1078-1085,1412-1426,1457-1459,1799-1853; factory.rs:145; tests.rs:107,283,464` | `/Users/sunmeng/workspace/fc/nestopia/source/core/board/NstBoard.cpp` | 2799-2810 | Nestopia mapper 165 board name/WRAM variant selection cross-check |
 | 64 | `rambo1.rs:1-309` | `/Users/sunmeng/workspace/fc/nestopia/source/core/board/NstBoardTengenRambo1.cpp` | 75-96, 190-225, 233-344 | RAMBO-1 register map、IRQ unit、PRG/CHR update、write handlers |
 | 64 | `rambo1.rs:1-309` | `/Users/sunmeng/workspace/fc/nestopia/source/core/board/NstBoardTengenRambo1.hpp` | 82-106 | CPU M2 divisor、A12 filter、IRQ delay/source constants |
 | 158 | `rambo1.rs:17-20,70-73,129-183,209-273,371-408` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/tengen.c` | 21-23,101-123,126-174,198-220 | Mapper 158 复用 RAMBO-1，CHR write wrapper 将 bank bit7 缓存为 per-nametable page，并忽略普通 mirroring 写 |
@@ -386,6 +391,7 @@
 - `Mapper188::write_register()` / `read_low_register()` 对应 FCEUX/FCEUmm `karaoke.cpp`/`karaoke.c:26-52`；PRG latch 为 0 时选择 `7 + prg16/16`，bit4 控制低 8 个或高 8 个 PRG16 bank。
 - `Mmc3OuterBank::Mapper189` 对应 FCEUX/FCEUmm `189.cpp`/`189.c:24-43`；低区写保存 `value | (value >> 4)`，PRG 走 32KB outer bank，CHR 和 IRQ 继续复用普通 MMC3。
 - `Mmc3::new_191()` 复用 `ChrRamWindow`，对应 FCEUX `mmc3.cpp:977-987` 与 Mesen2 `MapperFactory.cpp:464` 的 `MMC3_ChrRam(0x80,0xFF,2)`；FCEUmm `191.c` 新增的 submapper/PRG low-register 细节留作后续精修。
+- `Mmc3ChrLayout::Mapper165` 对应 FCEUX/FCEUmm `mmc3.cpp`/`mmc3.c:918-973,969-1024` 与 Mesen2 `MMC3_165.h:5-54`；本项目用现有 PPU bus watcher 同时驱动 MMC3 IRQ 和 MMC2-style 4KB CHR latch，寄存器值 0 时路由到 mapper-owned 4KB CHR-RAM。
 - `Mapper193::write_low_register()` / `chr_index()` / `prg_index()` 对应 FCEUX/FCEUmm `193.cpp`/`193.c:38-59`；低区四个寄存器直接控制 PRG8 与 CHR4/2/2。
 - `Mmc3OuterBank::Mapper187` 对应 FCEUX/FCEUmm `187.cpp`/`187.c:24-67,28-70` 与 Mesen2 `MMC3_187.h:24-87`；本项目用 MMC3 outer bank 分支表达 PRG forced 16/32KB、CHR bit8 扩展、`$8000/$8001` 门控和 `$5000-$5FFF` security read。
 - `Mmc3OuterBank::Mapper196` 与 `mapper196_remap_addr()` 对应 FCEUX/FCEUmm `mmc3.cpp`/`mmc3.c:1059-1079,1072-1090` 与 Mesen2 `MMC3_196.h:24-47`；低区写启用 PRG32 latch，高区写先重排地址线再进入普通 MMC3 helper。
