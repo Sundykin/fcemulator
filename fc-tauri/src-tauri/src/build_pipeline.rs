@@ -655,6 +655,8 @@ mod tests {
     /// 仅在 vendored ca65/ld65 存在时运行(其它平台无二进制时自动跳过)。
     #[test]
     fn end_to_end_builds_demo_template() {
+        use fc_core::{Button, ControlDeck, Region};
+
         if !resolve_tool("ca65").exists() || !resolve_tool("ld65").exists() {
             eprintln!("跳过:本平台未 vendored cc65 二进制");
             return;
@@ -676,6 +678,39 @@ mod tests {
         // source map populated from dbgfile
         assert!(!result.source_map.is_empty(), "源码映射应非空");
         assert!(result.source_map.iter().any(|l| l.addr >= 0x8000), "应有 PRG 区映射");
+
+        // The demo template should be a tiny playable game, not merely a
+        // technically valid blank ROM: it renders multiple colors and reacts to
+        // controller input. These RAM addresses match the template's ZEROPAGE
+        // declarations in project.rs.
+        let mut deck = ControlDeck::new(Region::Ntsc);
+        deck.load_rom(&bytes).unwrap();
+        for _ in 0..6 {
+            deck.run_frame();
+        }
+        let mut colors = std::collections::HashSet::new();
+        for px in deck.frame_buffer().chunks_exact(4) {
+            colors.insert([px[0], px[1], px[2]]);
+            if colors.len() >= 3 {
+                break;
+            }
+        }
+        assert!(
+            colors.len() >= 3,
+            "demo should render background plus visible player/target sprites"
+        );
+
+        let before_x = deck.read_memory(0x0000);
+        deck.set_button(0, Button::Right, true);
+        for _ in 0..8 {
+            deck.run_frame();
+        }
+        deck.set_button(0, Button::Right, false);
+        let after_x = deck.read_memory(0x0000);
+        assert!(
+            after_x > before_x,
+            "holding Right should move the demo player: before={before_x}, after={after_x}"
+        );
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
@@ -711,7 +746,7 @@ mod tests {
         }
         let tmp = std::env::temp_dir().join(format!("fc-incbin-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&tmp);
-        let manifest = project::create_from_template(&tmp, "incbin", "demo").unwrap();
+        let manifest = project::create_from_template(&tmp, "incbin", "blank").unwrap();
         let chr_bytes: Vec<u8> = (0u8..16).collect();
         std::fs::write(tmp.join("chr/tiles.chr"), &chr_bytes).unwrap();
         // point the template's CHARS segment at the chr file
@@ -726,6 +761,102 @@ mod tests {
         // CHR region begins at 16 (header) + 32768 (PRG)
         let chr_off = 16 + 32768;
         assert_eq!(&nes[chr_off..chr_off + 16], &chr_bytes[..], "CHR 区应含 incbin 的字节");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn playable_template_links_generated_chr_resource() {
+        if !resolve_tool("ca65").exists() || !resolve_tool("ld65").exists() {
+            eprintln!("跳过:本平台未 vendored cc65 二进制");
+            return;
+        }
+        let tmp = std::env::temp_dir().join(format!("fc-resource-template-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        let manifest = project::create_from_template(&tmp, "resource-template", "demo").unwrap();
+        assert_eq!(manifest.chr, vec!["chr/sprites.chr"]);
+        assert_eq!(manifest.maps, vec!["map/room.bin"]);
+        let chr = std::fs::read(tmp.join("chr/sprites.chr")).unwrap();
+        let result = run_build(&tmp, &manifest, Arc::new(AtomicBool::new(false)));
+        assert!(result.success, "资源化模板应构建成功,日志:\n{}", result.log);
+        let nes = std::fs::read(tmp.join(result.output.unwrap())).unwrap();
+        let chr_off = 16 + 32768;
+        assert_eq!(&nes[chr_off..chr_off + chr.len()], &chr[..], "ROM CHR 区应来自模板 CHR 资源文件");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn playable_template_loads_map_tiles_in_nametable_order() {
+        use fc_core::{ControlDeck, Region};
+
+        if !resolve_tool("ca65").exists() || !resolve_tool("ld65").exists() {
+            eprintln!("跳过:本平台未 vendored cc65 二进制");
+            return;
+        }
+        let tmp = std::env::temp_dir().join(format!("fc-map-template-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        let manifest = project::create_from_template(&tmp, "map-template", "demo").unwrap();
+        let map_path = tmp.join("map/room.bin");
+        let mut map = std::fs::read(&map_path).unwrap();
+        map[4] = 10;
+        map[5] = 9;
+        map[4 + 240] = 5;
+        map[4 + 241] = 6;
+        std::fs::write(&map_path, &map).unwrap();
+
+        let result = run_build(&tmp, &manifest, Arc::new(AtomicBool::new(false)));
+        assert!(result.success, "地图资源化模板应构建成功,日志:\n{}", result.log);
+        let bytes = std::fs::read(tmp.join(result.output.unwrap())).unwrap();
+        let mut deck = ControlDeck::new(Region::Ntsc);
+        deck.load_rom(&bytes).unwrap();
+        for _ in 0..6 {
+            deck.run_frame();
+        }
+        assert_eq!(deck.read_ppu_memory(0x2000), 10);
+        assert_eq!(deck.read_ppu_memory(0x2001), 9);
+        assert_eq!(deck.read_ppu_memory(0x20f0), 5);
+        assert_eq!(deck.read_ppu_memory(0x20f1), 6);
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn playable_template_collision_layer_blocks_player() {
+        use fc_core::{Button, ControlDeck, Region};
+
+        if !resolve_tool("ca65").exists() || !resolve_tool("ld65").exists() {
+            eprintln!("跳过:本平台未 vendored cc65 二进制");
+            return;
+        }
+        let tmp = std::env::temp_dir().join(format!("fc-collision-template-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        let manifest = project::create_from_template(&tmp, "collision-template", "demo").unwrap();
+        let map_path = tmp.join("map/room.bin");
+        let mut map = std::fs::read(&map_path).unwrap();
+        // Player starts at x=$78,y=$B0. The first right step tests the sprite's
+        // right edge against tile (17,22), so marking it blocked should prevent
+        // any rightward movement.
+        let collision_offset = 4 + 32 * 30 + 16 * 15 + 22 * 32 + 17;
+        map[collision_offset] = 1;
+        std::fs::write(&map_path, &map).unwrap();
+
+        let result = run_build(&tmp, &manifest, Arc::new(AtomicBool::new(false)));
+        assert!(result.success, "碰撞资源化模板应构建成功,日志:\n{}", result.log);
+        let bytes = std::fs::read(tmp.join(result.output.unwrap())).unwrap();
+        let mut deck = ControlDeck::new(Region::Ntsc);
+        deck.load_rom(&bytes).unwrap();
+        for _ in 0..6 {
+            deck.run_frame();
+        }
+        let before_x = deck.read_memory(0x0000);
+        deck.set_button(0, Button::Right, true);
+        for _ in 0..8 {
+            deck.run_frame();
+        }
+        deck.set_button(0, Button::Right, false);
+        let after_x = deck.read_memory(0x0000);
+        assert_eq!(
+            after_x, before_x,
+            "collision at the player's right edge should block movement"
+        );
         let _ = std::fs::remove_dir_all(&tmp);
     }
 

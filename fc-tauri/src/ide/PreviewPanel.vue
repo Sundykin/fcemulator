@@ -10,16 +10,39 @@ import Icon from "../components/Icon.vue";
 const stage = ref<HTMLElement | null>(null);
 useEmuLoop(stage); // reactively creates/destroys the renderer as `stage` appears
 const store = useEmuStore();
+const focused = ref(false);
+
+function handleKey(e: KeyboardEvent) {
+  const handled = e.type === "keydown" ? store.keyDown(e.code) : store.keyUp(e.code);
+  if (!handled) return;
+  e.preventDefault();
+  e.stopPropagation();
+}
+
+function releasePreviewKeys() {
+  focused.value = false;
+  store.clearKeys();
+}
 </script>
 
 <template>
   <div class="preview-panel">
     <template v-if="store.rom">
-      <div class="stage" ref="stage"></div>
+      <div
+        class="stage"
+        :class="{ focused }"
+        ref="stage"
+        tabindex="0"
+        @focus="focused = true"
+        @blur="releasePreviewKeys"
+        @keydown="handleKey"
+        @keyup="handleKey"
+      ></div>
       <div class="bar">
         <span class="dot" :class="{ paused: store.paused }"></span>
         <span>{{ store.paused ? "已暂停" : "运行中" }} · {{ store.rom.name }}</span>
         <span class="grow"></span>
+        <span class="hint" :class="{ on: focused }">{{ focused ? "试玩中" : "预览" }}</span>
         <span>FPS {{ store.fps }}</span>
         <button class="pbtn" :title="store.paused ? '继续' : '暂停'" @click="store.togglePause()">
           <Icon :name="store.paused ? 'play' : 'pause'" :size="13" />
@@ -52,10 +75,15 @@ const store = useEmuStore();
   display: flex;
   align-items: center;
   justify-content: center;
+  outline: none;
+  border: 1px solid transparent;
 }
 .stage :deep(canvas) {
   display: block;
   box-shadow: 0 6px 28px rgba(0, 0, 0, 0.6);
+}
+.stage.focused {
+  border-color: color-mix(in srgb, var(--accent) 70%, transparent);
 }
 .bar {
   display: flex;
@@ -70,6 +98,12 @@ const store = useEmuStore();
 }
 .bar .grow {
   flex: 1;
+}
+.hint {
+  color: var(--text-mute);
+}
+.hint.on {
+  color: var(--accent);
 }
 .pbtn {
   display: flex;

@@ -5,6 +5,7 @@ import type { DropdownOption } from "naive-ui";
 defineOptions({ inheritAttrs: false });
 import Icon from "../components/Icon.vue";
 import PromptDialog from "./PromptDialog.vue";
+import NewMapDialog from "./NewMapDialog.vue";
 import { useProjectStore } from "../stores/project";
 import type { FileNode } from "../ide";
 
@@ -120,6 +121,7 @@ function openMenu(e: MouseEvent, node: FileNode | null) {
 
 // ---- prompt dialog ----
 const prompt = reactive({ show: false, title: "", placeholder: "", initial: "", mode: "" as string });
+const newMap = reactive({ show: false, initial: "map/level1.bin" });
 
 function parentDir(node: FileNode | null): string {
   if (!node) return "";
@@ -139,6 +141,10 @@ async function onMenu(key: string) {
     await store.importFtm();
   } else if (key === "import-famistudio") {
     await store.importFamistudio();
+  } else if (key === "new-map") {
+    const cfg = promptLabels[key];
+    newMap.initial = defaultNameFor(key, node, cfg.initial);
+    newMap.show = true;
   } else if (key.startsWith("new-")) {
     const cfg = promptLabels[key] ?? promptLabels["new-file"];
     prompt.mode = key;
@@ -170,8 +176,6 @@ async function onPromptOk(value: string) {
       await store.createSource(value);
     } else if (prompt.mode === "new-chr") {
       await store.createChr(value);
-    } else if (prompt.mode === "new-map") {
-      await store.createMap(value);
     } else if (prompt.mode === "new-song") {
       await store.createSong(value);
     } else if (prompt.mode === "new-file" || prompt.mode === "new-dir") {
@@ -276,6 +280,11 @@ function canEditNode(node: FileNode): boolean {
       :initial="prompt.initial"
       @ok="onPromptOk"
       @cancel="prompt.show = false"
+    />
+    <NewMapDialog
+      :show="newMap.show"
+      :initial-path="newMap.initial"
+      @close="newMap.show = false"
     />
   </div>
 </template>

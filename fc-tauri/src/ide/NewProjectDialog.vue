@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { NModal, NInput, NButton } from "naive-ui";
 import Icon from "../components/Icon.vue";
 import { pickProjectDir, type TemplateId } from "../ide";
@@ -11,32 +11,83 @@ const store = useProjectStore();
 
 const name = ref("my-game");
 const dir = ref("");
+const openDir = ref("");
 const template = ref<TemplateId>("demo");
 const busy = ref(false);
 const error = ref("");
+const lastParent = ref(localStorage.getItem("fc:lastProjectParent") || "");
+
+const rootPreview = computed(() => {
+  const parent = normalizeDir(dir.value);
+  const project = safeProjectName(name.value);
+  return parent && project ? joinPath(parent, project) : "";
+});
 
 const templates: { id: TemplateId; label: string; desc: string }[] = [
   { id: "blank", label: "空白", desc: "最小 NROM 骨架" },
-  { id: "horizontal", label: "横版", desc: "横版起步骨架" },
-  { id: "demo", label: "演示", desc: "可直接构建运行" },
+  { id: "horizontal", label: "横版", desc: "可玩的起步工程" },
+  { id: "demo", label: "演示", desc: "方向键追目标小游戏" },
 ];
 
 async function chooseDir() {
   const d = await pickProjectDir();
-  if (d) dir.value = d;
+  if (d) {
+    dir.value = d;
+    rememberParent(d);
+  }
+}
+
+async function chooseOpenDir() {
+  const d = await pickProjectDir();
+  if (d) openDir.value = d;
+}
+
+function normalizeDir(value: string): string {
+  return value.trim().replace(/\/+$/, "");
+}
+
+function safeProjectName(value: string): string {
+  return value.trim().replace(/^\/+|\/+$/g, "");
+}
+
+function projectNameError(value: string): string {
+  const project = safeProjectName(value);
+  if (!project) return "请填写工程名";
+  if (project.includes("/") || project.includes("\\") || project === "." || project === ".." || project.includes("..")) {
+    return "工程名不能包含路径分隔符或 ..";
+  }
+  return "";
+}
+
+function joinPath(parent: string, child: string): string {
+  return `${parent.replace(/\/+$/, "")}/${child}`;
+}
+
+function rememberParent(path: string) {
+  const normalized = normalizeDir(path);
+  if (!normalized) return;
+  lastParent.value = normalized;
+  localStorage.setItem("fc:lastProjectParent", normalized);
+}
+
+function useLastParent() {
+  if (lastParent.value) dir.value = lastParent.value;
 }
 
 async function create() {
   error.value = "";
-  if (!name.value.trim() || !dir.value) {
-    error.value = "请填写工程名并选择目录";
+  const parent = normalizeDir(dir.value);
+  const project = safeProjectName(name.value);
+  const nameError = projectNameError(name.value);
+  if (nameError || !parent) {
+    error.value = nameError || "请选择父目录";
     return;
   }
   busy.value = true;
   try {
-    // create inside <dir>/<name>
-    const root = `${dir.value}/${name.value.trim()}`;
-    await store.newProject(root, name.value.trim(), template.value);
+    const root = joinPath(parent, project);
+    await store.newProject(root, project, template.value);
+    rememberParent(parent);
     emit("close");
   } catch (e) {
     error.value = String(e);
@@ -47,11 +98,18 @@ async function create() {
 
 async function openExisting() {
   error.value = "";
-  const d = await pickProjectDir();
-  if (!d) return;
+  let d = normalizeDir(openDir.value || dir.value);
+  if (!d) {
+    const picked = await pickProjectDir();
+    if (!picked) return;
+    d = picked;
+  }
   busy.value = true;
   try {
     await store.openProject(d);
+    openDir.value = d;
+    const parent = d.includes("/") ? d.slice(0, d.lastIndexOf("/")) : "";
+    if (parent) rememberParent(parent);
     emit("close");
   } catch (e) {
     error.value = String(e);
@@ -59,6 +117,15 @@ async function openExisting() {
     busy.value = false;
   }
 }
+
+watch(
+  () => store.root,
+  (root) => {
+    if (!root || openDir.value) return;
+    openDir.value = root;
+  },
+  { immediate: true }
+);
 </script>
 
 <template>
@@ -74,9 +141,11 @@ async function openExisting() {
       <label class="field">
         <span class="flabel">父目录</span>
         <div class="dirrow">
-          <n-input v-model:value="dir" placeholder="选择一个目录…" readonly />
+          <n-input v-model:value="dir" placeholder="/Users/you/Games" />
           <n-button size="small" @click="chooseDir">浏览</n-button>
+          <n-button v-if="lastParent" size="small" @click="useLastParent">最近</n-button>
         </div>
+        <span v-if="rootPreview" class="pathhint">将创建: {{ rootPreview }}</span>
       </label>
 
       <div class="field">
@@ -98,8 +167,16 @@ async function openExisting() {
 
       <div v-if="error" class="err">{{ error }}</div>
 
+      <div class="openbox">
+        <span class="flabel">打开已有工程</span>
+        <div class="dirrow">
+          <n-input v-model:value="openDir" placeholder="包含 project.toml 的工程目录" />
+          <n-button size="small" @click="chooseOpenDir">浏览</n-button>
+          <n-button size="small" :disabled="busy" @click="openExisting">打开</n-button>
+        </div>
+      </div>
+
       <div class="drow">
-        <n-button size="small" :disabled="busy" @click="openExisting">打开已有…</n-button>
         <div class="spacer" />
         <n-button size="small" :disabled="busy" @click="emit('close')">取消</n-button>
         <n-button size="small" type="primary" :loading="busy" @click="create">创建</n-button>
@@ -130,6 +207,15 @@ async function openExisting() {
   flex-direction: column;
   gap: 6px;
 }
+.openbox {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
 .flabel {
   font-size: 12px;
   color: var(--text-dim);
@@ -140,6 +226,14 @@ async function openExisting() {
 }
 .dirrow :deep(.n-input) {
   flex: 1;
+}
+.pathhint {
+  color: var(--text-mute);
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .tpls {
   display: flex;

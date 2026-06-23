@@ -52,26 +52,48 @@ function sourceTemplate(path: string): string {
   return `; ${path}\n\n.export ${label}_init\n.export ${label}_tick\n\n.segment "CODE"\n\n${label}_init:\n    rts\n\n${label}_tick:\n    rts\n`;
 }
 
+function replaceResourcePath(path: string, from: string, to: string): string {
+  if (path === from) return to;
+  if (path.startsWith(from + "/")) return to + path.slice(from.length);
+  return path;
+}
+
+function updateBindingPaths(bindings: Record<string, string>, from: string, to: string): Record<string, string> {
+  const updated: Record<string, string> = {};
+  for (const [mapPath, chrPath] of Object.entries(bindings)) {
+    updated[replaceResourcePath(mapPath, from, to)] = replaceResourcePath(chrPath, from, to);
+  }
+  return updated;
+}
+
 function updateManifestPath(manifest: ide.ProjectManifest, from: string, to: string) {
-  const replace = (items: string[]) => {
-    const index = items.indexOf(from);
-    if (index >= 0) items[index] = to;
-  };
-  replace(manifest.sources);
-  replace(manifest.chr);
-  replace(manifest.maps);
-  replace(manifest.music);
-  if (manifest.linker_cfg === from) manifest.linker_cfg = to;
-  if (manifest.output === from) manifest.output = to;
+  manifest.map_chr = manifest.map_chr || {};
+  const replaceList = (items: string[]) => items.map((item) => replaceResourcePath(item, from, to));
+  manifest.sources = replaceList(manifest.sources);
+  manifest.chr = replaceList(manifest.chr);
+  manifest.maps = replaceList(manifest.maps);
+  manifest.music = replaceList(manifest.music);
+  if (manifest.linker_cfg) manifest.linker_cfg = replaceResourcePath(manifest.linker_cfg, from, to);
+  manifest.output = replaceResourcePath(manifest.output, from, to);
+  manifest.map_chr = updateBindingPaths(manifest.map_chr, from, to);
 }
 
 function removeManifestPath(manifest: ide.ProjectManifest, path: string) {
+  manifest.map_chr = manifest.map_chr || {};
   const keep = (item: string) => item !== path && !item.startsWith(path + "/");
   manifest.sources = manifest.sources.filter(keep);
   manifest.chr = manifest.chr.filter(keep);
   manifest.maps = manifest.maps.filter(keep);
   manifest.music = manifest.music.filter(keep);
   if (manifest.linker_cfg && !keep(manifest.linker_cfg)) manifest.linker_cfg = null;
+  for (const [mapPath, chrPath] of Object.entries(manifest.map_chr)) {
+    if (!keep(mapPath) || !keep(chrPath)) delete manifest.map_chr[mapPath];
+  }
+}
+
+function normalizeManifest(manifest: ide.ProjectManifest): ide.ProjectManifest {
+  manifest.map_chr = manifest.map_chr || {};
+  return manifest;
 }
 
 export interface EditorTab {
@@ -109,6 +131,7 @@ export const useProjectStore = defineStore("project", {
     map: null as { path: string; data: ide.MapData } | null,
     mapSaved: "" as string,
     focusMap: 0,
+    mapChrBindings: {} as Record<string, string>,
     // active tracker song (audio-tracker)
     song: null as { path: string; data: ide.Song } | null,
     songSaved: "" as string,
@@ -127,23 +150,39 @@ export const useProjectStore = defineStore("project", {
     chrDirty: (s) => !!s.chr && JSON.stringify(s.chr.pixels) !== s.chrSaved,
     mapDirty: (s) => !!s.map && JSON.stringify(s.map.data) !== s.mapSaved,
     songDirty: (s) => !!s.song && JSON.stringify(s.song.data) !== s.songSaved,
+    chrChoices: (s) => s.manifest?.chr ?? [],
+    boundChrForActiveMap: (s) =>
+      s.map ? s.mapChrBindings[s.map.path] || s.manifest?.map_chr?.[s.map.path] || s.chr?.path || s.manifest?.chr[0] || "" : "",
   },
   actions: {
-    async newProject(dir: string, name: string, template: ide.TemplateId) {
-      this.manifest = await ide.projectNew(dir, name, template);
+    resetWorkspaceState(dir: string) {
       this.root = dir;
       this.tabs = [];
       this.activePath = "";
       this.build = null;
+      this.sourceMap = [];
+      this.lineBps = {};
+      this.halt = { path: "", line: 0, seq: this.halt.seq + 1, active: false };
+      this.lastHaltPc = -1;
+      this.chr = null;
+      this.chrSaved = "";
+      this.map = null;
+      this.mapSaved = "";
+      this.mapChrBindings = {};
+      this.song = null;
+      this.songSaved = "";
+      this.trackerPlaying = false;
+    },
+    async newProject(dir: string, name: string, template: ide.TemplateId) {
+      this.manifest = normalizeManifest(await ide.projectNew(dir, name, template));
+      this.resetWorkspaceState(dir);
       await this.refreshTree();
       this.status = `已新建工程 ${name}`;
     },
     async openProject(dir: string) {
-      this.manifest = await ide.projectOpen(dir);
-      this.root = dir;
-      this.tabs = [];
-      this.activePath = "";
-      this.build = null;
+      this.manifest = normalizeManifest(await ide.projectOpen(dir));
+      this.resetWorkspaceState(dir);
+      this.mapChrBindings = { ...(this.manifest.map_chr || {}) };
       await this.refreshTree();
       this.status = `已打开工程 ${this.manifest.name}`;
     },
@@ -153,7 +192,8 @@ export const useProjectStore = defineStore("project", {
       // keep the in-memory manifest in sync with on-disk registrations
       // (CHR/map/tracker saves & imports update project.toml on the backend)
       try {
-        this.manifest = await ide.projectGet();
+        this.manifest = normalizeManifest(await ide.projectGet());
+        this.mapChrBindings = { ...(this.manifest.map_chr || {}) };
       } catch {
         /* mid-edit invalid manifest — keep current */
       }
@@ -253,11 +293,13 @@ export const useProjectStore = defineStore("project", {
       await this.saveChr();
       this.status = `已新建 CHR ${rel}`;
     },
-    async createMap(path: string, w = 32, h = 30) {
+    async createMap(path: string, w = 32, h = 30, chrPath?: string) {
       const rel = normalizeResourcePath(path, "map", ".bin");
       await ide.projectCreateFile(rel, false);
       this.newMap(rel, w, h);
       await this.saveMap();
+      const boundChr = chrPath || this.chr?.path || this.manifest?.chr[0] || "";
+      if (boundChr) await this.bindChrToMap(boundChr, false);
       this.status = `已新建地图 ${rel}`;
     },
     async createSong(path: string) {
@@ -273,6 +315,10 @@ export const useProjectStore = defineStore("project", {
       this.onRenamed(from, to, newName);
       if (this.manifest) {
         updateManifestPath(this.manifest, from, to);
+        this.mapChrBindings = updateBindingPaths(this.mapChrBindings, from, to);
+        if (this.map) this.map.path = replaceResourcePath(this.map.path, from, to);
+        if (this.chr) this.chr.path = replaceResourcePath(this.chr.path, from, to);
+        if (this.song) this.song.path = replaceResourcePath(this.song.path, from, to);
         await ide.projectSave(this.manifest);
       }
       await this.refreshTree();
@@ -280,8 +326,25 @@ export const useProjectStore = defineStore("project", {
     async deleteEntry(relPath: string) {
       await ide.projectDeleteFile(relPath);
       this.onDeleted(relPath);
+      const keep = (item: string) => item !== relPath && !item.startsWith(relPath + "/");
+      if (this.map && !keep(this.map.path)) {
+        this.map = null;
+        this.mapSaved = "";
+      }
+      if (this.chr && !keep(this.chr.path)) {
+        this.chr = null;
+        this.chrSaved = "";
+      }
+      if (this.song && !keep(this.song.path)) {
+        this.song = null;
+        this.songSaved = "";
+        this.trackerPlaying = false;
+      }
       if (this.manifest) {
         removeManifestPath(this.manifest, relPath);
+        for (const [mapPath, chrPath] of Object.entries(this.mapChrBindings)) {
+          if (!keep(mapPath) || !keep(chrPath)) delete this.mapChrBindings[mapPath];
+        }
         await ide.projectSave(this.manifest);
       }
       await this.refreshTree();
@@ -316,6 +379,10 @@ export const useProjectStore = defineStore("project", {
       const sheet = await ide.chrRead(path);
       this.chr = { path, tiles: sheet.tiles, pixels: sheet.pixels };
       this.chrSaved = JSON.stringify(sheet.pixels);
+      if (this.map && !this.mapChrBindings[this.map.path]) {
+        this.mapChrBindings[this.map.path] = path;
+        await this.persistMapChrBinding(this.map.path, path);
+      }
       this.focusChr++;
       this.status = `CHR ${path}（${sheet.tiles} 图块）`;
     },
@@ -340,8 +407,23 @@ export const useProjectStore = defineStore("project", {
       const data = await ide.mapRead(path);
       this.map = { path, data };
       this.mapSaved = JSON.stringify(data);
+      const bound = this.mapChrBindings[path] || this.manifest?.map_chr?.[path] || this.chr?.path || this.manifest?.chr[0] || "";
+      let bindingWarning = "";
+      if (bound) {
+        try {
+          await this.bindChrToMap(bound, false);
+        } catch (e) {
+          delete this.mapChrBindings[path];
+          if (this.manifest?.map_chr?.[path]) {
+            delete this.manifest.map_chr[path];
+            await ide.projectSave(this.manifest);
+          }
+          bindingWarning = `，CHR ${bound} 无法读取`;
+          console.warn("map CHR binding failed", e);
+        }
+      }
       this.focusMap++;
-      this.status = `地图 ${path}（${data.w}×${data.h}）`;
+      this.status = `地图 ${path}（${data.w}×${data.h}${bindingWarning}）`;
     },
     newMap(path: string, w = 32, h = 30) {
       const aw = Math.ceil(w / 2), ah = Math.ceil(h / 2);
@@ -357,12 +439,61 @@ export const useProjectStore = defineStore("project", {
       this.mapSaved = "";
       this.focusMap++;
     },
+    resizeMap(w: number, h: number) {
+      if (!this.map) return;
+      const old = this.map.data;
+      const nextAw = Math.ceil(w / 2), nextAh = Math.ceil(h / 2);
+      const oldAw = Math.ceil(old.w / 2);
+      const next: ide.MapData = {
+        w,
+        h,
+        tiles: new Array(w * h).fill(0),
+        attrs: new Array(nextAw * nextAh).fill(0),
+        collision: new Array(w * h).fill(0),
+      };
+      const copyW = Math.min(old.w, w);
+      const copyH = Math.min(old.h, h);
+      for (let y = 0; y < copyH; y++) {
+        for (let x = 0; x < copyW; x++) {
+          next.tiles[y * w + x] = old.tiles[y * old.w + x] ?? 0;
+          next.collision[y * w + x] = old.collision[y * old.w + x] ?? 0;
+        }
+      }
+      const copyAw = Math.min(oldAw, nextAw);
+      const copyAh = Math.min(Math.ceil(old.h / 2), nextAh);
+      for (let y = 0; y < copyAh; y++) {
+        for (let x = 0; x < copyAw; x++) {
+          next.attrs[y * nextAw + x] = old.attrs[y * oldAw + x] ?? 0;
+        }
+      }
+      this.map.data = next;
+      this.focusMap++;
+      this.status = `地图尺寸 ${old.w}×${old.h} → ${w}×${h}`;
+    },
     async saveMap() {
       if (!this.map) return;
       await ide.mapWrite(this.map.path, this.map.data);
       this.mapSaved = JSON.stringify(this.map.data);
       await this.refreshTree();
       this.status = `已保存地图 ${this.map.path}`;
+    },
+    async persistMapChrBinding(mapPath: string, chrPath: string) {
+      if (!this.manifest) return;
+      this.manifest.map_chr = this.manifest.map_chr || {};
+      this.manifest.map_chr[mapPath] = chrPath;
+      await ide.projectSave(this.manifest);
+    },
+    async bindChrToMap(path: string, focus = true) {
+      if (!this.map || !path) return;
+      if (!this.chr || this.chr.path !== path) {
+        const sheet = await ide.chrRead(path);
+        this.chr = { path, tiles: sheet.tiles, pixels: sheet.pixels };
+        this.chrSaved = JSON.stringify(sheet.pixels);
+      }
+      this.mapChrBindings[this.map.path] = path;
+      await this.persistMapChrBinding(this.map.path, path);
+      if (focus) this.focusMap++;
+      this.status = `地图 ${this.map.path} 使用 CHR ${path}`;
     },
     // ---- converters ----
     async importPng() {

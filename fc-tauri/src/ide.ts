@@ -19,6 +19,7 @@ export interface ProjectManifest {
   maps: string[];
   linker_cfg: string | null;
   output: string;
+  map_chr: Record<string, string>;
   ines: InesHeader;
 }
 

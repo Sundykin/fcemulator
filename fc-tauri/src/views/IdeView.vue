@@ -213,6 +213,7 @@ async function doRun() {
       const abs = `${store.root}/${store.build.output}`;
       await emu.openPath(abs, true); // keepMode: stay in studio, run in the preview panel
       showPanel("preview");
+      store.status = `运行中 → ${store.build.output}`;
     } catch (e) {
       store.status = "运行失败：" + e;
     }

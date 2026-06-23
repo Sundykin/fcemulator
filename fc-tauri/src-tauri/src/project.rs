@@ -7,6 +7,7 @@
 //! 约定目录:`src/`(.s/.asm) `chr/` `music/` `map/` `build/`(产物)。
 
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Mutex;
 use tauri::State;
@@ -72,6 +73,9 @@ pub struct ProjectManifest {
     /// 输出 `.nes` 路径(相对工程根)。
     #[serde(default = "default_output")]
     pub output: String,
+    /// 地图资源 → CHR 资源的编辑器绑定,用于恢复地图编辑预览上下文。
+    #[serde(default)]
+    pub map_chr: BTreeMap<String, String>,
     /// iNES 头。
     #[serde(default)]
     pub ines: InesHeader,
@@ -106,6 +110,11 @@ impl ProjectManifest {
         }
         if self.output.trim().is_empty() {
             return Err("output: 输出路径不能为空".into());
+        }
+        for (map, chr) in &self.map_chr {
+            if map.trim().is_empty() || chr.trim().is_empty() {
+                return Err("map_chr: 地图与 CHR 绑定路径不能为空".into());
+            }
         }
         Ok(())
     }
@@ -143,6 +152,8 @@ pub struct Template {
     pub manifest: ProjectManifest,
     /// (相对路径, 内容)——除约定目录外要落盘的文件。
     pub files: Vec<(&'static str, String)>,
+    /// (相对路径, 内容)——模板附带的二进制资源。
+    pub binary_files: Vec<(&'static str, Vec<u8>)>,
 }
 
 /// 标准 NROM ld65 链接脚本(ca65 + ld65 可直接链接)。
@@ -157,6 +168,7 @@ MEMORY {
 }
 SEGMENTS {
     CODE:     load = PRG,    type = ro,  start = $8000;
+    RODATA:   load = PRG,    type = ro;
     VECTORS:  load = PRG,    type = ro,  start = $FFFA;
     CHARS:    load = CHR,    type = ro;
     ZEROPAGE: load = ZP,     type = zp;
@@ -198,6 +210,680 @@ irq:
     )
 }
 
+fn encode_chr_tile(pixels: &[u8; 64]) -> [u8; 16] {
+    let mut out = [0u8; 16];
+    for row in 0..8 {
+        let mut lo = 0u8;
+        let mut hi = 0u8;
+        for x in 0..8 {
+            let p = pixels[row * 8 + x] & 0b11;
+            lo |= (p & 1) << (7 - x);
+            hi |= ((p >> 1) & 1) << (7 - x);
+        }
+        out[row] = lo;
+        out[8 + row] = hi;
+    }
+    out
+}
+
+fn solid_tile(value: u8) -> [u8; 64] {
+    [value & 0b11; 64]
+}
+
+fn circle_tile() -> [u8; 64] {
+    let mut px = [0u8; 64];
+    for y in 0..8 {
+        for x in 0..8 {
+            let dx = x as i32 - 3;
+            let dy = y as i32 - 3;
+            px[y * 8 + x] = if dx * dx + dy * dy <= 13 { 1 } else { 0 };
+        }
+    }
+    px
+}
+
+fn diamond_tile() -> [u8; 64] {
+    let mut px = [0u8; 64];
+    for y in 0..8 {
+        for x in 0..8 {
+            let dx = (x as i32 - 3).abs();
+            let dy = (y as i32 - 3).abs();
+            px[y * 8 + x] = if dx + dy <= 4 { 2 } else { 0 };
+        }
+    }
+    px
+}
+
+fn border_tile() -> [u8; 64] {
+    let mut px = [0u8; 64];
+    for y in 0..8 {
+        for x in 0..8 {
+            px[y * 8 + x] = if x == 0 || y == 0 || x == 7 || y == 7 { 1 } else { 0 };
+        }
+    }
+    px
+}
+
+fn dot_tile() -> [u8; 64] {
+    let mut px = [0u8; 64];
+    for y in 0..8 {
+        for x in 0..8 {
+            px[y * 8 + x] = if (x + y) % 4 == 0 { 1 } else { 0 };
+        }
+    }
+    px
+}
+
+fn demo_chr_bytes() -> Vec<u8> {
+    let mut out = Vec::with_capacity(8192);
+    let mut push = |tile: [u8; 64]| out.extend_from_slice(&encode_chr_tile(&tile));
+    push(solid_tile(0)); // 0 blank
+    for _ in 0..4 {
+        push(circle_tile()); // 1-4 player sprite quadrants
+    }
+    for _ in 0..4 {
+        push(diamond_tile()); // 5-8 target sprite quadrants
+    }
+    push(border_tile()); // 9 map frame tile
+    push(dot_tile()); // 10 subtle floor/detail tile
+    out.resize(8192, 0);
+    out
+}
+
+fn demo_map_bytes() -> Vec<u8> {
+    let w = 32usize;
+    let h = 30usize;
+    let mut tiles = vec![0u8; w * h];
+    for y in 0..h {
+        for x in 0..w {
+            let idx = y * w + x;
+            tiles[idx] = if x == 0 || x == w - 1 || y == 0 || y == h - 1 {
+                9
+            } else if (x + y) % 7 == 0 {
+                10
+            } else {
+                0
+            };
+        }
+    }
+    let attrs = vec![0u8; w.div_ceil(2) * h.div_ceil(2)];
+    let collision = vec![0u8; w * h];
+    let mut out = Vec::with_capacity(4 + tiles.len() + attrs.len() + collision.len());
+    out.extend_from_slice(&(w as u16).to_le_bytes());
+    out.extend_from_slice(&(h as u16).to_le_bytes());
+    out.extend_from_slice(&tiles);
+    out.extend_from_slice(&attrs);
+    out.extend_from_slice(&collision);
+    out
+}
+
+/// A tiny playable NROM game template. It intentionally stays in one source file
+/// so the first creative-mode project is easy for an AI/user to read, modify,
+/// build, and validate.
+fn nrom_simple_game(comment: &str) -> String {
+    format!(
+        r#"; {comment}
+; Tiny NROM game template for ca65 + ld65.
+; Goal: move the blue player with the D-pad and catch the gold target.
+; iNES header is generated from project.toml by the build pipeline.
+
+.segment "ZEROPAGE"
+player_x:       .res 1
+player_y:       .res 1
+target_x:       .res 1
+target_y:       .res 1
+frame_counter:  .res 1
+pad_state:      .res 1
+nmi_ready:      .res 1
+hit_flash:      .res 1
+candidate_x:   .res 1
+candidate_y:   .res 1
+tile_x:         .res 1
+tile_y:         .res 1
+tile_index_lo:  .res 1
+tile_index_hi:  .res 1
+collision_hit:  .res 1
+
+.segment "CODE"
+
+PPUCTRL   = $2000
+PPUMASK   = $2001
+PPUSTATUS = $2002
+OAMADDR   = $2003
+PPUSCROLL = $2005
+PPUADDR   = $2006
+PPUDATA   = $2007
+OAMDMA    = $4014
+JOY1      = $4016
+
+reset:
+    sei
+    cld
+    ldx #$40
+    stx $4017
+    ldx #$ff
+    txs
+    inx
+    stx PPUCTRL
+    stx PPUMASK
+    stx $4010
+
+vblank_wait_1:
+    bit PPUSTATUS
+    bpl vblank_wait_1
+vblank_wait_2:
+    bit PPUSTATUS
+    bpl vblank_wait_2
+
+    jsr clear_ram
+    jsr clear_nametable
+    jsr load_palettes
+    jsr init_game
+    jsr write_sprites
+
+    lda #%10000000      ; enable NMI
+    sta PPUCTRL
+    lda #%00011110      ; show background + sprites, incl. left edge
+    sta PPUMASK
+
+main_loop:
+    lda nmi_ready
+    beq main_loop
+    lda #$00
+    sta nmi_ready
+    jsr read_controller
+    jsr update_game
+    jsr write_sprites
+    jmp main_loop
+
+clear_ram:
+    lda #$00
+    tax
+clear_ram_loop:
+    sta $0000,x
+    sta $0200,x
+    sta $0300,x
+    sta $0400,x
+    sta $0500,x
+    sta $0600,x
+    sta $0700,x
+    inx
+    bne clear_ram_loop
+    rts
+
+clear_nametable:
+    bit PPUSTATUS
+    lda #$20
+    sta PPUADDR
+    lda #$00
+    sta PPUADDR
+    ldx #$00
+clear_nt_page0:
+    lda map_room_tiles,x
+    sta PPUDATA
+    inx
+    cpx #$f0
+    bne clear_nt_page0
+    ldx #$00
+clear_nt_page1:
+    lda map_room_tiles+$00f0,x
+    sta PPUDATA
+    inx
+    cpx #$f0
+    bne clear_nt_page1
+    ldx #$00
+clear_nt_page2:
+    lda map_room_tiles+$01e0,x
+    sta PPUDATA
+    inx
+    cpx #$f0
+    bne clear_nt_page2
+    ldx #$00
+clear_nt_page3:
+    lda map_room_tiles+$02d0,x
+    sta PPUDATA
+    inx
+    cpx #$f0
+    bne clear_nt_page3
+    lda #$00
+    ldx #$40
+clear_attr_loop:
+    sta PPUDATA
+    dex
+    bne clear_attr_loop
+    rts
+
+load_palettes:
+    bit PPUSTATUS
+    lda #$3f
+    sta PPUADDR
+    lda #$00
+    sta PPUADDR
+    ldx #$00
+palette_loop:
+    lda palettes,x
+    sta PPUDATA
+    inx
+    cpx #$20
+    bne palette_loop
+    rts
+
+init_game:
+    lda #$78
+    sta player_x
+    lda #$b0
+    sta player_y
+    lda #$70
+    sta target_x
+    lda #$58
+    sta target_y
+    lda #$00
+    sta frame_counter
+    sta hit_flash
+
+    lda #$f0            ; hide unused sprites
+    ldx #$00
+hide_oam_loop:
+    sta $0200,x
+    inx
+    inx
+    inx
+    inx
+    bne hide_oam_loop
+    rts
+
+read_controller:
+    lda #$01
+    sta JOY1
+    lda #$00
+    sta JOY1
+
+    lda JOY1            ; A
+    lda JOY1            ; B
+    lda JOY1            ; Select
+    lda JOY1            ; Start
+
+    lda #$00
+    sta pad_state
+
+    lda JOY1            ; Up
+    and #$01
+    beq no_up
+    lda pad_state
+    ora #$10
+    sta pad_state
+no_up:
+    lda JOY1            ; Down
+    and #$01
+    beq no_down
+    lda pad_state
+    ora #$20
+    sta pad_state
+no_down:
+    lda JOY1            ; Left
+    and #$01
+    beq no_left
+    lda pad_state
+    ora #$40
+    sta pad_state
+no_left:
+    lda JOY1            ; Right
+    and #$01
+    beq no_right
+    lda pad_state
+    ora #$80
+    sta pad_state
+no_right:
+    rts
+
+update_game:
+    inc frame_counter
+
+    lda pad_state
+    and #$40
+    beq skip_move_left
+    lda player_x
+    cmp #$08
+    beq skip_move_left
+    sec
+    sbc #$02
+    sta candidate_x
+    lda player_y
+    sta candidate_y
+    jsr can_move_to
+    bne skip_move_left
+    lda candidate_x
+    sta player_x
+skip_move_left:
+    lda pad_state
+    and #$80
+    beq skip_move_right
+    lda player_x
+    cmp #$f0
+    bcs skip_move_right
+    clc
+    adc #$02
+    sta candidate_x
+    lda player_y
+    sta candidate_y
+    jsr can_move_to
+    bne skip_move_right
+    lda candidate_x
+    sta player_x
+skip_move_right:
+    lda pad_state
+    and #$10
+    beq skip_move_up
+    lda player_y
+    cmp #$20
+    beq skip_move_up
+    sec
+    sbc #$02
+    sta candidate_y
+    lda player_x
+    sta candidate_x
+    jsr can_move_to
+    bne skip_move_up
+    lda candidate_y
+    sta player_y
+skip_move_up:
+    lda pad_state
+    and #$20
+    beq skip_move_down
+    lda player_y
+    cmp #$d8
+    bcs skip_move_down
+    clc
+    adc #$02
+    sta candidate_y
+    lda player_x
+    sta candidate_x
+    jsr can_move_to
+    bne skip_move_down
+    lda candidate_y
+    sta player_y
+skip_move_down:
+
+    lda frame_counter
+    and #$03
+    bne skip_target_drift
+    inc target_x
+    lda target_x
+    cmp #$f0
+    bcc skip_target_drift
+    lda #$10
+    sta target_x
+skip_target_drift:
+
+    lda hit_flash
+    beq check_collision
+    dec hit_flash
+check_collision:
+    jsr maybe_catch_target
+    rts
+
+can_move_to:
+    lda #$00
+    sta collision_hit
+
+    lda candidate_x
+    clc
+    adc #$04
+    sta tile_x
+    lda candidate_y
+    clc
+    adc #$04
+    sta tile_y
+    jsr test_collision_point
+
+    lda candidate_x
+    clc
+    adc #$13
+    sta tile_x
+    lda candidate_y
+    clc
+    adc #$04
+    sta tile_y
+    jsr test_collision_point
+
+    lda candidate_x
+    clc
+    adc #$04
+    sta tile_x
+    lda candidate_y
+    clc
+    adc #$13
+    sta tile_y
+    jsr test_collision_point
+
+    lda candidate_x
+    clc
+    adc #$13
+    sta tile_x
+    lda candidate_y
+    clc
+    adc #$13
+    sta tile_y
+    jsr test_collision_point
+
+    lda collision_hit
+    rts
+
+test_collision_point:
+    lda tile_x
+    lsr a
+    lsr a
+    lsr a
+    sta tile_x
+    lda tile_y
+    lsr a
+    lsr a
+    lsr a
+    sta tile_y
+
+    lda tile_y
+    and #$07
+    asl a
+    asl a
+    asl a
+    asl a
+    asl a
+    clc
+    adc tile_x
+    sta tile_index_lo
+    lda tile_y
+    lsr a
+    lsr a
+    lsr a
+    sta tile_index_hi
+
+    ldx tile_index_lo
+    lda tile_index_hi
+    beq collision_page0
+    cmp #$01
+    beq collision_page1
+    cmp #$02
+    beq collision_page2
+    lda map_room_collision+$0300,x
+    bne collision_blocked
+    rts
+collision_page0:
+    lda map_room_collision,x
+    bne collision_blocked
+    rts
+collision_page1:
+    lda map_room_collision+$0100,x
+    bne collision_blocked
+    rts
+collision_page2:
+    lda map_room_collision+$0200,x
+    bne collision_blocked
+    rts
+collision_blocked:
+    lda #$01
+    sta collision_hit
+    rts
+
+maybe_catch_target:
+    lda player_x
+    sec
+    sbc target_x
+    bcs dx_positive
+    eor #$ff
+    clc
+    adc #$01
+dx_positive:
+    cmp #$12
+    bcs no_catch
+
+    lda player_y
+    sec
+    sbc target_y
+    bcs dy_positive
+    eor #$ff
+    clc
+    adc #$01
+dy_positive:
+    cmp #$12
+    bcs no_catch
+
+    lda #$18
+    sta hit_flash
+    lda frame_counter
+    eor #$a5
+    and #$7f
+    clc
+    adc #$40
+    sta target_x
+    lda frame_counter
+    eor #$5a
+    and #$5f
+    clc
+    adc #$50
+    sta target_y
+no_catch:
+    rts
+
+write_sprites:
+    lda hit_flash
+    beq normal_player_attr
+    lda #$02
+    bne got_player_attr
+normal_player_attr:
+    lda #$00
+got_player_attr:
+    sta $0202
+    sta $0206
+    sta $020a
+    sta $020e
+
+    lda player_y
+    sta $0200
+    sta $0204
+    clc
+    adc #$08
+    sta $0208
+    sta $020c
+
+    lda player_x
+    sta $0203
+    sta $020b
+    clc
+    adc #$08
+    sta $0207
+    sta $020f
+
+    lda #$01
+    sta $0201
+    lda #$02
+    sta $0205
+    lda #$03
+    sta $0209
+    lda #$04
+    sta $020d
+
+    lda target_y
+    sta $0210
+    sta $0214
+    clc
+    adc #$08
+    sta $0218
+    sta $021c
+
+    lda target_x
+    sta $0213
+    sta $021b
+    clc
+    adc #$08
+    sta $0217
+    sta $021f
+
+    lda #$01
+    sta $0212
+    sta $0216
+    sta $021a
+    sta $021e
+
+    lda #$05
+    sta $0211
+    lda #$06
+    sta $0215
+    lda #$07
+    sta $0219
+    lda #$08
+    sta $021d
+    rts
+
+nmi:
+    pha
+    txa
+    pha
+    tya
+    pha
+
+    lda #$00
+    sta OAMADDR
+    lda #$02
+    sta OAMDMA
+    lda #$00
+    sta PPUSCROLL
+    sta PPUSCROLL
+    lda #$01
+    sta nmi_ready
+
+    pla
+    tay
+    pla
+    tax
+    pla
+    rti
+
+irq:
+    rti
+
+palettes:
+    .byte $0f,$11,$21,$30,  $0f,$06,$16,$27
+    .byte $0f,$09,$19,$29,  $0f,$0c,$1c,$2c
+    .byte $0f,$27,$16,$30,  $0f,$28,$18,$30
+    .byte $0f,$2a,$1a,$30,  $0f,$15,$25,$30
+
+.segment "VECTORS"
+    .word nmi
+    .word reset
+    .word irq
+
+.segment "RODATA"
+map_room:
+    .incbin "map/room.bin"
+map_room_tiles = map_room + 4
+map_room_collision = map_room + 4 + 960 + 240
+
+.segment "CHARS"
+    .incbin "chr/sprites.chr"
+"#
+    )
+}
+
 fn base_manifest(name: &str) -> ProjectManifest {
     ProjectManifest {
         name: name.to_string(),
@@ -207,26 +893,47 @@ fn base_manifest(name: &str) -> ProjectManifest {
         maps: vec![],
         linker_cfg: None,
         output: default_output(),
+        map_chr: BTreeMap::new(),
         ines: InesHeader::default(),
     }
 }
 
 /// 解析模板 id → 模板内容。未知 id 返回错误。
 pub fn template(id: &str, name: &str) -> Result<Template, String> {
-    let (comment, cfg_file): (&str, &str) = match id {
-        "blank" => ("空白模板", "nrom.cfg"),
-        "horizontal" => ("横版模板(NROM 起步骨架)", "nrom.cfg"),
-        "demo" => ("演示模板(NROM 起步骨架)", "nrom.cfg"),
+    let (cfg_file, source): (&str, String) = match id {
+        "blank" => ("nrom.cfg", nrom_main("空白模板")),
+        "horizontal" => (
+            "nrom.cfg",
+            nrom_simple_game("横版模板(NROM 可玩起步工程)"),
+        ),
+        "demo" => (
+            "nrom.cfg",
+            nrom_simple_game("演示模板(Catch the Dot 可玩样例)"),
+        ),
         other => return Err(format!("未知模板: {other}(可选 blank/horizontal/demo)")),
     };
     let mut manifest = base_manifest(name);
     manifest.linker_cfg = Some(cfg_file.to_string());
+    let resource_backed = matches!(id, "horizontal" | "demo");
+    if resource_backed {
+        manifest.chr.push("chr/sprites.chr".into());
+        manifest.maps.push("map/room.bin".into());
+        manifest.map_chr.insert("map/room.bin".into(), "chr/sprites.chr".into());
+    }
     Ok(Template {
         manifest,
         files: vec![
-            ("src/main.s", nrom_main(comment)),
+            ("src/main.s", source),
             ("nrom.cfg", nrom_cfg()),
         ],
+        binary_files: if resource_backed {
+            vec![
+                ("chr/sprites.chr", demo_chr_bytes()),
+                ("map/room.bin", demo_map_bytes()),
+            ]
+        } else {
+            vec![]
+        },
     })
 }
 
@@ -246,6 +953,13 @@ pub fn create_from_template(root: &Path, name: &str, template_id: &str) -> Resul
             std::fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {e}"))?;
         }
         std::fs::write(&dst, content).map_err(|e| format!("写入 {rel} 失败: {e}"))?;
+    }
+    for (rel, bytes) in &tpl.binary_files {
+        let dst = root.join(rel);
+        if let Some(parent) = dst.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {e}"))?;
+        }
+        std::fs::write(&dst, bytes).map_err(|e| format!("写入 {rel} 失败: {e}"))?;
     }
     save_manifest(root, &tpl.manifest)?;
     Ok(tpl.manifest)
@@ -502,12 +1216,50 @@ mod tests {
 
     #[test]
     fn manifest_roundtrip_is_stable() {
-        let m = base_manifest("demo");
+        let mut m = base_manifest("demo");
+        m.map_chr.insert("map/room.bin".into(), "chr/tiles.chr".into());
         let text = toml::to_string_pretty(&m).unwrap();
         let back: ProjectManifest = toml::from_str(&text).unwrap();
         assert_eq!(m.name, back.name);
         assert_eq!(m.ines.mapper, back.ines.mapper);
         assert_eq!(m.output, back.output);
+        assert_eq!(m.map_chr, back.map_chr);
+    }
+
+    #[test]
+    fn manifest_without_map_chr_defaults_to_empty_binding_table() {
+        let text = r#"
+name = "legacy"
+sources = ["src/main.s"]
+output = "build/game.nes"
+
+[ines]
+mapper = 0
+prg_banks = 2
+chr_banks = 1
+mirroring = "vertical"
+battery = false
+"#;
+        let back: ProjectManifest = toml::from_str(text).unwrap();
+        assert!(back.map_chr.is_empty());
+        back.validate().unwrap();
+    }
+
+    #[test]
+    fn playable_templates_create_editable_resources() {
+        let tmp = std::env::temp_dir().join(format!("fc-playable-res-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        let manifest = create_from_template(&tmp, "playable", "demo").unwrap();
+        assert_eq!(manifest.chr, vec!["chr/sprites.chr"]);
+        assert_eq!(manifest.maps, vec!["map/room.bin"]);
+        assert_eq!(manifest.map_chr.get("map/room.bin").map(String::as_str), Some("chr/sprites.chr"));
+        let chr = std::fs::read(tmp.join("chr/sprites.chr")).unwrap();
+        let map = std::fs::read(tmp.join("map/room.bin")).unwrap();
+        assert_eq!(chr.len(), 8192);
+        assert_eq!(&map[0..4], &[32, 0, 30, 0]);
+        assert_eq!(map[4], 9, "top-left map tile should use the editable border tile");
+        assert!(std::fs::read_to_string(tmp.join("src/main.s")).unwrap().contains(".incbin \"chr/sprites.chr\""));
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 
     #[test]
@@ -517,6 +1269,9 @@ mod tests {
         assert!(m.validate().is_err());
         m.ines.mapper = 0;
         m.ines.mirroring = "diagonal".into();
+        assert!(m.validate().is_err());
+        m.ines.mirroring = "vertical".into();
+        m.map_chr.insert("map/a.bin".into(), "".into());
         assert!(m.validate().is_err());
     }
 
