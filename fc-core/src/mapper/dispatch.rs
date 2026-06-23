@@ -62,6 +62,7 @@ macro_rules! dispatch {
             Mapper::Mapper117($m) => $body,
             Mapper::Mapper120($m) => $body,
             Mapper::Mapper122($m) => $body,
+            Mapper::TxcMapper($m) => $body,
             Mapper::Sachen133($m) => $body,
             Mapper::SachenSa0161m($m) => $body,
             Mapper::Sachen149($m) => $body,
@@ -188,11 +189,17 @@ impl MapperOps for Mapper {
     fn read_expansion(&mut self, addr: u16) -> Option<u8> {
         dispatch!(self, m => m.read_expansion(addr))
     }
+    fn read_expansion_with_open_bus(&mut self, addr: u16, open_bus: u8) -> Option<u8> {
+        dispatch!(self, m => m.read_expansion_with_open_bus(addr, open_bus))
+    }
     fn expansion_prg_index(&self, addr: u16) -> Option<usize> {
         dispatch!(self, m => m.expansion_prg_index(addr))
     }
     fn peek_expansion(&self, addr: u16) -> Option<u8> {
         dispatch!(self, m => m.peek_expansion(addr))
+    }
+    fn peek_expansion_with_open_bus(&self, addr: u16, open_bus: u8) -> Option<u8> {
+        dispatch!(self, m => m.peek_expansion_with_open_bus(addr, open_bus))
     }
     fn write_expansion(&mut self, addr: u16, value: u8) {
         dispatch!(self, m => m.write_expansion(addr, value))

@@ -427,6 +427,13 @@
 - `Mapper104::write_register()` / `prg_index()` 对应 FCEUmm `104.c:35-69,77-91`；`setprg8r(0x10,0x6000,0)` 由本项目 Cartridge 的普通低区 PRG-RAM fallback 提供，mapper 内只保存两个 PRG16 register 并固定 vertical mirroring。
 - `Mapper175::read_register()` 对应 FCEUX/FCEUmm `175.cpp`/`175.c:54-59`；本项目用高区 read side-effect hook 在读 `$FFFC` 时提交 `committed_prg`，peek 路径保持无副作用。
 - `Mapper177::write_register()` / `prg_index()` 对应 FCEUX/FCEUmm `177.cpp`/`177.c:34-53`；参考中的 `$6000-$7FFF` WRAM mapping 继续由 Cartridge 默认低区 PRG-RAM fallback 提供。
+- `MapperOps::read_expansion_with_open_bus()` / `peek_expansion_with_open_bus()` 是为 TXC/Sachen 低寄存器读增加的 open-bus aware 钩子；默认仍回落到旧 `read_expansion()` / `peek_expansion()`，现有 mapper 行为不变。
+- `TxcChip` 对应 FCEUmm `src/boards/txcchip.c:58-146` 与 Mesen2 `Core/NES/Mappers/Txc/TxcChip.h:6-96`；本项目保留 accumulator/inverter/staging/output/increase/Y/invert/mask，并按参考实现的 `$4100-$4103` 低寄存器和高区 output commit 语义更新。
+- `TxcMapper::Mapper132` 对应 FCEUmm `src/boards/txcchip.c:200-229` 与 Mesen2 `Core/NES/Mappers/Txc/Txc22211A.h:6-54`；PRG32 使用 `(output >> 2) & 1`，CHR8 使用 `output & 3`，`$4100` 读返回 `(open_bus & 0xF0) | txc_read_low4`。
+- `TxcMapper::Mapper173` 对应 FCEUmm `src/boards/txcchip.c:231-244` 与 Mesen2 `Core/NES/Mappers/Txc/Txc22211C.h:5-20`；PRG32 固定 0，CHR-ROM 大于 8KB 时按 `output bit0 + Y + output bit1` 组合 CHR8，小 CHR dump 先固定 CHR8 0。
+- `TxcMapper::Mapper136` 对应 FCEUmm `src/boards/txcchip.c:248-276` 与 Mesen2 `Core/NES/Mappers/Sachen/Sachen_136.h:8-58`；本项目采用 Mesen2 的 Sachen_136 PRG32 固定 0、CHR8=`output`，读值保留 open-bus bit6-7。
+- `TxcMapper::Mapper147` 对应 FCEUmm `src/boards/txcchip.c:278-308` 与 Mesen2 `Core/NES/Mappers/Sachen/Sachen_147.h:8-61`；写值使用 `((value & 0xFC) >> 2) | ((value & 0x03) << 6)`，读值反向展开，PRG/CHR 分别取 `output` 的 board-specific bit fields。
+- `TxcMapper::Mapper172` 对应 FCEUmm `src/boards/txcchip.c:310-344` 与 Mesen2 `Core/NES/Mappers/Txc/Txc22211B.h:6-62`；写读值使用 6-bit reverse permutation，CHR8=`output`，mirroring 由 TXC invert flag 选择 vertical/horizontal。
 - `TaitoTc0190::new_48()` / `hblank_clock()` 对应 FCEUX/FCEUmm `33.cpp`/`33.c:66-97,110-115`；普通 TC0190 bank writes 复用同文件 `52-63`。
 - `Rambo1::new_158()` / `set_mapper158_nametable()` / mapper-owned nametable read/write 对应 FCEUmm `tengen.c:198-220` 与 Mesen2 `Rambo1_158.h:5-37`；RAMBO-1 基础 PRG/CHR/IRQ 仍对应 Mesen2 `Rambo1.h:96-177`。
 - `Mapper29::write_register()` / `prg_index()` / `chr_index()` 对应 FCEUX `datalatch.cpp:248-256`、FCEUmm `datalatch.c:186-194` 与 Mesen2 `SealieComputing.h:8-31`；当前第一版按 FCEUX/Mesen2 的高区 register 窗口实现，并在 iNES CHR-RAM 默认容量中补 32KB。
@@ -441,6 +448,7 @@
 - 同批替换 `fc-core/src/mapper/basic/latch/discrete.rs` 里 Mapper 29 / 36 / 72 / 79 / 92 / 122 的新增段、`fc-core/src/mapper/basic/latch/sachen.rs` 的新增段、`fc-core/src/mapper/basic/core.rs` 里 ColorDreams/Mapper144 的扩展段、`fc-core/src/mapper/basic/taito.rs` 里 Mapper 80 / 207 / 82 的新增段，以及 `fc-core/src/mapper/basic/multicart.rs` 里 Mapper 51 / 59 / 63 / 201 / 217 / 221 / 228 / 255 的新增段。
 - 同批替换 `fc-core/src/mapper/basic/latch/sunsoft.rs` 里 Mapper 68 的新增段，并同步检查 `MapperOps::nametable_chr_index` 与 `Cartridge::mapper_has_nametable_chr_mapping` 是否仍有其他使用者。
 - 同批替换 `fc-core/src/mapper/basic/core.rs` 里 Mapper 232 的新增段。
+- 同批替换 `fc-core/src/mapper/basic/txc.rs` 里 TXC chip/helper 与 Mapper132/136/147/172/173 新增段，并同步检查 `MapperOps::read_expansion_with_open_bus` / `peek_expansion_with_open_bus` 是否仍有使用者。
 - 同批替换 `fc-core/src/mapper/basic/discrete.rs` 里 Mapper 185 / 188 / 193 的新增段，以及 `fc-core/src/mapper/mmc3.rs` 里 Mapper187 / Mapper189 / Mapper191 / Mapper196 / Mapper197 / Mapper198 / Mapper208 / Mapper245 / Mapper254 的 `Mmc3OuterBank` / `Mmc3ChrLayout` 分支、构造、低区写、扩展区读写、低区读、reset 和测试段。
 - 同批替换 `fc-core/src/mapper/basic/konami.rs` 的 VRC1 段、`fc-core/src/mapper/basic/jy.rs` 的 Mapper35/91 段、`fc-core/src/mapper/basic/sl12.rs` 的 Mapper116 段、`fc-core/src/mapper/basic/waixing.rs` 的 Mapper253 段、`fc-core/src/mapper/vrc4.rs` 的 VRC2/VRC4 段、`fc-core/src/mapper/rambo1.rs` 的 Mapper64/158 段，`fc-core/src/mapper/basic/taito.rs` 的 Mapper48 段，以及 `fc-core/src/mapper/mmc3.rs` 的 Mapper37/44/45/47/52/76/119 变体段。
 - 再处理 `fc-core/src/mapper.rs` 里 Mapper 43/60/75/76/83/91/106/183/212/222/235 的导出、枚举、构造和 dispatch 分支。

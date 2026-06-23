@@ -126,6 +126,11 @@ pub trait MapperOps {
     fn read_expansion(&mut self, _addr: u16) -> Option<u8> {
         None
     }
+    /// Expansion-area read with the current CPU open-bus value. Boards with
+    /// partially-driven register data can combine their bits with open bus.
+    fn read_expansion_with_open_bus(&mut self, addr: u16, _open_bus: u8) -> Option<u8> {
+        self.read_expansion(addr)
+    }
     /// Optional PRG-ROM mapping inside `$4018..=$5FFF`.
     fn expansion_prg_index(&self, _addr: u16) -> Option<usize> {
         None
@@ -134,6 +139,10 @@ pub trait MapperOps {
     /// effects for debuggers/disassemblers.
     fn peek_expansion(&self, _addr: u16) -> Option<u8> {
         None
+    }
+    /// Side-effect-free expansion-area peek with the current CPU open-bus value.
+    fn peek_expansion_with_open_bus(&self, addr: u16, _open_bus: u8) -> Option<u8> {
+        self.peek_expansion(addr)
     }
     /// Optional mapper-owned expansion-area write (`$4018..=$5FFF`).
     fn write_expansion(&mut self, _addr: u16, _value: u8) {}
@@ -239,7 +248,8 @@ pub use basic::{
     Mapper81, Mapper83, Mapper91, Mapper92, Mapper96, Namco108Mapper154, Namco108Mapper206,
     Namco108Mapper95, Namco118, Nina01, Nina03_06, Nrom, Ntdec112, Sachen133, Sachen149,
     SachenSa0161m, Subor166, SuborVariant, Sunsoft184, Sunsoft4, Sunsoft89, TaitoTc0190,
-    TaitoX1005, TaitoX1017, UnlPci556, Unrom, UnromVariant, UnromVariantMapper, Vrc1,
+    TaitoX1005, TaitoX1017, TxcMapper, TxcVariant, UnlPci556, Unrom, UnromVariant,
+    UnromVariantMapper, Vrc1,
 };
 pub use expansion_mappers::{Fme7, Namco163, Vrc6, Vrc6Variant, Vrc7};
 pub use mmc1::Mmc1;
@@ -312,6 +322,7 @@ pub enum Mapper {
     Mapper117(Mapper117),
     Mapper120(Mapper120),
     Mapper122(Mapper122),
+    TxcMapper(TxcMapper),
     Sachen133(Sachen133),
     SachenSa0161m(SachenSa0161m),
     Sachen149(Sachen149),

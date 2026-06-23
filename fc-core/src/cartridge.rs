@@ -406,14 +406,14 @@ impl Cartridge {
 
     fn cpu_read_expansion_with_open_bus(&mut self, addr: u16, open_bus: u8) -> u8 {
         self.mapper
-            .read_expansion(addr)
+            .read_expansion_with_open_bus(addr, open_bus)
             .or_else(|| self.expansion_prg_rom_value(addr))
             .unwrap_or(open_bus)
     }
 
     fn cpu_peek_expansion_with_open_bus(&self, addr: u16, open_bus: u8) -> u8 {
         self.mapper
-            .peek_expansion(addr)
+            .peek_expansion_with_open_bus(addr, open_bus)
             .or_else(|| self.expansion_prg_rom_value(addr))
             .unwrap_or(open_bus)
     }

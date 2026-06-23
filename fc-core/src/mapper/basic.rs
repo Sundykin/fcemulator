@@ -20,6 +20,7 @@ mod sl12;
 mod special;
 mod subor;
 mod taito;
+mod txc;
 mod unlicensed;
 mod waixing;
 
@@ -52,6 +53,7 @@ pub use special::{
 };
 pub use subor::{Subor166, SuborVariant};
 pub use taito::{TaitoTc0190, TaitoX1005, TaitoX1017};
+pub use txc::{TxcMapper, TxcVariant};
 pub use unlicensed::{
     Mapper106, Mapper183, Mapper212, Mapper222, Mapper235, Mapper43, Mapper60, Mapper83,
 };
