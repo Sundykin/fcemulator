@@ -29,10 +29,10 @@
 - `fc-core/src/mapper/basic/konami.rs:1-74`
   - 新增 Mapper 75 / VRC1。
   - 覆盖 8KB PRG、4KB CHR、CHR 高位模式和 mirroring。
-- `fc-core/src/mapper/basic/bandai.rs:1-348`
-  - 新增 Mapper 16 / Bandai FCG-1/FCG-2/LZ93D50 第一版。
-  - 覆盖 16KB PRG、8 个 1KB CHR register、mirroring register、CPU-cycle IRQ、submapper 4/5 写窗口差异、FCG 直接 counter 与 LZ93D50 reload latch 差异、24C02 EEPROM bit4/open-bus 读。
-  - 当前 factory 尚未把 NES 2.0 PRG-NVRAM byte 透传给 mapper，因此 submapper 5 的“仅 header 声明 256B 时接 24C02”仍留作后续 factory 扩参精修；Mapper 153/157/159 复用同模块另行补齐。
+- `fc-core/src/mapper/basic/bandai.rs:1-515`
+  - 新增 Mapper 16 / 153 / 159 的 Bandai FCG-1/FCG-2/LZ93D50 第一版。
+  - 覆盖 16KB PRG、8 个 1KB CHR register、Mapper153 CHR low-bit PRG outer block、mirroring register、CPU-cycle IRQ、submapper 4/5 写窗口差异、FCG 直接 counter 与 LZ93D50 reload latch 差异、24C01/24C02 EEPROM bit4/open-bus 读，以及 Mapper153 `$800D` PRG-RAM gate。
+  - 当前 factory 尚未把 NES 2.0 PRG-NVRAM byte 透传给 mapper，因此 mapper16 submapper 5 的“仅 header 声明 256B 时接 24C02”仍留作后续 factory 扩参精修；Mapper157/Datach 条码外设留待核心外设输入接口后补齐。
 - `fc-core/src/mapper/basic/latch/sunsoft.rs:1-159`
   - 新增 Mapper 68 / Sunsoft-4。
   - 覆盖 16KB PRG、四个 2KB CHR、mirroring 控制，以及 nametable 到 CHR-ROM/CHR-RAM 1KB page 的映射。
@@ -93,6 +93,8 @@
   - 新增 nametable-to-CHR 映射缓存与 Cartridge 侧 CHR-ROM/CHR-RAM 解析。
 - `fc-core/src/cartridge.rs:343-450`
   - CPU 读路径新增 open-bus aware high-register read、低区 PRG-RAM/open-bus 合成读、扩展区 PRG-ROM 映射。
+- `fc-core/src/cartridge.rs:449-515`
+  - 低区默认 PRG-RAM 新增 mapper gate，用于 Mapper153 `$800D` 关闭 SRAM 读写时返回 open bus/忽略写入；默认开启，现有 mapper 行为不变。
 - `fc-core/src/bus.rs:478-479`
   - Bus 将 CPU open bus 传入 Cartridge 读路径。
 
@@ -104,11 +106,12 @@
 | 21 | `vrc4.rs:1-329` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Konami/VRC2_4.h` | 37-48, 223-233 | mapper 21 variant detection 与 submapper 0 OR heuristics cross-check |
 | 12 | `mmc3.rs:19-21,134-139,646-651,710-718,1110-1152,1258-1265,1330-1350; mapper.rs:379-382,821-824,981-984,1138-1141` | `/Users/sunmeng/workspace/fc/fceux/src/boards/mmc3.cpp` | 377-413 | Mapper 12 MMC3 clone：expansion reg0/reg1 控制 pattern table 两半 CHR bit8，reg2 语言读回，reset toggle 并重置 MMC3 寄存器 |
 | 12 | `mmc3.rs:19-21,134-139,646-651,710-718,1110-1152,1258-1265,1330-1350; mapper.rs:379-382,821-824,981-984,1138-1141` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/mmc3.c` | 367-407 | FCEUmm mapper 12 cross-check；submapper 1 转 FFE_Init 记录为后续精修，不混入标准 mapper 12 |
-| 16 | `basic/bandai.rs:1-348; factory.rs:32; tests.rs:938-1001` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Bandai/BandaiFcg.h` | 12-92,127-239 | Mapper 16/153/157/159 共用 Bandai FCG/LZ93D50：PRG/CHR/mirroring、CPU-cycle IRQ、submapper 4/5 register window 与 IRQ counter/reload 差异、低区 read/open-bus 语义 |
-| 16 | `basic/bandai.rs:14-170,247-258,296-311` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Bandai/BaseEeprom24C0X.h` | 8-69 | 24C0X mode/state、SCL/SDA line helper 和 output bit 语义 |
-| 16 | `basic/bandai.rs:14-170,247-258,296-311` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Bandai/Eeprom24C02.h` | 9-144 | 24C02 START/STOP、chip-address compare、ACK、read/write byte 和 address auto-increment |
-| 16 | `basic/bandai.rs:214-258,262-323` | `/Users/sunmeng/workspace/fc/fceux/src/boards/bandai.cpp` | 244-310,316-329 | FCEUX mapper16 cross-check；register decode、mirroring、IRQ hook、read bit4/open-bus 和 24C02-backed init |
-| 16 | `basic/bandai.rs:214-258,262-323` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/bandai.c` | 257-348 | FCEUmm mapper16 cross-check；同源 Bandai register/IRQ/read/init 行为 |
+| 16/153/159 | `basic/bandai.rs:1-515; factory.rs:32,150,154; tests.rs:945-1059` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Bandai/BandaiFcg.h` | 12-92,127-239 | Mapper 16/153/157/159 共用 Bandai FCG/LZ93D50：PRG/CHR/mirroring、CPU-cycle IRQ、submapper 4/5 register window 与 IRQ counter/reload 差异、Mapper153 PRG outer/SRAM gate、Mapper159 24C01、低区 read/open-bus 语义 |
+| 16/159 | `basic/bandai.rs:14-276,400-415,463-478` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Bandai/BaseEeprom24C0X.h` | 8-69 | 24C0X mode/state、SCL/SDA line helper 和 output bit 语义 |
+| 16 | `basic/bandai.rs:25-205,400-415,463-478` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Bandai/Eeprom24C02.h` | 9-144 | 24C02 START/STOP、chip-address compare、ACK、read/write byte 和 address auto-increment |
+| 159 | `basic/bandai.rs:25-119,207-276,400-415,463-478` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Bandai/Eeprom24C01.h` | 9-127 | 24C01 LSB-first address/data/read、128-byte wrap、ACK/idle transitions |
+| 16/153/159 | `basic/bandai.rs:317-515` | `/Users/sunmeng/workspace/fc/fceux/src/boards/bandai.cpp` | 244-310,316-386 | FCEUX Bandai cross-check；mapper16/159 init、mapper153 SRAM power/register window、register decode、mirroring、IRQ hook、read bit4/open-bus |
+| 16/153/159 | `basic/bandai.rs:317-515` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/bandai.c` | 257-409 | FCEUmm Bandai cross-check；同源 mapper16/153/159 register/IRQ/read/init 行为 |
 | 22 | `vrc4.rs:1-329` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/21_22_23_25.c` | 42-48 | VRC2a 地址线和 CHR bank 右移 |
 | 22 | `vrc4.rs:1-329` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Konami/VRC2_4.h` | 51, 121-130, 251-256 | VRC2a 变体识别、CHR 低位忽略、地址翻译 |
 | 23 | `vrc4.rs:1-329` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/21_22_23_25.c` | 51-58 | VRC4f/VRC4e/VRC2b submapper 地址线映射 |
@@ -364,8 +367,8 @@
 - `Mapper43::write_any_register()` 对应 Mesen2 `Mapper43.h:69-82` 与 FCEUX `43.cpp:51-58`。
 - `Mapper43::expansion_prg_index()` / `low_prg_index()` 对应 Mesen2 `Mapper43.h:29-33,62-67` 与 FCEUX `43.cpp:38-48`。
 - `Mapper36::write_register()` / `$4100` 读回对应 FCEUX `36.cpp:35-53`。
-- `BandaiFcg::write_register_inner()` / `cpu_clock()` 对应 Mesen2 `BandaiFcg.h:127-239` 与 FCEUX/FCEUmm `bandai.cpp`/`bandai.c:268-297`；submapper 4 采用 FCG-1/2 直接写 IRQ counter 且只开放低区写，submapper 5 采用 LZ93D50 reload latch 且只开放高区写。
-- `Eeprom24C02::write()` / `BandaiFcg::read_low_register_with_open_bus()` 对应 Mesen2 `Eeprom24C02.h:42-144`、`BaseEeprom24C0X.h:55-68` 和 `BandaiFcg.h:142-156`；读值只驱动 bit4，其余位保留 CPU open bus。
+- `BandaiFcg::write_register_inner()` / `cpu_clock()` 对应 Mesen2 `BandaiFcg.h:127-239` 与 FCEUX/FCEUmm `bandai.cpp`/`bandai.c:268-297`；submapper 4 采用 FCG-1/2 直接写 IRQ counter 且只开放低区写，submapper 5 采用 LZ93D50 reload latch 且只开放高区写；Mapper153 `$800D` 通过 `MapperOps::low_prg_ram_read_enabled()` / `low_prg_ram_write_enabled()` gate 到 Cartridge 默认低区 SRAM。
+- `Eeprom24C0x::write()` / `BandaiFcg::read_low_register_with_open_bus()` 对应 Mesen2 `Eeprom24C01.h:42-127`、`Eeprom24C02.h:42-144`、`BaseEeprom24C0X.h:55-68` 和 `BandaiFcg.h:142-156`；读值只驱动 bit4，其余位保留 CPU open bus；无 EEPROM 的 Mapper153 低区读回落到 Cartridge PRG-RAM。
 - `MapperOps::read_low_register_with_open_bus()` / `peek_low_register_with_open_bus()` 是为 Bandai 这类低区串行设备读增加的 open-bus aware 钩子；默认仍回落到 `read_low_register_with_prg_ram()` / `peek_low_register_with_prg_ram()`，现有 mapper 行为不变。
 - `Mapper35::write_register()` / `notify_a12()` 对应 Mesen2 `Mapper35.h:28-63`，并复用本项目 `A12EdgeFilter` 表达 MMC3-style A12 rising edge IRQ；FCEUmm `jyasic.c:455-488` 用于确认 mapper 35 属于 JYASIC single-cart 且 iNES mapper 35 默认有 8KB WRAM。
 - `Mapper72::write_register()` / `write_low_register()` 对应 FCEUX `72.cpp:36-53` 与 FCEUmm `72.c:41-53`。
@@ -462,7 +465,7 @@
 - 同批替换 `fc-core/src/mapper/basic/latch/discrete.rs` 里 Mapper 29 / 36 / 72 / 79 / 92 / 122 的新增段、`fc-core/src/mapper/basic/latch/sachen.rs` 的新增段、`fc-core/src/mapper/basic/core.rs` 里 ColorDreams/Mapper144 的扩展段、`fc-core/src/mapper/basic/taito.rs` 里 Mapper 80 / 207 / 82 的新增段，以及 `fc-core/src/mapper/basic/multicart.rs` 里 Mapper 51 / 59 / 63 / 201 / 217 / 221 / 228 / 255 的新增段。
 - 同批替换 `fc-core/src/mapper/basic/latch/sunsoft.rs` 里 Mapper 68 的新增段，并同步检查 `MapperOps::nametable_chr_index` 与 `Cartridge::mapper_has_nametable_chr_mapping` 是否仍有其他使用者。
 - 同批替换 `fc-core/src/mapper/basic/core.rs` 里 Mapper 232 的新增段。
-- 同批替换 `fc-core/src/mapper/basic/bandai.rs` 里 Mapper16 / Bandai FCG / 24C02 EEPROM 新增段，并同步检查 `MapperOps::read_low_register_with_open_bus` / `peek_low_register_with_open_bus` 是否仍有使用者。
+- 同批替换 `fc-core/src/mapper/basic/bandai.rs` 里 Mapper16 / 153 / 159、Bandai FCG、24C01/24C02 EEPROM 新增段，并同步检查 `MapperOps::read_low_register_with_open_bus` / `peek_low_register_with_open_bus` / `low_prg_ram_read_enabled` / `low_prg_ram_write_enabled` 是否仍有使用者。
 - 同批替换 `fc-core/src/mapper/basic/txc.rs` 里 TXC chip/helper 与 Mapper132/136/147/172/173 新增段，并同步检查 `MapperOps::read_expansion_with_open_bus` / `peek_expansion_with_open_bus` 是否仍有使用者。
 - 同批替换 `fc-core/src/mapper/basic/discrete.rs` 里 Mapper 185 / 188 / 193 / 218 的新增段，以及 `fc-core/src/mapper/mmc3.rs` 里 Mapper187 / Mapper189 / Mapper191 / Mapper196 / Mapper197 / Mapper198 / Mapper208 / Mapper245 / Mapper254 的 `Mmc3OuterBank` / `Mmc3ChrLayout` 分支、构造、低区写、扩展区读写、低区读、reset 和测试段。
 - 同批替换 `fc-core/src/mapper/basic/irq.rs` 里 FFE Mapper6/17 新增段。

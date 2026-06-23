@@ -1,4 +1,4 @@
-use crate::mapper::{ChrAccess, MapperOps};
+use crate::mapper::MapperOps;
 use crate::types::Mirroring;
 use serde::{Deserialize, Serialize};
 
@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 // References:
 // - FCEUX/FCEUmm `src/boards/bandai.cpp` / `bandai.c`
 // - Mesen2 `Core/NES/Mappers/Bandai/BandaiFcg.h`
-// - Mesen2 `Core/NES/Mappers/Bandai/BaseEeprom24C0X.h`, `Eeprom24C02.h`
+// - Mesen2 `Core/NES/Mappers/Bandai/BaseEeprom24C0X.h`, `Eeprom24C01.h`, `Eeprom24C02.h`
 // ============================================================================
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -22,8 +22,15 @@ enum EepromMode {
     ChipAddress,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+enum EepromKind {
+    X24C01,
+    X24C02,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct Eeprom24C02 {
+struct Eeprom24C0x {
+    kind: EepromKind,
     mode: EepromMode,
     next_mode: EepromMode,
     chip_address: u8,
@@ -36,9 +43,14 @@ struct Eeprom24C02 {
     rom_data: Vec<u8>,
 }
 
-impl Eeprom24C02 {
-    fn new() -> Self {
+impl Eeprom24C0x {
+    fn new(kind: EepromKind) -> Self {
+        let size = match kind {
+            EepromKind::X24C01 => 128,
+            EepromKind::X24C02 => 256,
+        };
         Self {
+            kind,
             mode: EepromMode::Idle,
             next_mode: EepromMode::Idle,
             chip_address: 0,
@@ -48,7 +60,7 @@ impl Eeprom24C02 {
             output: 0,
             prev_scl: 0,
             prev_sda: 0,
-            rom_data: vec![0; 256],
+            rom_data: vec![0; size],
         }
     }
 
@@ -68,7 +80,7 @@ impl Eeprom24C02 {
         self.prev_sda = 0;
     }
 
-    fn write_bit(dest: &mut u8, counter: &mut u8, value: u8) {
+    fn write_bit_msb(dest: &mut u8, counter: &mut u8, value: u8) {
         if *counter < 8 {
             let shift = 7 - *counter;
             let mask = !(1 << shift);
@@ -77,14 +89,36 @@ impl Eeprom24C02 {
         }
     }
 
-    fn read_bit(&mut self) {
+    fn write_bit_lsb(dest: &mut u8, counter: &mut u8, value: u8) {
+        if *counter < 8 {
+            let mask = !(1 << *counter);
+            *dest = (*dest & mask) | ((value & 1) << *counter);
+            *counter += 1;
+        }
+    }
+
+    fn read_bit_msb(&mut self) {
         if self.counter < 8 {
             self.output = (self.data >> (7 - self.counter)) & 1;
             self.counter += 1;
         }
     }
 
+    fn read_bit_lsb(&mut self) {
+        if self.counter < 8 {
+            self.output = (self.data >> self.counter) & 1;
+            self.counter += 1;
+        }
+    }
+
     fn write(&mut self, scl: u8, sda: u8) {
+        match self.kind {
+            EepromKind::X24C01 => self.write_24c01(scl, sda),
+            EepromKind::X24C02 => self.write_24c02(scl, sda),
+        }
+    }
+
+    fn write_24c02(&mut self, scl: u8, sda: u8) {
         let scl = scl & 1;
         let sda = sda & 1;
         if self.prev_scl != 0 && scl != 0 && sda < self.prev_sda {
@@ -98,11 +132,13 @@ impl Eeprom24C02 {
         } else if scl > self.prev_scl {
             match self.mode {
                 EepromMode::ChipAddress => {
-                    Self::write_bit(&mut self.chip_address, &mut self.counter, sda)
+                    Self::write_bit_msb(&mut self.chip_address, &mut self.counter, sda)
                 }
-                EepromMode::Address => Self::write_bit(&mut self.address, &mut self.counter, sda),
-                EepromMode::Read => self.read_bit(),
-                EepromMode::Write => Self::write_bit(&mut self.data, &mut self.counter, sda),
+                EepromMode::Address => {
+                    Self::write_bit_msb(&mut self.address, &mut self.counter, sda)
+                }
+                EepromMode::Read => self.read_bit_msb(),
+                EepromMode::Write => Self::write_bit_msb(&mut self.data, &mut self.counter, sda),
                 EepromMode::SendAck => self.output = 0,
                 EepromMode::WaitAck => {
                     if sda == 0 {
@@ -167,6 +203,83 @@ impl Eeprom24C02 {
         self.prev_scl = scl;
         self.prev_sda = sda;
     }
+
+    fn write_24c01(&mut self, scl: u8, sda: u8) {
+        let scl = scl & 1;
+        let sda = sda & 1;
+        if self.prev_scl != 0 && scl != 0 && sda < self.prev_sda {
+            self.mode = EepromMode::Address;
+            self.address = 0;
+            self.counter = 0;
+            self.output = 1;
+        } else if self.prev_scl != 0 && scl != 0 && sda > self.prev_sda {
+            self.mode = EepromMode::Idle;
+            self.output = 1;
+        } else if scl > self.prev_scl {
+            match self.mode {
+                EepromMode::Address => {
+                    if self.counter < 7 {
+                        Self::write_bit_lsb(&mut self.address, &mut self.counter, sda);
+                    } else if self.counter == 7 {
+                        self.counter = 8;
+                        if sda != 0 {
+                            self.next_mode = EepromMode::Read;
+                            self.data = self.rom_data[(self.address & 0x7F) as usize];
+                        } else {
+                            self.next_mode = EepromMode::Write;
+                        }
+                    }
+                }
+                EepromMode::SendAck => self.output = 0,
+                EepromMode::Read => self.read_bit_lsb(),
+                EepromMode::Write => Self::write_bit_lsb(&mut self.data, &mut self.counter, sda),
+                EepromMode::WaitAck => {
+                    if sda == 0 {
+                        self.next_mode = EepromMode::Idle;
+                    }
+                }
+                EepromMode::Idle | EepromMode::ChipAddress => {}
+            }
+        } else if scl < self.prev_scl {
+            match self.mode {
+                EepromMode::Address => {
+                    if self.counter == 8 {
+                        self.mode = EepromMode::SendAck;
+                        self.output = 1;
+                    }
+                }
+                EepromMode::SendAck => {
+                    self.mode = self.next_mode;
+                    self.counter = 0;
+                    self.output = 1;
+                }
+                EepromMode::Read => {
+                    if self.counter == 8 {
+                        self.mode = EepromMode::WaitAck;
+                        self.address = self.address.wrapping_add(1) & 0x7F;
+                    }
+                }
+                EepromMode::Write => {
+                    if self.counter == 8 {
+                        self.mode = EepromMode::SendAck;
+                        self.next_mode = EepromMode::Idle;
+                        self.rom_data[(self.address & 0x7F) as usize] = self.data;
+                        self.address = self.address.wrapping_add(1) & 0x7F;
+                    }
+                }
+                EepromMode::Idle | EepromMode::WaitAck | EepromMode::ChipAddress => {}
+            }
+        }
+        self.prev_scl = scl;
+        self.prev_sda = sda;
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum BandaiFcgVariant {
+    Mapper16,
+    Mapper153,
+    Mapper159,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -176,38 +289,78 @@ pub struct BandaiFcg {
     chr_regs: [u8; 8],
     prg_page: u8,
     mirroring: Mirroring,
+    variant: BandaiFcgVariant,
     low_write_enabled: bool,
     high_write_enabled: bool,
     direct_irq_counter: bool,
+    prg_ram_enabled: bool,
     irq_enabled: bool,
     irq_counter: u16,
     irq_reload: u16,
     irq_pending: bool,
-    eeprom: Option<Eeprom24C02>,
+    eeprom: Option<Eeprom24C0x>,
 }
 
 impl BandaiFcg {
     pub(in crate::mapper) fn new(prg_16k: usize, chr_8k: usize, submapper: u8) -> Self {
+        Self::with_variant(prg_16k, chr_8k, submapper, BandaiFcgVariant::Mapper16)
+    }
+
+    pub(in crate::mapper) fn new_153(prg_16k: usize, chr_8k: usize) -> Self {
+        Self::with_variant(prg_16k, chr_8k, 0, BandaiFcgVariant::Mapper153)
+    }
+
+    pub(in crate::mapper) fn new_159(prg_16k: usize, chr_8k: usize) -> Self {
+        Self::with_variant(prg_16k, chr_8k, 0, BandaiFcgVariant::Mapper159)
+    }
+
+    fn with_variant(
+        prg_16k: usize,
+        chr_8k: usize,
+        submapper: u8,
+        variant: BandaiFcgVariant,
+    ) -> Self {
         let low_write_enabled = submapper != 5;
         let high_write_enabled = submapper != 4;
+        let (low_write_enabled, high_write_enabled) = match variant {
+            BandaiFcgVariant::Mapper16 => (low_write_enabled, high_write_enabled),
+            BandaiFcgVariant::Mapper153 | BandaiFcgVariant::Mapper159 => (false, true),
+        };
+        let eeprom = match variant {
+            BandaiFcgVariant::Mapper16 if submapper != 4 => {
+                Some(Eeprom24C0x::new(EepromKind::X24C02))
+            }
+            BandaiFcgVariant::Mapper159 => Some(Eeprom24C0x::new(EepromKind::X24C01)),
+            _ => None,
+        };
         Self {
             prg_16k: prg_16k.max(1),
             chr_1k: (chr_8k * 8).max(8),
             chr_regs: [0; 8],
             prg_page: 0,
             mirroring: Mirroring::Vertical,
+            variant,
             low_write_enabled,
             high_write_enabled,
             direct_irq_counter: submapper == 4,
+            prg_ram_enabled: true,
             irq_enabled: false,
             irq_counter: 0,
             irq_reload: 0,
             irq_pending: false,
-            eeprom: if submapper == 4 {
-                None
-            } else {
-                Some(Eeprom24C02::new())
-            },
+            eeprom,
+        }
+    }
+
+    fn prg_block_select(&self) -> usize {
+        if self.variant == BandaiFcgVariant::Mapper153 || self.prg_16k >= 0x20 {
+            let mut block = 0usize;
+            for value in self.chr_regs {
+                block |= ((value as usize) & 0x01) << 4;
+            }
+            block
+        } else {
+            0
         }
     }
 
@@ -245,7 +398,9 @@ impl BandaiFcg {
                 }
             }
             0x0D => {
-                if let Some(eeprom) = &mut self.eeprom {
+                if self.variant == BandaiFcgVariant::Mapper153 {
+                    self.prg_ram_enabled = value & 0x20 != 0;
+                } else if let Some(eeprom) = &mut self.eeprom {
                     eeprom.write((value >> 5) & 1, (value >> 6) & 1);
                 }
             }
@@ -253,29 +408,30 @@ impl BandaiFcg {
         }
     }
 
-    fn eeprom_read_value(&self, open_bus: u8) -> u8 {
-        let bit = self.eeprom.as_ref().map_or(0, |e| e.read()) << 4;
-        (open_bus & 0xEF) | bit
+    fn eeprom_read_value(&self, open_bus: u8) -> Option<u8> {
+        self.eeprom
+            .as_ref()
+            .map(|e| (open_bus & 0xEF) | (e.read() << 4))
     }
 }
 
 impl MapperOps for BandaiFcg {
     fn prg_index(&self, addr: u16) -> usize {
+        let outer = self.prg_block_select();
         let bank = if addr < 0xC000 {
-            self.prg_page as usize
+            self.prg_page as usize | outer
         } else {
-            self.prg_16k - 1
+            0x0F | outer
         };
         (bank % self.prg_16k) * 0x4000 + (addr as usize & 0x3FFF)
     }
 
     fn chr_index(&self, addr: u16) -> usize {
+        if self.variant == BandaiFcgVariant::Mapper153 {
+            return (addr & 0x1FFF) as usize;
+        }
         let slot = ((addr & 0x1FFF) / 0x0400) as usize;
         (self.chr_regs[slot] as usize % self.chr_1k) * 0x0400 + (addr as usize & 0x03FF)
-    }
-
-    fn chr_read(&self, _addr: u16, _access: ChrAccess) -> Option<u8> {
-        None
     }
 
     fn write_register(&mut self, addr: u16, value: u8) {
@@ -293,13 +449,21 @@ impl MapperOps for BandaiFcg {
         }
     }
 
+    fn low_prg_ram_read_enabled(&self, _addr: u16) -> bool {
+        self.variant != BandaiFcgVariant::Mapper153 || self.prg_ram_enabled
+    }
+
+    fn low_prg_ram_write_enabled(&self, _addr: u16) -> bool {
+        self.variant != BandaiFcgVariant::Mapper153 || self.prg_ram_enabled
+    }
+
     fn read_low_register_with_open_bus(
         &mut self,
         _addr: u16,
         _prg_ram_value: u8,
         open_bus: u8,
     ) -> Option<u8> {
-        Some(self.eeprom_read_value(open_bus))
+        self.eeprom_read_value(open_bus)
     }
 
     fn peek_low_register_with_open_bus(
@@ -308,7 +472,7 @@ impl MapperOps for BandaiFcg {
         _prg_ram_value: u8,
         open_bus: u8,
     ) -> Option<u8> {
-        Some(self.eeprom_read_value(open_bus))
+        self.eeprom_read_value(open_bus)
     }
 
     fn mirroring(&self) -> Mirroring {
@@ -340,6 +504,7 @@ impl MapperOps for BandaiFcg {
         self.chr_regs = [0; 8];
         self.prg_page = 0;
         self.mirroring = Mirroring::Vertical;
+        self.prg_ram_enabled = true;
         self.irq_enabled = false;
         self.irq_counter = 0;
         self.irq_reload = 0;

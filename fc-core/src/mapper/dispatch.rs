@@ -177,6 +177,12 @@ impl MapperOps for Mapper {
     fn low_prg_index(&self, addr: u16) -> Option<usize> {
         dispatch!(self, m => m.low_prg_index(addr))
     }
+    fn low_prg_ram_read_enabled(&self, addr: u16) -> bool {
+        dispatch!(self, m => m.low_prg_ram_read_enabled(addr))
+    }
+    fn low_prg_ram_write_enabled(&self, addr: u16) -> bool {
+        dispatch!(self, m => m.low_prg_ram_write_enabled(addr))
+    }
     fn read_low_register(&mut self, addr: u16) -> Option<u8> {
         dispatch!(self, m => m.read_low_register(addr))
     }

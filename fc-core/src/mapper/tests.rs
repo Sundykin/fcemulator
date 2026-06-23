@@ -1,4 +1,5 @@
 use super::*;
+use crate::cartridge::Cartridge;
 
 /// Locks the `watches_ppu_bus` table to exactly the mappers that override
 /// `notify_a12`. If a new mapper hooks the PPU bus, add it here AND set its
@@ -110,12 +111,14 @@ fn watches_ppu_bus_matches_notify_a12_overrides() {
         (149, false),  // Sachen SA0036
         (156, false),  // Mapper 156
         (158, true),   // Mapper 158 RAMBO-1 can use PPU A12 IRQ mode
+        (159, false),  // Bandai LZ93D50 with 24C01
         (165, true),   // Mapper 165 MMC3 A12 IRQ and CHR latch
         (166, false),  // Subor 166
         (167, false),  // Subor 167
         (112, false),  // NTDEC ASDER
         (116, true),   // Mapper 116 can switch into MMC3 A12 IRQ mode
         (151, false),  // Mapper 151
+        (153, false),  // Bandai FCG with SRAM
         (154, false),  // Namco 108 mapper 154
         (155, false),  // MMC1 mapper 155
         (170, false),  // Mapper 170
@@ -296,12 +299,14 @@ fn clocks_cpu_matches_cpu_clock_overrides() {
         (149, false),  // Sachen SA0036
         (156, false),  // Mapper 156
         (158, true),   // Mapper 158 RAMBO-1 can use CPU-cycle IRQ mode
+        (159, true),   // Bandai LZ93D50 IRQ counter clocks per CPU cycle
         (165, false),  // Mapper 165 uses PPU A12/CHR latch
         (166, false),  // Subor 166
         (167, false),  // Subor 167
         (112, false),  // NTDEC ASDER
         (116, false),  // Mapper 116 uses PPU A12 edges only in MMC3 mode
         (151, false),  // Mapper 151
+        (153, true),   // Bandai FCG IRQ counter clocks per CPU cycle
         (154, false),  // Namco 108 mapper 154
         (155, false),  // MMC1 mapper 155
         (170, false),  // Mapper 170
@@ -487,11 +492,13 @@ fn clocks_hblank_matches_hblank_clock_overrides() {
         (149, false),
         (156, false),
         (158, false),
+        (159, false),
         (165, false),
         (140, false),
         (142, false),
         (151, false),
         (152, false),
+        (153, false),
         (154, false),
         (155, false),
         (166, false),
@@ -938,7 +945,7 @@ fn ffe_mapper17_full_mode_switches_8k_prg_and_1k_chr_registers() {
 fn bandai_mapper16_switches_banks_mirroring_irq_and_eeprom_bit() {
     let mut m = Mapper::new(16, 32, 16, Mirroring::Horizontal, 0).expect("mapper 16");
     assert_eq!(m.prg_index(0x8004), 0x0004);
-    assert_eq!(m.prg_index(0xC004), 31 * 0x4000 + 4);
+    assert_eq!(m.prg_index(0xC004), 0x0F * 0x4000 + 4);
     assert_eq!(m.chr_index(0x1004), 0x0004);
     assert_eq!(m.mirroring(), Mirroring::Vertical);
 
@@ -947,7 +954,7 @@ fn bandai_mapper16_switches_banks_mirroring_irq_and_eeprom_bit() {
     assert!(m.write_low_register(0x6008, 0x0B));
     assert_eq!(m.chr_index(0x0004), 0x12 * 0x0400 + 4);
     assert_eq!(m.chr_index(0x1C04), 0x1F * 0x0400 + 4);
-    assert_eq!(m.prg_index(0x8004), 0x0B * 0x4000 + 4);
+    assert_eq!(m.prg_index(0x8004), 0x1B * 0x4000 + 4);
     assert_eq!(m.prg_index(0xC004), 31 * 0x4000 + 4);
 
     assert!(m.write_low_register(0x6009, 0x03));
@@ -999,6 +1006,57 @@ fn bandai_mapper16_submapper_write_windows_and_fcg_irq_counter() {
     assert_eq!(lz93d50.prg_index(0x8004), 0x0004);
     lz93d50.write_register(0x8008, 0x04);
     assert_eq!(lz93d50.prg_index(0x8004), 4 * 0x4000 + 4);
+}
+
+#[test]
+fn bandai_mapper153_uses_chr_low_bits_as_prg_outer_and_gates_sram() {
+    let mut mapper = Mapper::new(153, 32, 0, Mirroring::Horizontal, 0).expect("mapper 153");
+    mapper.write_register(0x8000, 0x01);
+    mapper.write_register(0x8008, 0x02);
+    assert_eq!(mapper.prg_index(0x8004), 0x12 * 0x4000 + 4);
+    assert_eq!(mapper.prg_index(0xC004), 0x1F * 0x4000 + 4);
+    assert_eq!(mapper.chr_index(0x1004), 0x1004);
+
+    let mut rom = vec![0u8; 16 + 32 * 0x4000];
+    rom[0..4].copy_from_slice(b"NES\x1A");
+    rom[4] = 32;
+    rom[5] = 0;
+    rom[6] = 0x90;
+    rom[7] = 0x98;
+    rom[10] = 0x07;
+    for (i, byte) in rom[16..].iter_mut().enumerate() {
+        *byte = (i as u8).wrapping_mul(3).wrapping_add(1);
+    }
+    let mut cart = Cartridge::from_bytes(&rom).expect("mapper 153 rom");
+    assert!(!cart.cpu_write(0x6000, 0x5A));
+    assert_eq!(cart.cpu_read_with_open_bus(0x6000, 0xA5), 0x5A);
+    assert!(cart.cpu_write(0x800D, 0x00));
+    assert!(!cart.cpu_write(0x6000, 0xC3));
+    assert_eq!(cart.cpu_read_with_open_bus(0x6000, 0xA5), 0xA5);
+    assert!(cart.cpu_write(0x800D, 0x20));
+    assert!(!cart.cpu_write(0x6000, 0xC3));
+    assert_eq!(cart.cpu_read_with_open_bus(0x6000, 0xA5), 0xC3);
+}
+
+#[test]
+fn bandai_mapper159_uses_24c01_eeprom_and_high_register_window() {
+    let mut mapper = Mapper::new(159, 32, 16, Mirroring::Horizontal, 0).expect("mapper 159");
+    assert!(!mapper.write_low_register(0x6008, 0x04));
+    assert_eq!(mapper.prg_index(0x8004), 0x0004);
+    mapper.write_register(0x8008, 0x04);
+    assert_eq!(mapper.prg_index(0x8004), 4 * 0x4000 + 4);
+    assert_eq!(
+        mapper.peek_low_register_with_open_bus(0x6000, 0x55, 0xFF),
+        Some(0xEF)
+    );
+
+    mapper.write_register(0x800D, 0x60);
+    mapper.write_register(0x800D, 0x20);
+    mapper.write_register(0x800D, 0x60);
+    assert_eq!(
+        mapper.read_low_register_with_open_bus(0x6000, 0x55, 0x00),
+        Some(0x10)
+    );
 }
 
 #[test]

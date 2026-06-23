@@ -105,6 +105,14 @@ pub trait MapperOps {
     fn low_prg_index(&self, _addr: u16) -> Option<usize> {
         None
     }
+    /// Whether Cartridge should expose the default `$6000..=$7FFF` PRG-RAM read.
+    fn low_prg_ram_read_enabled(&self, _addr: u16) -> bool {
+        true
+    }
+    /// Whether Cartridge should expose the default `$6000..=$7FFF` PRG-RAM write.
+    fn low_prg_ram_write_enabled(&self, _addr: u16) -> bool {
+        true
+    }
     /// Optional mapper-owned read inside `$6000..=$7FFF`.
     fn read_low_register(&mut self, _addr: u16) -> Option<u8> {
         None
