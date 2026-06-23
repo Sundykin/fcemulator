@@ -9,8 +9,8 @@
   - 新增 Mapper 43 / 60 / 83 / 106 / 183 / 212 / 222 / 235。
   - 覆盖 PRG/CHR bank 译码、低地址 PRG-ROM 窗口、mapper register read、open-bus 读侧效应、reset hook、CPU clock IRQ、A12 IRQ。
 - `fc-core/src/mapper/basic/latch/discrete.rs`
-  - 新增 Mapper 36 / 72 / 79 / 92 / 96 / 122。
-  - 覆盖 TXC/Micro Genius 简化 latch、$4100 读回、bus conflict、Jaleco 2-in-1/JF-17 PRG/CHR 写位规则、Mapper 96 的 PPU nametable latch、NINA-003/006 扩展区 latch，以及 Mapper 122 双 4KB CHR latch。
+  - 新增 Mapper 8 / 31 / 36 / 72 / 79 / 92 / 96 / 122。
+  - 覆盖 FFE/FJ-007 PRG16/CHR8 latch、NSF/INL 4KB PRG-ROM paging、TXC/Micro Genius 简化 latch、$4100 读回、bus conflict、Jaleco 2-in-1/JF-17 PRG/CHR 写位规则、Mapper 96 的 PPU nametable latch、NINA-003/006 扩展区 latch，以及 Mapper 122 双 4KB CHR latch。
 - `fc-core/src/mapper/basic/latch/sachen.rs:1-135`
   - 新增 Mapper 133 / Sachen SA72008、Mapper 146 / Sachen SA016-1M、Mapper 148 / Sachen SA0037 与 Mapper 149 / Sachen SA0036。
   - 覆盖 SA72008 PRG32/CHR8 latch、SA016-1M/SA0037 PRG32/CHR8 latch 和 SA0036 CHR bit7 latch。
@@ -95,6 +95,9 @@
 | 23 | `vrc4.rs:1-329` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Konami/VRC2_4.h` | 53-60, 235-245 | mapper 23 VRC2b/VRC4e variant detection 与 OR heuristics |
 | 25 | `vrc4.rs:1-329` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/21_22_23_25.c` | 61-67 | VRC4b/VRC4d/VRC2c submapper 地址线映射 |
 | 25 | `vrc4.rs:1-329` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Konami/VRC2_4.h` | 63-71, 210-221 | mapper 25 variant detection 与 submapper 0 OR heuristics |
+| 8 | `latch/discrete.rs:152-188; mapper.rs:228-240,253-268,369-392,571-589,1336-1346` | `/Users/sunmeng/workspace/fc/fceux/src/boards/datalatch.cpp` | 207-216 | Mapper 8 FFE/FJ-007：单 latch 控制低 16KB PRG bank 与 8KB CHR bank，高 16KB 固定 bank 1，固定垂直 mirroring |
+| 31 | `latch/discrete.rs:190-228; mapper.rs:228-240,253-268,369-392,571-589,1348-1359` | `/Users/sunmeng/workspace/fc/fceux/src/boards/inlnsf.cpp` | 23-61 | Mapper 31 NSF/INL：`$5000-$5FFF` 八个 4KB PRG-ROM window register，末 slot power-on 为 `0xFF` |
+| 31 | `latch/discrete.rs:190-228; mapper.rs:228-240,253-268,369-392,571-589,1348-1359` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/31.c` | 26-65 | FCEUmm mapper 31 cross-check；同样使用 `$5000 + (addr & 7)` 选择 4KB PRG slot |
 | 35 | `jy.rs:1-128; mapper.rs:235,276,395,588,831,989,1144,2246-2287` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/JyCompany/Mapper35.h` | 5-65 | Mapper 35 JY single-cart：PRG8/CHR1 register、`$C002/$C003/$C005` A12 IRQ、`$D001` mirroring |
 | 35 | `jy.rs:1-128; mapper.rs:235,276,395,588,831,989,1144,2246-2287` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/jyasic.c` | 455-488 | FCEUmm JYASIC mapper 35 cross-check；记录 mapper 35 默认 8KB WRAM、single-cart sync 和 extended mirroring |
 | 36 | `latch/discrete.rs` | `/Users/sunmeng/workspace/fc/fceux/src/boards/36.cpp` | 28-65 | TXC/Micro Genius 简化 mapper、PRG/CHR latch、$4100 读回、bus conflict |

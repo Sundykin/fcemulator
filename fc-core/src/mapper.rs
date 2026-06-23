@@ -232,12 +232,12 @@ pub use basic::{
     Mapper108, Mapper116, Mapper117, Mapper120, Mapper122, Mapper15, Mapper151, Mapper156,
     Mapper170, Mapper18, Mapper183, Mapper185, Mapper188, Mapper193, Mapper203, Mapper212,
     Mapper222, Mapper226, Mapper230, Mapper233, Mapper234, Mapper235, Mapper240, Mapper241,
-    Mapper244, Mapper246, Mapper253, Mapper35, Mapper36, Mapper40, Mapper42, Mapper43, Mapper50,
-    Mapper57, Mapper60, Mapper63, Mapper65, Mapper67, Mapper72, Mapper73, Mapper79, Mapper83,
-    Mapper91, Mapper92, Mapper96, Namco108Mapper154, Namco108Mapper206, Namco108Mapper95, Namco118,
-    Nina01, Nina03_06, Nrom, Ntdec112, Sachen133, Sachen149, SachenSa0161m, Subor166, SuborVariant,
-    Sunsoft184, Sunsoft4, Sunsoft89, TaitoTc0190, TaitoX1005, TaitoX1017, UnlPci556, Unrom,
-    UnromVariant, UnromVariantMapper, Vrc1,
+    Mapper244, Mapper246, Mapper253, Mapper31, Mapper35, Mapper36, Mapper40, Mapper42, Mapper43,
+    Mapper50, Mapper57, Mapper60, Mapper63, Mapper65, Mapper67, Mapper72, Mapper73, Mapper79,
+    Mapper8, Mapper83, Mapper91, Mapper92, Mapper96, Namco108Mapper154, Namco108Mapper206,
+    Namco108Mapper95, Namco118, Nina01, Nina03_06, Nrom, Ntdec112, Sachen133, Sachen149,
+    SachenSa0161m, Subor166, SuborVariant, Sunsoft184, Sunsoft4, Sunsoft89, TaitoTc0190,
+    TaitoX1005, TaitoX1017, UnlPci556, Unrom, UnromVariant, UnromVariantMapper, Vrc1,
 };
 pub use expansion_mappers::{Fme7, Namco163, Vrc6, Vrc6Variant, Vrc7};
 pub use mmc1::Mmc1;
@@ -256,6 +256,7 @@ pub enum Mapper {
     Unrom(Unrom),
     Cnrom(Cnrom),
     Axrom(Axrom),
+    Mapper8(Mapper8),
     Bnrom(Bnrom),
     Nina01(Nina01),
     Cprom(Cprom),
@@ -264,6 +265,7 @@ pub enum Mapper {
     Namco163(Namco163),
     Vrc6(Vrc6),
     IremG101(IremG101),
+    Mapper31(Mapper31),
     TaitoTc0190(TaitoTc0190),
     Bandai74161(Bandai74161),
     JalecoJf16(JalecoJf16),
@@ -370,6 +372,7 @@ impl Mapper {
             2 => Mapper::Unrom(Unrom::new(prg_16k, mirroring)),
             3 => Mapper::Cnrom(Cnrom::new(prg_16k, mirroring)),
             7 => Mapper::Axrom(Axrom::new()),
+            8 => Mapper::Mapper8(Mapper8::new()),
             4 if prg_16k > 32 && chr_8k == 0 => {
                 Mapper::Mmc3(Mmc3::new_with_low_wram(prg_16k, chr_8k, mirroring))
             }
@@ -386,6 +389,7 @@ impl Mapper {
             21..=23 => Mapper::Vrc4(Vrc4::new(number, prg_16k, chr_8k, submapper)),
             24 => Mapper::Vrc6(Vrc6::new(prg_16k, chr_8k, Vrc6Variant::Vrc6a)),
             26 => Mapper::Vrc6(Vrc6::new(prg_16k, chr_8k, Vrc6Variant::Vrc6b)),
+            31 => Mapper::Mapper31(Mapper31::new()),
             32 => Mapper::IremG101(IremG101::new(prg_16k, submapper, mirroring)),
             33 => Mapper::TaitoTc0190(TaitoTc0190::new(prg_16k, mirroring)),
             // Mapper 34 is ambiguous. Mesen selects NINA-001 for CHR-ROM
@@ -572,6 +576,7 @@ macro_rules! dispatch {
             Mapper::Unrom($m) => $body,
             Mapper::Cnrom($m) => $body,
             Mapper::Axrom($m) => $body,
+            Mapper::Mapper8($m) => $body,
             Mapper::Bnrom($m) => $body,
             Mapper::Nina01($m) => $body,
             Mapper::Cprom($m) => $body,
@@ -580,6 +585,7 @@ macro_rules! dispatch {
             Mapper::Namco163($m) => $body,
             Mapper::Vrc6($m) => $body,
             Mapper::IremG101($m) => $body,
+            Mapper::Mapper31($m) => $body,
             Mapper::TaitoTc0190($m) => $body,
             Mapper::Bandai74161($m) => $body,
             Mapper::JalecoJf16($m) => $body,
@@ -819,6 +825,7 @@ mod tests {
             (2, false),    // UNROM
             (3, false),    // CNROM
             (7, false),    // AxROM
+            (8, false),    // Mapper 8
             (11, false),   // ColorDreams
             (12, true),    // Mapper 12 MMC3 A12 IRQ
             (13, false),   // CPROM
@@ -830,6 +837,7 @@ mod tests {
             (23, false),   // VRC2/VRC4
             (24, false),   // VRC6a
             (26, false),   // VRC6b
+            (31, false),   // Mapper 31
             (32, false),   // Irem G-101
             (33, false),   // Taito TC0190
             (34, false),   // BNROM
@@ -977,6 +985,7 @@ mod tests {
             (4, false),    // MMC3 uses PPU A12 edges
             (5, false),    // MMC5 currently clocks from PPU nametable fetches
             (7, false),    // AxROM
+            (8, false),    // Mapper 8
             (9, false),    // MMC2 CHR latch watches PPU bus
             (10, false),   // MMC4 CHR latch watches PPU bus
             (11, false),   // ColorDreams
@@ -990,6 +999,7 @@ mod tests {
             (23, true),    // Ambiguous VRC2/VRC4 mapper defaults to VRC4-compatible IRQs
             (24, true),    // VRC6 IRQ + expansion audio clock per CPU cycle
             (26, true),    // VRC6 IRQ + expansion audio clock per CPU cycle
+            (31, false),   // Mapper 31
             (32, false),   // Irem G-101
             (33, false),   // Taito TC0190
             (34, false),   // BNROM
@@ -1134,6 +1144,7 @@ mod tests {
             (4, false),
             (5, false),
             (7, false),
+            (8, false),
             (9, false),
             (10, false),
             (11, false),
@@ -1147,6 +1158,7 @@ mod tests {
             (23, false),
             (24, false),
             (26, false),
+            (31, false),
             (32, false),
             (33, false),
             (34, false),
@@ -1319,6 +1331,31 @@ mod tests {
         assert_eq!(m.prg_index(0xC123), 0xC123);
         assert_eq!(m.chr_index(0x0007), 4 * 0x1000 + 7);
         assert_eq!(m.chr_index(0x1007), 5 * 0x1000 + 7);
+    }
+
+    #[test]
+    fn mapper8_switches_low_prg16_and_chr8_from_latch() {
+        let mut m8 = Mapper::new(8, 8, 4, Mirroring::Vertical, 0).expect("mapper 8");
+        assert_eq!(m8.prg_index(0x8004), 0x0004);
+        assert_eq!(m8.prg_index(0xC004), 0x4000 + 4);
+
+        m8.write_register(0x8000, 0x1B);
+        assert_eq!(m8.prg_index(0x8004), 3 * 0x4000 + 4);
+        assert_eq!(m8.prg_index(0xC004), 0x4000 + 4);
+        assert_eq!(m8.chr_index(0x0010), 3 * 0x2000 + 0x10);
+    }
+
+    #[test]
+    fn mapper31_pages_eight_4k_prg_windows_from_expansion_regs() {
+        let mut m31 = Mapper::new(31, 64, 0, Mirroring::Vertical, 0).expect("mapper 31");
+        assert_eq!(m31.prg_index(0x8004), 0x0004);
+        assert_eq!(m31.prg_index(0xF004), 0xFF * 0x1000 + 4);
+
+        m31.write_expansion(0x5000, 0x12);
+        m31.write_expansion(0x5007, 0x34);
+        assert_eq!(m31.prg_index(0x8004), 0x12 * 0x1000 + 4);
+        assert_eq!(m31.prg_index(0xF004), 0x34 * 0x1000 + 4);
+        assert_eq!(m31.chr_index(0x1010), 0x1010);
     }
 
     #[test]

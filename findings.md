@@ -297,3 +297,4 @@
 - Mapper 221 证明当前 CPU high-read open-bus hook 已足够表达未焊接 PRG bank：mode latch 和 PRG latch 仍在 address-latch mapper 内部，读路径只在选中越界 16KB PRG bank 时返回 open bus。
 - Mapper 96 证明现有 `notify_a12()` 快路径需要按“PPU bus notify”理解，而不是只按 A12 IRQ 命名理解：Oeka Kids 的 PPU hook 监听 nametable 地址 `$2000-$2FFF` 来更新 CHR low 4KB latch，能力位 `watches_ppu_bus()` 仍可复用，不需要新增专用 latch trait。
 - Mapper 12 适合继续作为 MMC3 variant，而不是独立 mapper：PRG、普通 CHR bank register、mirroring 和 A12 IRQ 完全复用 MMC3，只在 `$4100-$5FFF` expansion register 上给 pattern table 两半补 CHR bank bit8，并提供 language latch read/reset toggle。FCEUmm 的 submapper 1 跳转 FFE_Init，先记录为后续独立兼容路径。
+- Mapper 8 / 31 说明一部分剩余 P2 缺口仍可机械推进：mapper 8 是单 latch PRG16/CHR8，mapper 31 是 `$5000-$5FFF` 低地址 register 选择八个 4KB PRG slot。现有 high-register write、expansion write 和 page index hooks 已足够表达，不需要新增架构。

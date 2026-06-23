@@ -138,6 +138,7 @@ Phase 17: Mapper compatibility gap closure
 - [x] Add architecture-reuse mapper batch 35 / 221
 - [x] Add PPU-bus latch mapper 96
 - [x] Add MMC3 expansion-register mapper 12
+- [x] Add latch/NSF paging mapper batch 8 / 31
 - **Status:** in_progress
 
 ### Phase 18: Mapper board compatibility layer

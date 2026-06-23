@@ -150,6 +150,84 @@ impl MapperOps for Mapper36 {
 }
 
 // ============================================================================
+// Mapper 8 — FFE/FJ-007 style PRG16 + CHR8 latch
+//
+// References:
+// - FCEUX `src/boards/datalatch.cpp`
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Mapper8 {
+    latch: u8,
+}
+
+impl Mapper8 {
+    pub(in crate::mapper) fn new() -> Self {
+        Mapper8 { latch: 0 }
+    }
+}
+
+impl MapperOps for Mapper8 {
+    fn prg_index(&self, addr: u16) -> usize {
+        let bank = if addr < 0xC000 {
+            (self.latch >> 3) as usize
+        } else {
+            1
+        };
+        bank * 0x4000 + (addr as usize & 0x3FFF)
+    }
+    fn chr_index(&self, addr: u16) -> usize {
+        ((self.latch & 0x03) as usize) * 0x2000 + (addr & 0x1FFF) as usize
+    }
+    fn write_register(&mut self, _addr: u16, value: u8) {
+        self.latch = value;
+    }
+    fn mirroring(&self) -> Mirroring {
+        Mirroring::Vertical
+    }
+}
+
+// ============================================================================
+// Mapper 31 — NSF/INL 4KB PRG-ROM paging
+//
+// References:
+// - FCEUX `src/boards/inlnsf.cpp`
+// - FCEUmm `src/boards/31.c`
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Mapper31 {
+    regs: [u8; 8],
+}
+
+impl Mapper31 {
+    pub(in crate::mapper) fn new() -> Self {
+        let mut regs = [0; 8];
+        regs[7] = 0xFF;
+        Mapper31 { regs }
+    }
+}
+
+impl MapperOps for Mapper31 {
+    fn prg_index(&self, addr: u16) -> usize {
+        let slot = ((addr - 0x8000) / 0x1000) as usize;
+        (self.regs[slot] as usize) * 0x1000 + (addr as usize & 0x0FFF)
+    }
+    fn chr_index(&self, addr: u16) -> usize {
+        (addr & 0x1FFF) as usize
+    }
+    fn write_register(&mut self, _addr: u16, _value: u8) {}
+    fn write_expansion(&mut self, addr: u16, value: u8) {
+        if (0x5000..=0x5FFF).contains(&addr) {
+            self.regs[(addr & 0x07) as usize] = value;
+        }
+    }
+    fn mirroring(&self) -> Mirroring {
+        Mirroring::Vertical
+    }
+}
+
+// ============================================================================
 // Mapper 38 — UNL-PCI-556
 // ============================================================================
 

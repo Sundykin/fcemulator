@@ -1122,3 +1122,14 @@
   - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 128/128 mapper tests.
   - `cargo test -p fc-core`: PASS, 169/169 fc-core tests.
   - `cargo test`: PASS, workspace tests.
+
+### Mapper 8 / 31 Latch and NSF Paging Batch
+- Implemented mapper 8 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/latch/discrete.rs`: FFE/FJ-007 style single latch, low 16KB PRG bank from `value >> 3`, fixed high 16KB PRG bank 1, 8KB CHR bank from `value & 3`, and fixed vertical mirroring.
+- Implemented mapper 31 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/latch/discrete.rs`: NSF/INL eight-slot 4KB PRG-ROM paging through `$5000-$5FFF`, with slot 7 initialized to `0xFF` and fixed CHR address passthrough.
+- Wired both through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs`, updated capability guard tests, and refreshed mapper gap/reference docs; supported mapper count is now 163 and remaining four-reference union gap is 330.
+- Verification:
+  - `cargo fmt --check`: PASS.
+  - `git diff --check`: PASS.
+  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 130/130 mapper tests.
+  - `cargo test -p fc-core`: PASS, 171/171 fc-core tests.
+  - `cargo test`: PASS, workspace tests.
