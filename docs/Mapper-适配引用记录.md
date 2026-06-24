@@ -417,6 +417,7 @@
 - `Mmc3OuterBank::Mapper45` 的 PRG/CHR AND/OR wrapper、低区 serial register 和 reset defaults 对应 FCEUX `mmc3.cpp:502-565`、FCEUmm `mmc3.c:505-589`、Mesen2 `MMC3_45.h:40-80` 与 Nestopia `NstBoardBmcHero.cpp:97-129`；FCEUX/FCEUmm 的可选 open-bus read 侧效应暂未落地，留作需要具体 ROM 证据时精修。
 - `Mmc3OuterBank::Mapper114` / `Mapper115` / `Mapper121` 目前先按参考项目的第一版实现，后续若遇到特定 ROM 证据，可继续补齐更细的 reset/protection/read side-effect 行为。
 - `Mapper253::write_chr_register()` / `chr_ram_index()` / `cpu_clock()` 对应 FCEUX `253.cpp:44-89,110-145` 与 Mesen2 `Mapper253.h:54-130`。
+- `Namco163::new_210()` / `NamcoVariant::{Namco175,Namco340}` 对应 FCEUmm `n106.c:51,127-132,164-212,404-470`、FCEUX `n106.cpp:51,128-134,166-213,379-469`、Mesen2 `Namco163.h:8-14,61-88,141-155,178-282` 与 Nestopia `NstBoard.cpp:3087-3095` / `NstBoard.hpp:465-466`；本项目将 mapper 210 收进 Namco163 变体，保留 PRG/CHR 与 Namco340 mirroring，禁用 N163 expansion audio/readback/cpu-clock，Namco175 WRAM write-protect 细节留作后续 battery/WRAM 精修。
 - `Mapper92::write_register()` 对应 FCEUX `72.cpp:35-80` 的 mapper 92 变体。
 - `Mapper122::write_register()` 对应 FCEUmm `122.c:25-33` 的 A0 选择两个 4KB CHR latch。
 - `ColorDreams::write_register()` / `apply_bus_conflict()` 对应 FCEUX/FCEUmm `datalatch.cpp`/`datalatch.c:222-233,157-167` 与 Mesen2 `ColorDreams.h:5-29`；mapper 144 只接受奇地址写并使用 bit0-only conflict。

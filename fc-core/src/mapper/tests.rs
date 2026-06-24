@@ -166,6 +166,7 @@ fn watches_ppu_bus_matches_notify_a12_overrides() {
         (206, false),  // Namco 108 mapper 206
         (207, false),  // Taito X1-005 mapper 207
         (208, true),   // Mapper 208 MMC3 A12 IRQ
+        (210, false),  // Namcot 175/340
         (212, false),  // Mapper 212
         (213, false),  // Mapper 213
         (214, false),  // Mapper 214
@@ -377,6 +378,7 @@ fn clocks_cpu_matches_cpu_clock_overrides() {
         (206, false),  // Namco 108 mapper 206
         (207, false),  // Taito X1-005 mapper 207
         (208, false),  // Mapper 208 uses PPU A12 edges
+        (210, false),  // Namcot 175/340
         (212, false),  // Mapper 212
         (213, false),  // Mapper 213
         (214, false),  // Mapper 214
@@ -587,6 +589,7 @@ fn clocks_hblank_matches_hblank_clock_overrides() {
         (206, false),
         (207, false),
         (208, false),
+        (210, false),
         (212, false),
         (213, false),
         (214, false),
@@ -2358,6 +2361,26 @@ fn expansion_audio_mappers_expose_audible_outputs_and_reference_registers() {
         n163.cpu_clock();
     }
     assert!(n163.expansion_audio() > 0.0);
+
+    let mut namcot340 = Mapper::new(210, 8, 8, Mirroring::Vertical, 2).expect("namcot 340");
+    assert!(!namcot340.has_expansion_audio());
+    assert!(!namcot340.clocks_cpu());
+    namcot340.write_register(0xE000, 0x83);
+    namcot340.write_register(0xE800, 4);
+    namcot340.write_register(0xF000, 5);
+    namcot340.write_register(0x9000, 7);
+    assert_eq!(namcot340.prg_index(0x8004), 3 * 0x2000 + 4);
+    assert_eq!(namcot340.prg_index(0xA004), 4 * 0x2000 + 4);
+    assert_eq!(namcot340.prg_index(0xC004), 5 * 0x2000 + 4);
+    assert_eq!(namcot340.chr_index(0x0804), 7 * 0x0400 + 4);
+    assert_eq!(namcot340.mirroring(), Mirroring::Horizontal);
+    assert_eq!(namcot340.read_expansion(0x4800), None);
+    namcot340.write_register(0xF800, 0x80);
+    namcot340.write_expansion(0x4800, 0xFF);
+    for _ in 0..15 {
+        namcot340.cpu_clock();
+    }
+    assert_eq!(namcot340.expansion_audio(), 0.0);
 
     let mut vrc6 = Mapper::new(24, 8, 8, Mirroring::Vertical, 0).expect("vrc6a");
     assert!(vrc6.has_expansion_audio());

@@ -122,10 +122,18 @@ impl MapperOps for Fme7 {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+enum NamcoVariant {
+    Namco163,
+    Namco175,
+    Namco340,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Namco163 {
     prg_8k: usize,
     chr_1k: usize,
+    variant: NamcoVariant,
     chr: [u8; 8],
     nt: [u8; 4],
     prg: [u8; 3],
@@ -142,6 +150,7 @@ impl Namco163 {
         Namco163 {
             prg_8k: (prg_16k * 2).max(1),
             chr_1k: (chr_8k * 8).max(8),
+            variant: NamcoVariant::Namco163,
             chr: [0; 8],
             nt: [0; 4],
             prg: [0, 0, 0],
@@ -152,6 +161,33 @@ impl Namco163 {
             irq_pending: false,
             audio: Namco163Audio::new(),
         }
+    }
+
+    pub(super) fn new_210(
+        prg_16k: usize,
+        chr_8k: usize,
+        mirroring: Mirroring,
+        submapper: u8,
+    ) -> Self {
+        let mut mapper = Self::new(prg_16k, chr_8k, mirroring);
+        mapper.variant = match submapper {
+            1 => NamcoVariant::Namco175,
+            _ => NamcoVariant::Namco340,
+        };
+        mapper
+    }
+
+    fn is_n163(&self) -> bool {
+        self.variant == NamcoVariant::Namco163
+    }
+
+    fn sync_n340_mirroring(&mut self, value: u8) {
+        self.mirroring = match (value >> 6) & 0x03 {
+            0 => Mirroring::SingleScreenLow,
+            1 => Mirroring::Vertical,
+            2 => Mirroring::Horizontal,
+            _ => Mirroring::SingleScreenHigh,
+        };
     }
 }
 
@@ -172,6 +208,9 @@ impl MapperOps for Namco163 {
     }
 
     fn read_expansion(&mut self, addr: u16) -> Option<u8> {
+        if !self.is_n163() {
+            return None;
+        }
         match addr & 0xF800 {
             0x4800 => self.audio.read(addr),
             0x5000 => Some(self.irq_counter as u8),
@@ -181,6 +220,9 @@ impl MapperOps for Namco163 {
     }
 
     fn peek_expansion(&self, addr: u16) -> Option<u8> {
+        if !self.is_n163() {
+            return None;
+        }
         match addr & 0xF800 {
             0x4800 => self.audio.peek(addr),
             0x5000 => Some(self.irq_counter as u8),
@@ -191,7 +233,7 @@ impl MapperOps for Namco163 {
 
     fn write_expansion(&mut self, addr: u16, value: u8) {
         match addr & 0xF800 {
-            0x4800 => self.audio.write(addr, value),
+            0x4800 if self.is_n163() => self.audio.write(addr, value),
             0x5000 => {
                 self.irq_counter = (self.irq_counter & 0xFF00) | value as u16;
                 self.irq_pending = false;
@@ -210,28 +252,42 @@ impl MapperOps for Namco163 {
                 self.chr[((addr - 0x8000) / 0x0800) as usize] = value;
             }
             0xC000 | 0xC800 | 0xD000 | 0xD800 => {
-                self.nt[((addr - 0xC000) / 0x0800) as usize] = value;
+                if self.is_n163() {
+                    self.nt[((addr - 0xC000) / 0x0800) as usize] = value;
+                }
             }
             0xE000 => {
                 self.prg[0] = value & 0x3F;
-                self.audio.write(addr, value);
+                match self.variant {
+                    NamcoVariant::Namco163 => self.audio.write(addr, value),
+                    NamcoVariant::Namco340 => self.sync_n340_mirroring(value),
+                    NamcoVariant::Namco175 => {}
+                }
             }
             0xE800 => {
                 self.prg[1] = value & 0x3F;
-                self.low_chr_nt_mode = value & 0x40 != 0;
-                self.high_chr_nt_mode = value & 0x80 != 0;
+                if self.is_n163() {
+                    self.low_chr_nt_mode = value & 0x40 != 0;
+                    self.high_chr_nt_mode = value & 0x80 != 0;
+                }
             }
             0xF000 => self.prg[2] = value & 0x3F,
-            0xF800 => self.audio.write(addr, value),
+            0xF800 if self.is_n163() => self.audio.write(addr, value),
             _ => {}
         }
     }
 
     fn nametable_read(&mut self, addr: u16, ciram: &[u8; 0x1000]) -> Option<u8> {
+        if !self.is_n163() {
+            return None;
+        }
         self.peek_nametable(addr, ciram)
     }
 
     fn peek_nametable(&self, addr: u16, ciram: &[u8; 0x1000]) -> Option<u8> {
+        if !self.is_n163() {
+            return None;
+        }
         let slot = ((addr >> 10) & 0x03) as usize;
         let page = self.nt[slot];
         if page >= 0xE0 {
@@ -243,6 +299,9 @@ impl MapperOps for Namco163 {
     }
 
     fn nametable_write(&mut self, addr: u16, value: u8, ciram: &mut [u8; 0x1000]) -> bool {
+        if !self.is_n163() {
+            return false;
+        }
         let slot = ((addr >> 10) & 0x03) as usize;
         let page = self.nt[slot];
         if page >= 0xE0 {
@@ -259,25 +318,32 @@ impl MapperOps for Namco163 {
     }
 
     fn cpu_clock(&mut self) {
-        if self.irq_counter & 0x8000 != 0 && (self.irq_counter & 0x7FFF) != 0x7FFF {
+        if self.is_n163() && self.irq_counter & 0x8000 != 0 && (self.irq_counter & 0x7FFF) != 0x7FFF
+        {
             self.irq_counter = self.irq_counter.wrapping_add(1);
             if (self.irq_counter & 0x7FFF) == 0x7FFF {
                 self.irq_pending = true;
             }
         }
-        self.audio.clock();
+        if self.is_n163() {
+            self.audio.clock();
+        }
     }
 
     fn clocks_cpu(&self) -> bool {
-        true
+        self.is_n163()
     }
 
     fn expansion_audio(&self) -> f32 {
-        self.audio.output()
+        if self.is_n163() {
+            self.audio.output()
+        } else {
+            0.0
+        }
     }
 
     fn has_expansion_audio(&self) -> bool {
-        true
+        self.is_n163()
     }
 
     fn irq(&self) -> bool {
