@@ -214,6 +214,9 @@
 | 99 | `latch/discrete.rs:238-292; mapper.rs:176-180,282,351; bus.rs:532-535,671-693; cartridge.rs:407-409; factory.rs:114; dispatch.rs:58; tests.rs:101,291,484,2011-2028` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/VsSystem/VsSystem.h` | 16-19,82-97 | Mesen2 VS System cross-check；PRG/CHR page size、Work RAM size、控制管理器 bit 变化后更新 CHR8 与 VS Gumshoe PRG8；当前本项目先以 `$4016` 写通知表达同一 latch |
 | 108 | `special.rs:113-165,187-208` | `/Users/sunmeng/workspace/fc/fceux/src/boards/108.cpp` | 31-48,54-58 | Mapper 108 低区 `setprg8(0x6000, reg)`、高区 `setprg32(0x8000, ~0)`、固定 `setchr8(0)` 与写窗口 |
 | 108 | `special.rs:113-165,187-208` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/108.c` | 37-53,60-64 | FCEUmm Mapper 108 cross-check；同样覆盖 `$8000-$8FFF` 与 `$F000-$FFFF` 写处理 |
+| 111 | `special.rs:218-342,608-647; cartridge.rs:708-713,823-838; mapper.rs:275,359; dispatch.rs:64; factory.rs:122; tests.rs:95,302,512` | `/Users/sunmeng/workspace/fc/fceux/src/boards/cheapocabra.cpp` | 35-85,210-244 | Cheapocabra/GTROM：寄存器 bit0-3 选择 PRG32、bit4 选择 8KB pattern CHR-RAM、bit5 选择 8KB nametable page，`$5000-$5FFF` 与 `$7000-$7FFF` 写窗口，iNES CHR-RAM 32KB |
+| 111 | `special.rs:218-342,608-647; cartridge.rs:708-713,823-838; mapper.rs:275,359; dispatch.rs:64; factory.rs:122; tests.rs:95,302,512` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/cheapocabra.c` | 35-80,204-243 | FCEUmm mapper 111 cross-check；同样记录 32KB CHR-RAM、power-on `reg=0xFF`、普通写窗口与 battery-backed flash 分支 |
+| 111 | `special.rs:218-342,608-647; cartridge.rs:708-713,823-838; mapper.rs:275,359; dispatch.rs:64; factory.rs:122; tests.rs:95,302,512` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Homebrew/Cheapocabra.h` | 17-35,68-99 | Mesen2 Cheapocabra：PRG32/CHR8/nametable page 选择、低区读用 open bus 更新 register、`$8000-$FFFF` flash command 路径；Mesen2 flash save 与 `FlashSST39SF040.h` 留作后续精修 |
 | 206 | `namco.rs:86-154,275-301` | `/Users/sunmeng/workspace/fc/fceux/src/boards/206.cpp` | 33-78 | Mapper 206 Namco108 subset：2KB/1KB CHR、8KB PRG、cmd/data 写译码、power defaults |
 | 206 | `namco.rs:86-154,275-301` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/206_486.c` | 33-78 | FCEUmm Mapper 206 cross-check；同文件 80-98 记录相关 mapper 486 直写变体 |
 | 206 | `namco.rs:86-154,275-301` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Namco/Namco108.h` | 6-28 | Namco108 写地址 mask、固定最后两个 PRG bank、hardwired mirroring 行为 |
@@ -422,6 +425,7 @@
 - `SachenSa0161m::write_expansion()` / `write_register()` 对应 FCEUX/FCEUmm `sachen.cpp`/`sachen.c:258-284,306-316,165-190,213-222` 与 Mesen2 `Nina03_06.h:5-35`。
 - `Sachen149::write_register()` 对应 Mesen2 `Sachen_149.h:16-19` 与 FCEUX/FCEUmm SA0036 的 SA72007 sync 路径。
 - `Mapper108::low_prg_index()` / `write_register()` 对应 FCEUX `108.cpp:31-48` 与 FCEUmm `108.c:37-53`；高区固定最后 32KB，低区 `$6000-$7FFF` 按写入值映射 PRG-ROM。
+- `Mapper111::write_expansion()` / `write_low_register()` / `nametable_chr_index()` 对应 FCEUX/FCEUmm `cheapocabra.cpp`/`cheapocabra.c:58-80` 与 Mesen2 `Cheapocabra.h:68-83,93-99`；本项目按 32KB CHR-RAM 表达 GTROM 的 2 个 pattern page 与 2 个 nametable page，并用 open-bus aware read hook 表达低区读副作用。battery-backed SST39SF040 flash command/ID/erase/write 需要 Cartridge/Mapper factory 传入 battery/flash backing，留作后续精修。
 - `Namco108Mapper154::write_register()` 对应 FCEUX/FCEUmm `88.cpp`/`88.c:47-55` 与 Mesen2 `Namco108_154.h:9-12`；banking 复用 Namco118，command write bit6 只改变单屏 mirroring。
 - `Mmc1::new_155()` 对应 FCEUX/FCEUmm `mmc1.cpp`/`mmc1.c:332-335,362-365` 与 Mesen2 `MMC1_155.h:7-12`；当前先保存 variant intent，等待普通 MMC1 PRG-RAM disable gating 落地后体现差异。
 - `Mapper156::write_register()` / `chr_index()` 对应 FCEUX/FCEUmm `156.cpp`/`156.c:49-68,36-47` 与 Nestopia `NstBoardOpenCorp.cpp:42-60,78-114`；当前 8KB WRAM 通过 Cartridge 默认 iNES PRG-RAM 路径提供。
@@ -506,7 +510,7 @@
 - 同批替换 `fc-core/src/mapper/basic/discrete.rs` 里 Mapper 181 / 185 / 186 / 188 / 193 / 218 的新增段，以及 `fc-core/src/mapper/mmc3.rs` 里 Mapper182 / Mapper187 / Mapper189 / Mapper191 / Mapper196 / Mapper197 / Mapper198 / Mapper208 / Mapper215 / Mapper224 / Mapper238 / Mapper245 / Mapper254 的 `Mmc3OuterBank` / `Mmc3ChrLayout` 分支、构造、低区写、扩展区读写、低区读、reset 和测试段。
 - 同批替换 `fc-core/src/mapper/basic/irq.rs` 里 FFE Mapper6/17 新增段。
 - 同批替换 `fc-core/src/mapper/basic/konami.rs` 的 VRC1 段、`fc-core/src/mapper/basic/jy.rs` 的 Mapper35/91 段、`fc-core/src/mapper/basic/sl12.rs` 的 Mapper116 段、`fc-core/src/mapper/basic/waixing.rs` 的 Mapper178 / Mapper253 段、`fc-core/src/mapper/vrc4.rs` 的 VRC2/VRC4 段、`fc-core/src/mapper/rambo1.rs` 的 Mapper64/158 段，`fc-core/src/mapper/basic/taito.rs` 的 Mapper48 段，以及 `fc-core/src/mapper/mmc3.rs` 的 Mapper37/44/45/47/52/76/119 变体段。
-- 同批替换 `fc-core/src/mapper/basic/special.rs` 里 Mapper168 / Mapper171 的新增段，并同步检查 `MapperOps::has_chr_read` / `chr_read` / `chr_write` / `cpu_clock` 是否仍有使用者。
+- 同批替换 `fc-core/src/mapper/basic/special.rs` 里 Mapper111 / Mapper168 / Mapper171 的新增段，并同步检查 `MapperOps::has_chr_read` / `chr_read` / `chr_write` / `cpu_clock` / `nametable_chr_index` 是否仍有使用者。
 - 若替换 Mapper99，请同步检查 `MapperOps::write_controller_strobe`、`Cartridge::cpu_write_controller_strobe` 与 `Bus::write($4016)` 是否仍有使用者。
 - 再处理 `fc-core/src/mapper.rs` 里 Mapper 43/60/75/76/83/91/99/106/168/183/212/222/235 的导出、枚举、构造和 dispatch 分支。
 - 若替换 Mapper91，请同步检查 `MapperOps::hblank_clock`、`Cartridge::mapper_clocks_hblank` 与 `Bus::clock_ppu_dot()` 的 HBlank hook 是否仍有使用者。

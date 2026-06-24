@@ -119,6 +119,7 @@ impl Mapper {
             106 => Mapper::Mapper106(Mapper106::new(prg_16k, chr_8k)),
             107 => Mapper::Mapper107(Mapper107::new(mirroring)),
             108 => Mapper::Mapper108(Mapper108::new(prg_16k, mirroring)),
+            111 => Mapper::Mapper111(Mapper111::new(prg_16k)),
             112 => Mapper::Ntdec112(Ntdec112::new(prg_16k)),
             113 => Mapper::Nina03_06(Nina03_06::new()),
             114 => Mapper::Mmc3(Mmc3::new_114(prg_16k, chr_8k, mirroring)),

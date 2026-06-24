@@ -92,6 +92,7 @@ fn watches_ppu_bus_matches_notify_a12_overrides() {
         (105, false),  // Mapper 105 IRQ is CPU-clocked, not PPU-bus-clocked
         (106, false),  // Mapper 106 IRQ is CPU-clocked, not PPU-bus-clocked
         (108, false),  // Mapper 108
+        (111, false),  // Cheapocabra / GTROM
         (114, true),   // Mapper 114 MMC3 A12 IRQ
         (115, true),   // Mapper 115 MMC3 A12 IRQ
         (117, true),   // Mapper 117 A12 IRQ
@@ -298,6 +299,7 @@ fn clocks_cpu_matches_cpu_clock_overrides() {
         (105, true),   // Mapper 105 NWC timer clocks per CPU cycle
         (106, true),   // Mapper 106 IRQ counter clocks per CPU cycle
         (108, false),  // Mapper 108
+        (111, false),  // Cheapocabra / GTROM
         (114, false),  // Mapper 114 uses PPU A12 edges
         (115, false),  // Mapper 115 uses PPU A12 edges
         (117, false),  // Mapper 117 uses PPU A12 edges
@@ -507,6 +509,7 @@ fn clocks_hblank_matches_hblank_clock_overrides() {
         (106, false),
         (107, false),
         (108, false),
+        (111, false),
         (112, false),
         (113, false),
         (114, false),

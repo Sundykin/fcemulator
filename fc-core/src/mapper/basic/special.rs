@@ -216,6 +216,132 @@ impl MapperOps for Mapper108 {
 }
 
 // ============================================================================
+// Mapper 111 — Cheapocabra / GTROM
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Mapper111 {
+    prg_32k_total: usize,
+    reg: u8,
+}
+
+impl Mapper111 {
+    pub(in crate::mapper) fn new(prg_16k: usize) -> Self {
+        Self {
+            prg_32k_total: prg_16k.div_ceil(2).max(1),
+            reg: 0xFF,
+        }
+    }
+
+    fn update_register(&mut self, value: u8) {
+        self.reg = value;
+    }
+
+    fn nametable_index(&self, addr: u16) -> usize {
+        let page_base = if self.reg & 0x20 != 0 { 0x6000 } else { 0x4000 };
+        page_base + (addr as usize & 0x1FFF)
+    }
+}
+
+impl MapperOps for Mapper111 {
+    fn prg_index(&self, addr: u16) -> usize {
+        let bank = (self.reg & 0x0F) as usize % self.prg_32k_total;
+        bank * 0x8000 + (addr as usize & 0x7FFF)
+    }
+
+    fn chr_index(&self, addr: u16) -> usize {
+        chr_8k(usize::from(self.reg & 0x10 != 0), addr)
+    }
+
+    fn write_register(&mut self, _addr: u16, _value: u8) {}
+
+    fn write_expansion(&mut self, addr: u16, value: u8) {
+        if (0x5000..=0x5FFF).contains(&addr) {
+            self.update_register(value);
+        }
+    }
+
+    fn write_low_register(&mut self, addr: u16, value: u8) -> bool {
+        if (0x7000..=0x7FFF).contains(&addr) {
+            self.update_register(value);
+            true
+        } else {
+            false
+        }
+    }
+
+    fn low_prg_ram_read_enabled(&self, addr: u16) -> bool {
+        !(0x6000..=0x7FFF).contains(&addr)
+    }
+
+    fn low_prg_ram_write_enabled(&self, addr: u16) -> bool {
+        !(0x6000..=0x7FFF).contains(&addr)
+    }
+
+    fn read_expansion_with_open_bus(&mut self, addr: u16, open_bus: u8) -> Option<u8> {
+        if (0x5000..=0x5FFF).contains(&addr) {
+            self.update_register(open_bus);
+            Some(open_bus)
+        } else {
+            None
+        }
+    }
+
+    fn peek_expansion_with_open_bus(&self, addr: u16, open_bus: u8) -> Option<u8> {
+        if (0x5000..=0x5FFF).contains(&addr) {
+            Some(open_bus)
+        } else {
+            None
+        }
+    }
+
+    fn read_low_register_with_open_bus(
+        &mut self,
+        addr: u16,
+        _prg_ram_value: u8,
+        open_bus: u8,
+    ) -> Option<u8> {
+        if (0x7000..=0x7FFF).contains(&addr) {
+            self.update_register(open_bus);
+            Some(open_bus)
+        } else {
+            None
+        }
+    }
+
+    fn peek_low_register_with_open_bus(
+        &self,
+        addr: u16,
+        _prg_ram_value: u8,
+        open_bus: u8,
+    ) -> Option<u8> {
+        if (0x7000..=0x7FFF).contains(&addr) {
+            Some(open_bus)
+        } else {
+            None
+        }
+    }
+
+    fn nametable_chr_index(&self, addr: u16) -> Option<usize> {
+        Some(self.nametable_index(addr))
+    }
+
+    fn has_nametable_chr_mapping(&self) -> bool {
+        true
+    }
+
+    fn mirroring(&self) -> Mirroring {
+        Mirroring::FourScreen
+    }
+
+    fn reset(&mut self, soft: bool) {
+        if !soft {
+            self.reg = 0xFF;
+        }
+    }
+}
+
+// ============================================================================
 // Mapper 190 — Magic Kid GooGoo
 // ============================================================================
 
@@ -477,6 +603,47 @@ mod tests {
         mapper.write_register(0xF000, 0x05);
         assert_eq!(mapper.low_prg_index(0x7FFF), Some(5 * 0x2000 + 0x1FFF));
         assert_eq!(mapper.mirroring(), Mirroring::Vertical);
+    }
+
+    #[test]
+    fn mapper111_gtrom_switches_prg_chr_nametable_and_open_bus_reads() {
+        let mut mapper = Mapper111::new(32);
+
+        assert_eq!(mapper.prg_index(0x8004), 15 * 0x8000 + 4);
+        assert_eq!(mapper.chr_index(0x1004), 0x2000 + 0x1004);
+        assert_eq!(mapper.nametable_chr_index(0x2004), Some(0x6004));
+        assert_eq!(mapper.nametable_chr_index(0x3004), Some(0x7004));
+        assert!(mapper.has_nametable_chr_mapping());
+        assert_eq!(mapper.mirroring(), Mirroring::FourScreen);
+
+        mapper.write_expansion(0x5000, 0x23);
+        assert_eq!(mapper.prg_index(0x8123), 3 * 0x8000 + 0x0123);
+        assert_eq!(mapper.chr_index(0x1004), 0x1004);
+        assert_eq!(mapper.nametable_chr_index(0x2404), Some(0x6404));
+
+        assert!(mapper.write_low_register(0x7000, 0x14));
+        assert!(!mapper.write_low_register(0x6000, 0x14));
+        assert!(!mapper.low_prg_ram_read_enabled(0x6000));
+        assert!(!mapper.low_prg_ram_write_enabled(0x7FFF));
+        assert_eq!(mapper.prg_index(0x8004), 4 * 0x8000 + 4);
+        assert_eq!(mapper.chr_index(0x1004), 0x2000 + 0x1004);
+        assert_eq!(mapper.nametable_chr_index(0x2004), Some(0x4004));
+
+        assert_eq!(
+            mapper.read_expansion_with_open_bus(0x5000, 0x2A),
+            Some(0x2A)
+        );
+        assert_eq!(mapper.prg_index(0x8004), 10 * 0x8000 + 4);
+        assert_eq!(
+            mapper.read_low_register_with_open_bus(0x7000, 0, 0x01),
+            Some(0x01)
+        );
+        assert_eq!(mapper.prg_index(0x8004), 1 * 0x8000 + 4);
+        assert_eq!(
+            mapper.peek_low_register_with_open_bus(0x7000, 0, 0x0F),
+            Some(0x0F)
+        );
+        assert_eq!(mapper.prg_index(0x8004), 1 * 0x8000 + 4);
     }
 
     #[test]
