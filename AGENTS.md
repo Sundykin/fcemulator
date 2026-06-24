@@ -62,7 +62,9 @@ Restart gotcha: `tauri dev` spawns `target/debug/fc-tauri` which **orphans** whe
 
 ## Dev-time AI / MCP (registered in `.mcp.json`, project scope)
 
-- **`fc-emu`** (`fc mcp`): drive the emulator core headlessly — load ROM, step, read memory, `emu_capture_screen` (returns a viewable PNG of the rendered frame). Use this to *see* what the core renders without the WebGL canvas.
+- **`fc-ide`** (`fc ide-mcp`): semantic creative IDE API hosted inside the running Tauri process at `/tmp/fc-tauri-ide-mcp.sock`; tools create/open projects, write source/CHR/map/music resources, bind map↔CHR, build, run, and notify the visible UI through Tauri events.
+- **`fc-emu`** (`fc emu-mcp`): live emulator MCP hosted inside the running Tauri process at `/tmp/fc-tauri-emu-mcp.sock`; it drives the same `EmuState` used by the visible player/IDE preview, including ROM load, frame stepping, input, memory, breakpoints, traces, event dumps, and `emu_capture_screen`.
+- **`fc-emu-core`** (`fc mcp`): optional headless core MCP for pure emulator work without the Tauri window.
 - **`fc-tauri`** (`fc tauri-bridge`): debug the **live** running Tauri window. `tauri_eval` runs JS in the real webview (read DOM, Pinia `window.__emu`/`window.__lib`, navigate) — works with no special permission. `tauri_screenshot` needs macOS **Screen Recording** permission. Plumbing: dev-only `tauri-plugin-mcp-gui` opens a Unix socket at `/tmp/fc-tauri-mcp.sock` (init in `lib.rs`, `#[cfg(debug_assertions)]`); the frontend `devtools.ts` answers the `execute-js` round-trip; `fc tauri-bridge` bridges MCP↔socket.
 
 ## Conventions

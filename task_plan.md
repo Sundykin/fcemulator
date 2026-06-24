@@ -4,7 +4,7 @@
 Evolve the fc-tauri studio into a mature NES game-development IDE engine. The target experience is continuous project/resource/map/music workflows, comfortable editing controls, and editors that fill their available workspace instead of using tiny native-pixel canvases.
 
 ## Current Phase
-Phase 5: Music editor comfort
+Phase 2: Project And Resource Flow
 
 ## Phases
 
@@ -17,10 +17,10 @@ Phase 5: Music editor comfort
 - **Status:** complete
 
 ### Phase 2: Project And Resource Flow
-- [ ] Make project creation/opening/resource discovery feel continuous
-- [ ] Make map-to-CHR binding explicit, visible, and recoverable in the map workflow
+- [x] Make project creation/opening/resource discovery feel continuous
+- [x] Make map-to-CHR binding explicit, visible, and recoverable in the map workflow
 - [ ] Make build/run/preview feedback always visible when relevant
-- **Status:** pending
+- **Status:** in_progress
 
 ### Phase 3: Map Editor Comfort
 - [ ] Ensure map canvas uses the full parent work area with fit/fill behavior
@@ -46,7 +46,8 @@ Phase 5: Music editor comfort
 - [x] Use the Tauri UI/MCP to verify actual editor geometry and workflow behavior
 - [x] Commit coherent increments for the live MCP / map editor slice
 - [x] Commit coherent increments for the CHR editor slice
-- [ ] Commit coherent increments for the music editor slice
+- [x] Commit coherent increments for the music editor slice
+- [ ] Commit coherent increments for the project/resource flow slice
 - **Status:** in_progress
 
 ## Key Questions
@@ -62,6 +63,7 @@ Phase 5: Music editor comfort
 | Treat editor usable-area adaptation as a first-class requirement | User called out tiny raw-size editing as a systemic problem across map/resource/music editors |
 | Prefer frontend/layout improvements first, preserving backend formats | The pain is mostly interaction and workspace sizing; backend map/CHR/tracker formats already exist and should stay stable |
 | Keep emulator MCP embedded in Tauri and surface it in the player UI | User specifically wants MCP to operate the visible Tauri emulator, not a hidden core; UI status makes that connection observable |
+| Make `.mcp.json` `fc-emu` point at `fc emu-mcp` by default | User wants game emulator MCP to attach to the Tauri emulator interface; retaining `fc-emu-core` preserves the headless option for pure core work |
 
 ## Errors Encountered
 | Error | Attempt | Resolution |

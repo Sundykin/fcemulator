@@ -42,6 +42,16 @@ Tauri IDE 启动时会同时启动一个语义级 MCP socket:`/tmp/fc-tauri-ide-
 `fc-ide` 不是一个不可见的离线核心;它是 live IDE 的编程接口。`fc-tauri` MCP 仍保留为 DOM/窗口调试桥,
 主要用于验证 UI 是否刷新正确。
 
+同时,Tauri 启动时也会启动 live emulator MCP socket:`/tmp/fc-tauri-emu-mcp.sock`。`.mcp.json`
+中的 `fc-emu` 默认连接这个 socket,因此 `emu_*` 工具会操作**可见的**播放器/IDE 预览,而不是另开一个
+隐藏模拟器核心:
+
+- `emu_load_rom` 会把 ROM 载入当前 Tauri 模拟器界面。
+- `emu_step_frame` / `emu_press_button` / `emu_control` 会驱动界面里的同一台机器。
+- `emu_capture_screen` / `emu_read_memory` / `emu_trace` / `emu_event_dump` 读取的是当前可见运行态。
+
+需要纯核心无界面的调试时,再连接 `.mcp.json` 中的 `fc-emu-core`。
+
 ## cc65 工具链
 
 `ca65`/`ld65` 作为捆绑 sidecar,位于 `fc-tauri/src-tauri/vendor/cc65/<target-triple>/`。

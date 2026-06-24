@@ -32,6 +32,16 @@
 - Live MCP tools call the same `EmuState` used by the visible player and IDE preview, including ROM load, controller input, stepping, screenshots, memory reads/writes, breakpoints, event dumps, and heatmaps.
 - The backend emits `emu-mcp-updated` after state-changing tools so the Vue shell can refresh ROM/runtime/status state.
 - New frontend status wiring listens for `emu-mcp-status`, actively queries `emu_mcp_status()` after mount, and displays a compact live MCP indicator in the player toolbar.
+- `.mcp.json` now maps `fc-emu` to `target/debug/fc emu-mcp`, so the default emulator MCP name drives the visible Tauri emulator UI. The old headless `fc mcp` path remains available as `fc-emu-core`.
+- Runtime verification loaded `/Users/sunmeng/workspace/fc/roms/SuperMarioBro.nes` through `target/debug/fc emu-mcp`; Tauri store switched to `mode=player`, `view=main`, `rom=SuperMarioBro.nes`, and `liveMcp.lastReason=emu_load_rom`.
+
+## Project Resource Flow Findings
+- `FileTreePanel.vue` now treats the file tree as a resource navigator, with manifest-backed resource chips for source/CHR/map/music and a compact active-resource readout.
+- Resource classification now prefers `project.toml` manifest membership over extension guesses, so exported music `.s` files remain music resources instead of being shown as source just because of the extension.
+- Map rows surface their CHR binding inline (`→ chr/...`) and missing bindings are visually marked. CHR rows surface how many maps currently depend on that sheet.
+- Context menu flow now supports binding a map to the current/default CHR and binding a CHR row to the current map, reusing the existing store `bindChrToMap` persistence path.
+- Runtime verification with `/tmp/fc-resource-flow-verify` showed resource chips `全部4|源码1|CHR2|地图1|音乐0`, `room.bin→ chr/alt.chr`, and `alt.chr1 地图` after rebinding.
+- Rebinding `map/room.bin` to `chr/alt.chr` updated both Pinia `mapChrBindings` and `/tmp/fc-resource-flow-verify/project.toml` `[map_chr]`.
 
 ## Current Implementation Slice
 - Map editor now gives the canvas wrapper the full body area and moves the tile/CHR resource panel into an overlay drawer.

@@ -2,7 +2,15 @@
   "mcpServers": {
     "fc-emu": {
       "type": "stdio",
-      "command": "/Users/sunmeng/workspace/fc/target/debug/fc",
+      "command": "/Users/sunmeng/workspace/fc-creative-mode/target/debug/fc",
+      "args": [
+        "emu-mcp"
+      ],
+      "env": {}
+    },
+    "fc-emu-core": {
+      "type": "stdio",
+      "command": "/Users/sunmeng/workspace/fc-creative-mode/target/debug/fc",
       "args": [
         "mcp"
       ],
@@ -10,7 +18,7 @@
     },
     "fc-tauri": {
       "type": "stdio",
-      "command": "/Users/sunmeng/workspace/fc/target/debug/fc",
+      "command": "/Users/sunmeng/workspace/fc-creative-mode/target/debug/fc",
       "args": [
         "tauri-bridge"
       ],
@@ -21,14 +29,6 @@
       "command": "/Users/sunmeng/workspace/fc-creative-mode/target/debug/fc",
       "args": [
         "ide-mcp"
-      ],
-      "env": {}
-    },
-    "fc-emu-live": {
-      "type": "stdio",
-      "command": "/Users/sunmeng/workspace/fc-creative-mode/target/debug/fc",
-      "args": [
-        "emu-mcp"
       ],
       "env": {}
     }
