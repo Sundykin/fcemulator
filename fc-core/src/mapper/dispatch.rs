@@ -84,6 +84,7 @@ macro_rules! dispatch {
             Mapper::Mapper181($m) => $body,
             Mapper::Mapper183($m) => $body,
             Mapper::Mapper185($m) => $body,
+            Mapper::Mapper186($m) => $body,
             Mapper::Mapper188($m) => $body,
             Mapper::Mapper190($m) => $body,
             Mapper::Mapper193($m) => $body,

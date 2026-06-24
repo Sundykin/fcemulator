@@ -140,6 +140,7 @@ fn watches_ppu_bus_matches_notify_a12_overrides() {
         (181, false),  // Mapper 181 CNROM protection
         (182, true),   // Mapper 182 MMC3 A12 IRQ
         (183, false),  // Mapper 183 IRQ is CPU-clocked, not PPU-bus-clocked
+        (186, false),  // Mapper 186 Family Study Box
         (188, false),  // Mapper 188
         (230, false),  // Mapper 230
         (233, false),  // Mapper 233
@@ -345,6 +346,7 @@ fn clocks_cpu_matches_cpu_clock_overrides() {
         (181, false),  // Mapper 181 CNROM protection
         (182, false),  // Mapper 182 uses PPU A12 edges
         (183, true),   // Mapper 183 IRQ counter clocks per CPU cycle
+        (186, false),  // Mapper 186 Family Study Box
         (188, false),  // Mapper 188
         (230, false),  // Mapper 230
         (233, false),  // Mapper 233
@@ -556,6 +558,7 @@ fn clocks_hblank_matches_hblank_clock_overrides() {
         (182, false),
         (183, false),
         (184, false),
+        (186, false),
         (187, false),
         (188, false),
         (190, false),

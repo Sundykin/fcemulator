@@ -28,7 +28,7 @@ mod waixing;
 pub use ave::{Bnrom, Nina01};
 pub use bandai::BandaiFcg;
 pub use core::{Axrom, Bf9096, Cnrom, Codemasters, ColorDreams, Gxrom, Nrom, Unrom};
-pub use discrete::{Mapper181, Mapper185, Mapper188, Mapper193, Mapper218};
+pub use discrete::{Mapper181, Mapper185, Mapper186, Mapper188, Mapper193, Mapper218};
 pub use irem::{IremG101, IremLrog017};
 pub use irq::{
     FfeMapper, FfeMode, Mapper117, Mapper142, Mapper18, Mapper40, Mapper42, Mapper50, Mapper65,

@@ -214,6 +214,113 @@ impl MapperOps for Mapper193 {
 }
 
 // ============================================================================
+// Mapper 186 — Family Study Box
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Mapper186 {
+    prg_16k: usize,
+    regs: [u8; 4],
+    swram: Vec<u8>,
+    wram: Vec<u8>,
+}
+
+impl Mapper186 {
+    pub(in crate::mapper) fn new(prg_16k: usize) -> Self {
+        Self {
+            prg_16k: prg_16k.max(1),
+            regs: [0; 4],
+            swram: vec![0; 0x0C00],
+            wram: vec![0; 0x8000],
+        }
+    }
+
+    fn wram_index(&self, addr: u16) -> usize {
+        let bank = (self.regs[0] as usize >> 6) & 0x03;
+        bank * 0x2000 + (addr as usize & 0x1FFF)
+    }
+}
+
+impl MapperOps for Mapper186 {
+    fn prg_index(&self, addr: u16) -> usize {
+        let bank = if addr < 0xC000 {
+            self.regs[1] as usize
+        } else {
+            0
+        };
+        (bank % self.prg_16k) * 0x4000 + (addr as usize & 0x3FFF)
+    }
+
+    fn chr_index(&self, addr: u16) -> usize {
+        (addr & 0x1FFF) as usize
+    }
+
+    fn write_register(&mut self, _addr: u16, _value: u8) {}
+
+    fn write_low_register(&mut self, addr: u16, value: u8) -> bool {
+        if (0x6000..=0x7FFF).contains(&addr) {
+            let index = self.wram_index(addr);
+            self.wram[index] = value;
+            true
+        } else {
+            false
+        }
+    }
+
+    fn low_prg_ram_read_enabled(&self, addr: u16) -> bool {
+        !(0x6000..=0x7FFF).contains(&addr)
+    }
+
+    fn low_prg_ram_write_enabled(&self, addr: u16) -> bool {
+        !(0x6000..=0x7FFF).contains(&addr)
+    }
+
+    fn read_low_register(&mut self, addr: u16) -> Option<u8> {
+        self.peek_low_register(addr)
+    }
+
+    fn peek_low_register(&self, addr: u16) -> Option<u8> {
+        if (0x6000..=0x7FFF).contains(&addr) {
+            Some(self.wram[self.wram_index(addr)])
+        } else {
+            None
+        }
+    }
+
+    fn read_expansion(&mut self, addr: u16) -> Option<u8> {
+        self.peek_expansion(addr)
+    }
+
+    fn peek_expansion(&self, addr: u16) -> Option<u8> {
+        match addr {
+            0x4200 | 0x4201 | 0x4203 => Some(0x00),
+            0x4202 => Some(0x40),
+            0x4204..=0x43FF => Some(0xFF),
+            0x4400..=0x4FFF => Some(self.swram[(addr - 0x4400) as usize]),
+            _ => None,
+        }
+    }
+
+    fn write_expansion(&mut self, addr: u16, value: u8) {
+        match addr {
+            0x4200..=0x43FF => {
+                if addr & 0x4203 != 0 {
+                    self.regs[(addr & 0x03) as usize] = value;
+                }
+            }
+            0x4400..=0x4FFF => {
+                self.swram[(addr - 0x4400) as usize] = value;
+            }
+            _ => {}
+        }
+    }
+
+    fn mirroring(&self) -> Mirroring {
+        Mirroring::Horizontal
+    }
+}
+
+// ============================================================================
 // Mapper 218 — Magic Floor
 // ============================================================================
 
@@ -361,6 +468,38 @@ mod tests {
         assert_eq!(mapper.chr_index(0x1404), 7 * 0x0400 + 4);
         assert_eq!(mapper.chr_index(0x1804), 10 * 0x0400 + 4);
         assert_eq!(mapper.chr_index(0x1C04), 11 * 0x0400 + 4);
+        assert_eq!(mapper.mirroring(), Mirroring::Horizontal);
+    }
+
+    #[test]
+    fn mapper186_maps_family_study_box_status_ram_and_prg() {
+        let mut mapper = Mapper186::new(8);
+
+        assert_eq!(mapper.read_expansion(0x4200), Some(0x00));
+        assert_eq!(mapper.read_expansion(0x4201), Some(0x00));
+        assert_eq!(mapper.read_expansion(0x4202), Some(0x40));
+        assert_eq!(mapper.read_expansion(0x4203), Some(0x00));
+        assert_eq!(mapper.read_expansion(0x4300), Some(0xFF));
+        assert_eq!(mapper.read_expansion(0x5000), None);
+
+        mapper.write_expansion(0x4404, 0x5A);
+        assert_eq!(mapper.read_expansion(0x4404), Some(0x5A));
+
+        assert!(!mapper.low_prg_ram_read_enabled(0x6000));
+        assert!(!mapper.low_prg_ram_write_enabled(0x6000));
+        assert!(mapper.write_low_register(0x6004, 0x11));
+        assert_eq!(mapper.read_low_register(0x6004), Some(0x11));
+
+        mapper.write_expansion(0x4200, 0x40);
+        assert!(mapper.write_low_register(0x6004, 0x22));
+        assert_eq!(mapper.read_low_register(0x6004), Some(0x22));
+        mapper.write_expansion(0x4200, 0x00);
+        assert_eq!(mapper.read_low_register(0x6004), Some(0x11));
+
+        mapper.write_expansion(0x4201, 0x03);
+        assert_eq!(mapper.prg_index(0x8004), 3 * 0x4000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 4);
+        assert_eq!(mapper.chr_index(0x1004), 0x1004);
         assert_eq!(mapper.mirroring(), Mirroring::Horizontal);
     }
 
