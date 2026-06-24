@@ -203,6 +203,9 @@ export const useProjectStore = defineStore("project", {
       if (path && this.activeResource.path !== path && !this.activeResource.path.startsWith(path + "/")) return;
       this.activeResource = { kind: "", path: "", label: "", seq: this.resourceFocusSeq };
     },
+    requestPreviewFocus() {
+      this.focusPreview++;
+    },
     async newProject(dir: string, name: string, template: ide.TemplateId) {
       this.manifest = normalizeManifest(await ide.projectNew(dir, name, template));
       this.resetWorkspaceState(dir);
@@ -259,9 +262,7 @@ export const useProjectStore = defineStore("project", {
         if (extra?.path && changed.includes("music") && this.song?.path === extra.path) {
           await this.openTracker(extra.path);
         }
-        if (changed.includes("preview")) {
-          this.focusPreview++;
-        }
+        if (changed.includes("preview")) this.requestPreviewFocus();
         this.status = `MCP 已更新：${reason}`;
       } catch (e) {
         this.status = `MCP 同步失败：${e}`;

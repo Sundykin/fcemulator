@@ -4,7 +4,7 @@
 Evolve the fc-tauri studio into a mature NES game-development IDE engine. The target experience is continuous project/resource/map/music workflows, comfortable editing controls, and editors that fill their available workspace instead of using tiny native-pixel canvases.
 
 ## Current Phase
-Phase 11: Build-Time Autosave For Creative Resources
+Phase 12: Build Panel Run Opens Visible Preview
 
 ## Phases
 
@@ -86,6 +86,13 @@ Phase 11: Build-Time Autosave For Creative Resources
 - [x] Verify dirty CHR/map/song changes are persisted by direct Build and included in a successful ROM build
 - **Status:** complete
 
+### Phase 12: Build Panel Run Opens Visible Preview
+- [x] Audit all run entry points for whether the visible Preview panel is mounted
+- [x] Add an explicit project-store action for requesting Preview focus
+- [x] Make the Build health "运行" action focus the Preview panel after loading the ROM
+- [x] Verify the real Tauri Build panel health run opens Preview with a visible emulator canvas
+- **Status:** complete
+
 ## Key Questions
 1. Which editor currently wastes the most available panel area or forces tiny pixel editing?
 2. Where is map-to-CHR binding surfaced, and does opening a map automatically load/show the right CHR resource?
@@ -105,6 +112,7 @@ Phase 11: Build-Time Autosave For Creative Resources
 | Treat MCP `preview` updates as a UI focus signal | `ide_run` already loads the ROM into the Tauri emulator; the visible IDE must also mount the Preview panel so agent-authored games are observable without DOM/manual panel toggles |
 | Make the project store authoritative for the active creative resource | The file tree previously inferred "current resource" from unrelated per-panel counters; an IDE should show the resource the user actually opened or switched to |
 | Build must autosave every first-class creative resource | A user should be able to edit CHR/map/music and press Build/Run without remembering a separate Save step for non-source resources; otherwise ROM output can silently use stale assets |
+| Any IDE run entry point must surface the Preview panel | Running a ROM from Build health should be as visible as the top-level Run and MCP run paths; a successful run that leaves Preview closed breaks feedback continuity |
 
 ## Errors Encountered
 | Error | Attempt | Resolution |

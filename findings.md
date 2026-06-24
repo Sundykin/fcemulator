@@ -102,6 +102,12 @@
 - Runtime verification edited CHR pixels, map tile/collision, and tracker song data in memory, left them dirty, then called `build_()` directly. Before build: CHR/map/song were dirty; after build: all dirty flags were false and `build/game.nes` succeeded.
 - IDE MCP readback after the build proved persistence: CHR first pixels were `[1, 2, 0, 0]`, map tile 0 was `7`, map collision 0 was `1`, song name was `Autosave Theme Built`, and the first tracker cell had note `33` volume `15`.
 
+## Build Panel Preview Findings
+- Top-level IDE Run already opens the Preview panel directly, and MCP `ide_run` uses `focusPreview`; BuildPanel health run loaded the ROM but did not ask Dockview to mount Preview.
+- The project store now exposes `requestPreviewFocus()` and both MCP preview sync and BuildPanel health run use that same signal.
+- Runtime verification closed Preview, opened Build health, clicked the `运行` action, and observed Preview mount as the active Dockview panel with one visible canvas.
+- The same run updated the loop chips to `已 / 成 / 跑`, loaded `game.nes`, and live `fc emu-mcp` reported mapper 0, running worker state, and advancing PPU frame count.
+
 ## Files To Inspect Next
 - `fc-tauri/src/ide/MapEditorPanel.vue` template/style sections
 - `fc-tauri/src/ide/ChrEditorPanel.vue` template/style sections

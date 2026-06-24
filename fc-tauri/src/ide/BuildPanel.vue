@@ -108,6 +108,7 @@ async function runProject() {
   }
   if (store.build?.success && store.build.output) {
     await emu.openPath(`${store.root}/${store.build.output}`, true);
+    store.requestPreviewFocus();
     store.status = `运行中 → ${store.build.output}`;
   }
   tab.value = "health";

@@ -125,6 +125,15 @@
   - Runtime verified through the real Tauri app: made CHR/map/song dirty in memory, called `build_()` directly, and confirmed the build succeeded with all dirty flags cleared.
   - Read the saved project back through `target/debug/fc ide-mcp` to prove the edited CHR pixels, map tile/collision, and tracker song cell were written to disk before build.
 
+### Phase 12: Build Panel Run Opens Visible Preview
+- **Status:** complete
+- Actions taken:
+  - Audited run entry points and found BuildPanel health `运行` loaded the ROM with `keepMode=true` but did not open/focus the Preview dock panel.
+  - Added `requestPreviewFocus()` to the project store and reused it from MCP preview sync.
+  - Updated BuildPanel health run to request Preview focus after loading the built ROM.
+  - Runtime verified the real Tauri Build panel: after closing Preview, clicking health `运行` mounted Preview, made it active, and displayed a visible emulator canvas.
+  - Verified live `fc emu-mcp` reported the same Tauri emulator running the generated mapper 0 ROM.
+
 ## Test Results
 | Test | Result |
 |------|--------|
@@ -181,6 +190,8 @@
 | active resource rename/delete behavior | PASS; renaming active song updated summary/highlight and manifest.music; deleting it cleared summary to `未选中资源` and removed active row |
 | build autosaves dirty creative resources | PASS; direct `build_()` with dirty CHR/map/song cleared all dirty flags and produced `build/game.nes` successfully |
 | build autosave IDE MCP readback | PASS; saved CHR pixels `[1,2,0,0]`, map tile 0 `7`, collision 0 `1`, song `Autosave Theme Built`, first note `33` |
+| BuildPanel health run opens Preview | PASS; with Preview closed, health `运行` opened Preview as active panel, showed one visible canvas, loaded `game.nes`, and loop chips read `已/成/跑` |
+| live emulator state after BuildPanel health run | PASS; `fc emu-mcp` reported mapper 0, running worker, advancing PPU frame, and live memory bytes |
 | `fc-tauri/node_modules/.bin/vue-tsc --noEmit` | NOT RUN; local project has no `vue-tsc` binary |
 | `cd fc-tauri && npx vue-tsc --noEmit` | BLOCKED by restricted network; `npx` attempted `registry.npmmirror.com/vue-tsc` and failed DNS |
 
