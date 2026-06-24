@@ -166,6 +166,7 @@ fn watches_ppu_bus_matches_notify_a12_overrides() {
         (218, false),  // Magic Floor
         (221, false),  // Mapper 221
         (222, true),   // Mapper 222 A12 IRQ
+        (224, true),   // Mapper 224 MMC3 A12 IRQ
         (226, false),  // Mapper 226
         (227, false),  // Mapper 227
         (228, false),  // Mapper 228
@@ -173,6 +174,7 @@ fn watches_ppu_bus_matches_notify_a12_overrides() {
         (229, false),  // Mapper 229
         (231, false),  // Mapper 231
         (232, false),  // Mapper 232
+        (238, true),   // Mapper 238 MMC3 A12 IRQ
         (239, false),  // Mapper 239
         (240, false),  // Mapper 240
         (241, false),  // Mapper 241
@@ -341,6 +343,7 @@ fn clocks_cpu_matches_cpu_clock_overrides() {
         (235, false),  // Mapper 235
         (236, false),  // Mapper 236
         (237, false),  // Mapper 237
+        (238, false),  // Mapper 238 uses PPU A12 edges
         (187, false),  // Mapper 187 uses PPU A12 edges
         (190, false),  // Mapper 190
         (191, false),  // Mapper 191 uses PPU A12 edges
@@ -365,6 +368,7 @@ fn clocks_cpu_matches_cpu_clock_overrides() {
         (218, false),  // Magic Floor
         (221, false),  // Mapper 221
         (222, false),  // Mapper 222 uses PPU A12 edges
+        (224, false),  // Mapper 224 uses PPU A12 edges
         (226, false),  // Mapper 226
         (227, false),  // Mapper 227
         (228, false),  // Mapper 228
@@ -566,6 +570,7 @@ fn clocks_hblank_matches_hblank_clock_overrides() {
         (218, false),
         (221, false),
         (222, false),
+        (224, false),
         (225, false),
         (226, false),
         (227, false),
@@ -579,6 +584,7 @@ fn clocks_hblank_matches_hblank_clock_overrides() {
         (235, false),
         (236, false),
         (237, false),
+        (238, false),
         (239, false),
         (240, false),
         (241, false),

@@ -37,6 +37,8 @@ enum Mmc3OuterBank {
     Mapper198,
     Mapper205 { block: u8 },
     Mapper208 { regs: [u8; 6], submapper: u8 },
+    Mapper224 { outer_bank: u8 },
+    Mapper238 { ex_reg: u8 },
     Mapper245,
     Mapper249 { reg: u8 },
     Mapper250,
@@ -387,6 +389,21 @@ impl Mmc3 {
         let mut regs = [0; 6];
         regs[5] = 0x11;
         m.outer_bank = Mmc3OuterBank::Mapper208 { regs, submapper };
+        m
+    }
+
+    /// Mapper 224 — MMC3 clone with one extra PRG outer bank bit at $5000.
+    pub(super) fn new_224(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
+        let mut m = Mmc3::new(prg_16k, chr_8k, mirroring);
+        m.outer_bank = Mmc3OuterBank::Mapper224 { outer_bank: 0 };
+        m
+    }
+
+    /// Mapper 238 — MMC3 clone with a low security register readable from
+    /// $4020-$7FFF while high reads continue to return PRG-ROM.
+    pub(super) fn new_238(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
+        let mut m = Mmc3::new(prg_16k, chr_8k, mirroring);
+        m.outer_bank = Mmc3OuterBank::Mapper238 { ex_reg: 0 };
         m
     }
 
@@ -760,6 +777,10 @@ impl Mmc3 {
                 };
                 base | region as usize
             }
+            Mmc3OuterBank::Mapper224 { outer_bank } => {
+                (((*outer_bank & 1) as usize) << 6) | (bank & 0x3F)
+            }
+            Mmc3OuterBank::Mapper238 { .. } => bank,
             Mmc3OuterBank::Mapper245 => {
                 let outer = if self.banks[0] & 0x02 != 0 {
                     0x40
@@ -853,6 +874,8 @@ impl Mmc3 {
                 bank | ((*block as usize) << 7)
             }
             Mmc3OuterBank::Mapper208 { .. } => bank,
+            Mmc3OuterBank::Mapper224 { .. } => bank,
+            Mmc3OuterBank::Mapper238 { .. } => bank,
             Mmc3OuterBank::Mapper245 => bank & 0x07,
             Mmc3OuterBank::Mapper249 { reg } => {
                 if reg & 0x02 != 0 {
@@ -1304,6 +1327,11 @@ impl MapperOps for Mmc3 {
                 }
                 true
             }
+            Mmc3OuterBank::Mapper238 { ex_reg } => {
+                const SECURITY: [u8; 4] = [0x00, 0x02, 0x02, 0x03];
+                *ex_reg = SECURITY[(value & 0x03) as usize];
+                true
+            }
             Mmc3OuterBank::Mapper189 { reg } => {
                 *reg = value | (value >> 4);
                 true
@@ -1341,6 +1369,7 @@ impl MapperOps for Mmc3 {
             Mmc3OuterBank::Mapper208 { regs, .. } if (0x5800..=0x5FFF).contains(&addr) => {
                 Some(regs[(addr & 0x03) as usize])
             }
+            Mmc3OuterBank::Mapper238 { ex_reg } => Some(*ex_reg),
             _ => None,
         }
     }
@@ -1381,6 +1410,11 @@ impl MapperOps for Mmc3 {
         if let Mmc3OuterBank::Mapper208 { regs, .. } = &self.outer_bank {
             if (0x5800..=0x5FFF).contains(&addr) {
                 return Some(regs[(addr & 0x03) as usize]);
+            }
+        }
+        if let Mmc3OuterBank::Mapper238 { ex_reg } = &self.outer_bank {
+            if (0x4020..=0x5FFF).contains(&addr) {
+                return Some(*ex_reg);
             }
         }
         if let Mmc3OuterBank::Mapper115 { regs } = &self.outer_bank {
@@ -1439,6 +1473,15 @@ impl MapperOps for Mmc3 {
             }
             Mmc3OuterBank::Mapper249 { reg } if addr == 0x5000 => {
                 *reg = value;
+                return;
+            }
+            Mmc3OuterBank::Mapper224 { outer_bank } if addr == 0x5000 => {
+                *outer_bank = (value >> 2) & 0x01;
+                return;
+            }
+            Mmc3OuterBank::Mapper238 { ex_reg } if (0x4020..=0x5FFF).contains(&addr) => {
+                const SECURITY: [u8; 4] = [0x00, 0x02, 0x02, 0x03];
+                *ex_reg = SECURITY[(value & 0x03) as usize];
                 return;
             }
             _ => {}
@@ -1571,6 +1614,14 @@ impl MapperOps for Mmc3 {
             Mmc3OuterBank::Mapper208 { regs, .. } => {
                 *regs = [0; 6];
                 regs[5] = 0x11;
+            }
+            Mmc3OuterBank::Mapper224 { outer_bank } => {
+                *outer_bank = 0;
+                reset_standard = true;
+            }
+            Mmc3OuterBank::Mapper238 { ex_reg } => {
+                *ex_reg = 0;
+                reset_standard = true;
             }
             Mmc3OuterBank::Mapper249 { reg } => {
                 *reg = 0;
@@ -1973,6 +2024,47 @@ mod tests {
         submapper1.write_expansion(0x4800, 0x30);
         assert_eq!(submapper1.prg_index(0x8004), 0x0C * 0x2000 + 4);
         assert_eq!(submapper1.prg_index(0xE004), 0x0F * 0x2000 + 4);
+    }
+
+    #[test]
+    fn mapper224_uses_5000_prg_outer_bank() {
+        let mut mapper = Mmc3::new_224(128, 32, Mirroring::Vertical);
+
+        assert_eq!(mapper.prg_index(0xE004), 0x3F * 0x2000 + 4);
+
+        mapper.write_register(0x8000, 0x06);
+        mapper.write_register(0x8001, 0x24);
+        mapper.write_expansion(0x5000, 0x04);
+        assert_eq!(mapper.prg_index(0x8004), 0x64 * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xE004), 0x7F * 0x2000 + 4);
+
+        mapper.write_expansion(0x5001, 0x00);
+        assert_eq!(mapper.prg_index(0xE004), 0x7F * 0x2000 + 4);
+
+        mapper.reset(true);
+        assert_eq!(mapper.prg_index(0xE004), 0x3F * 0x2000 + 4);
+    }
+
+    #[test]
+    fn mapper238_security_register_covers_expansion_and_low_reads() {
+        let mut mapper = Mmc3::new_238(64, 32, Mirroring::Horizontal);
+
+        assert_eq!(mapper.peek_expansion(0x401F), None);
+        assert_eq!(mapper.read_expansion(0x4020), Some(0x00));
+        mapper.write_expansion(0x4020, 0x01);
+        assert_eq!(mapper.read_expansion(0x5000), Some(0x02));
+
+        assert!(mapper.write_low_register(0x6000, 0x03));
+        assert!(!mapper.low_register_write_falls_through(0x6000));
+        assert_eq!(mapper.read_low_register(0x7000), Some(0x03));
+
+        mapper.write_register(0x8000, 0x06);
+        mapper.write_register(0x8001, 0x12);
+        assert_eq!(mapper.prg_index(0x8004), 0x12 * 0x2000 + 4);
+        assert_eq!(mapper.peek_register(0x8000, 0xAB), None);
+
+        mapper.reset(true);
+        assert_eq!(mapper.read_expansion(0x4020), Some(0x00));
     }
 
     #[test]
