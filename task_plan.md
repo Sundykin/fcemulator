@@ -19,8 +19,8 @@ Phase 2: Project And Resource Flow
 ### Phase 2: Project And Resource Flow
 - [x] Make project creation/opening/resource discovery feel continuous
 - [x] Make map-to-CHR binding explicit, visible, and recoverable in the map workflow
-- [ ] Make build/run/preview feedback always visible when relevant
-- **Status:** in_progress
+- [x] Make build/run/preview feedback always visible when relevant
+- **Status:** complete
 
 ### Phase 3: Map Editor Comfort
 - [ ] Ensure map canvas uses the full parent work area with fit/fill behavior

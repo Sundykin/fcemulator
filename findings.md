@@ -42,6 +42,9 @@
 - Context menu flow now supports binding a map to the current/default CHR and binding a CHR row to the current map, reusing the existing store `bindChrToMap` persistence path.
 - Runtime verification with `/tmp/fc-resource-flow-verify` showed resource chips `全部4|源码1|CHR2|地图1|音乐0`, `room.bin→ chr/alt.chr`, and `alt.chr1 地图` after rebinding.
 - Rebinding `map/room.bin` to `chr/alt.chr` updated both Pinia `mapChrBindings` and `/tmp/fc-resource-flow-verify/project.toml` `[map_chr]`.
+- `IdeView.vue` now keeps a compact always-visible save/build/preview loop indicator in the top bar. It remains visible even when Build and Preview dock panels are closed.
+- The loop indicator uses fixed-width icon+short-code chips (`已/未/待/成/跑/旧`) with full text in `title` and `aria-label`, avoiding toolbar overflow in the 1040px runtime viewport.
+- Runtime verification through the project Tauri MCP showed initial `保存:已保存 / 构建:未构建 / 预览:待构建`, post-build `构建:build/game.nes / 预览:待运行`, and post-run `预览:运行中`, while both build and preview panels were closed.
 
 ## Current Implementation Slice
 - Map editor now gives the canvas wrapper the full body area and moves the tile/CHR resource panel into an overlay drawer.

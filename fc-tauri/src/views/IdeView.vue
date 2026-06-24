@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { markRaw, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, markRaw, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { DockviewVue, type DockviewReadyEvent } from "dockview-vue";
 import "dockview-core/dist/styles/dockview.css";
 import { NButton } from "naive-ui";
@@ -15,7 +15,6 @@ import FixedDockTab from "../ide/FixedDockTab.vue";
 import DebugView from "./DebugView.vue"; // reused as the machine-level inspector
 import NewProjectDialog from "../ide/NewProjectDialog.vue";
 import HeaderEditor from "../ide/HeaderEditor.vue";
-import { watch } from "vue";
 import { useProjectStore } from "../stores/project";
 import { useEmuStore } from "../stores/emu";
 
@@ -103,6 +102,70 @@ const panelSpecs: Record<DockPanelId, DockPanelSpec> = {
 };
 
 const EXPLORER_WIDTH = 260;
+type LoopLevel = "ok" | "warn" | "fail" | "idle" | "busy";
+const dirtyParts = computed(() =>
+  [
+    store.dirty ? "源码" : "",
+    store.chrDirty ? "CHR" : "",
+    store.mapDirty ? "地图" : "",
+    store.songDirty ? "音乐" : "",
+  ].filter(Boolean)
+);
+const hasDirtyResources = computed(() => dirtyParts.value.length > 0);
+const saveLoop = computed(() => ({
+  level: hasDirtyResources.value ? "warn" : "ok" as LoopLevel,
+  value: hasDirtyResources.value ? `${dirtyParts.value.length} 未保存` : "已保存",
+  short: hasDirtyResources.value ? `${dirtyParts.value.length}未` : "已",
+  title: hasDirtyResources.value ? `未保存：${dirtyParts.value.join("、")}` : "所有资源已保存",
+}));
+const expectedPreviewPath = computed(() =>
+  store.build?.success && store.build.output ? `${store.root}/${store.build.output}` : ""
+);
+const previewMatchesBuild = computed(() => !!expectedPreviewPath.value && emu.romPath === expectedPreviewPath.value);
+const buildLoop = computed(() => {
+  if (store.building) {
+    return { level: "busy" as LoopLevel, value: "构建中", short: "中", title: "构建正在运行" };
+  }
+  if (!store.build) {
+    return { level: "idle" as LoopLevel, value: "未构建", short: "未", title: "尚未生成 ROM" };
+  }
+  if (store.build.success) {
+    return {
+      level: "ok" as LoopLevel,
+      value: store.build.output || "成功",
+      short: "成",
+      title: store.build.output ? `构建成功：${store.build.output}` : "构建成功",
+    };
+  }
+  return {
+    level: "fail" as LoopLevel,
+    value: `${store.errorCount} 错误`,
+    short: `${store.errorCount}错`,
+    title: `构建失败：${store.errorCount} 错误，${store.warnCount} 警告`,
+  };
+});
+const previewLoop = computed(() => {
+  if (!store.build?.success) {
+    return { level: "idle" as LoopLevel, value: "待构建", short: "待", title: "预览等待成功构建" };
+  }
+  if (previewMatchesBuild.value) {
+    return {
+      level: emu.paused ? "warn" as LoopLevel : "ok" as LoopLevel,
+      value: emu.paused ? "已暂停" : "运行中",
+      short: emu.paused ? "停" : "跑",
+      title: `${emu.rom?.name || store.build.output} · ${emu.status}`,
+    };
+  }
+  if (emu.rom) {
+    return {
+      level: "warn" as LoopLevel,
+      value: "非当前构建",
+      short: "旧",
+      title: `当前预览：${emu.rom.name}`,
+    };
+  }
+  return { level: "warn" as LoopLevel, value: "待运行", short: "待", title: "当前构建产物尚未运行" };
+});
 // Adding a side panel makes dockview re-flow the whole row, which blows the
 // explorer column back up to ~1/3 of the window. Pin it back after every add.
 function reassertExplorerWidth() {
@@ -229,6 +292,15 @@ async function refreshProject() {
   store.status = "文件树已刷新";
 }
 
+async function saveFromLoop() {
+  if (!hasDirtyResources.value) return;
+  try {
+    await store.saveAll();
+  } catch (err) {
+    store.status = "保存全部失败：" + err;
+  }
+}
+
 function onIdeKeydown(e: KeyboardEvent) {
   const mod = e.metaKey || e.ctrlKey;
   if (!mod || !store.hasProject) return;
@@ -318,6 +390,42 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onIdeKeydown));
         <template #icon><Icon name="play" :size="15" /></template>
         运行
       </n-button>
+      <div class="loopbar" aria-label="创作闭环状态">
+        <button
+          class="loopchip"
+          :class="saveLoop.level"
+          :disabled="!hasDirtyResources"
+          :title="saveLoop.title"
+          :aria-label="`保存：${saveLoop.value}`"
+          @click="saveFromLoop"
+        >
+          <span class="ldot"></span>
+          <Icon name="save" :size="13" />
+          <span>{{ saveLoop.short }}</span>
+        </button>
+        <button
+          class="loopchip"
+          :class="buildLoop.level"
+          :title="buildLoop.title"
+          :aria-label="`构建：${buildLoop.value}`"
+          @click="showPanel('build')"
+        >
+          <span class="ldot"></span>
+          <Icon name="hammer" :size="13" />
+          <span>{{ buildLoop.short }}</span>
+        </button>
+        <button
+          class="loopchip"
+          :class="previewLoop.level"
+          :title="previewLoop.title"
+          :aria-label="`预览：${previewLoop.value}`"
+          @click="store.build?.success ? doRun() : showPanel('preview')"
+        >
+          <span class="ldot"></span>
+          <Icon name="play" :size="13" />
+          <span>{{ previewLoop.short }}</span>
+        </button>
+      </div>
       </template>
       <div class="grow" />
       <span class="bstat">{{ store.status }}</span>
@@ -395,6 +503,80 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onIdeKeydown));
   display: flex;
   align-items: center;
   gap: 4px;
+}
+.loopbar {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+}
+.loopchip {
+  flex: 0 0 48px;
+  height: 28px;
+  padding: 0 8px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--surface) 72%, transparent);
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+.loopchip span:not(.ldot) {
+  min-width: 0;
+  margin-left: auto;
+  color: var(--text);
+  font-family: var(--font-mono, monospace);
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.loopchip svg {
+  flex: none;
+}
+.loopchip:disabled {
+  cursor: default;
+}
+.loopchip:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+.ldot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-mute);
+}
+.loopchip.ok {
+  border-color: color-mix(in srgb, var(--green) 44%, var(--border));
+}
+.loopchip.ok .ldot {
+  background: var(--green);
+  box-shadow: 0 0 7px color-mix(in srgb, var(--green) 70%, transparent);
+}
+.loopchip.warn {
+  border-color: color-mix(in srgb, var(--warning, #fbbf24) 45%, var(--border));
+  color: var(--warning, #fbbf24);
+}
+.loopchip.warn .ldot {
+  background: var(--warning, #fbbf24);
+  box-shadow: 0 0 7px color-mix(in srgb, var(--warning, #fbbf24) 70%, transparent);
+}
+.loopchip.fail {
+  border-color: color-mix(in srgb, var(--danger) 50%, var(--border));
+  color: var(--danger);
+}
+.loopchip.fail .ldot {
+  background: var(--danger);
+  box-shadow: 0 0 7px color-mix(in srgb, var(--danger) 70%, transparent);
+}
+.loopchip.busy .ldot {
+  background: var(--accent);
+  box-shadow: 0 0 7px var(--accent-glow);
 }
 .sep {
   width: 1px;
