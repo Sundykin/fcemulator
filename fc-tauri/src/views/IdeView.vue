@@ -261,6 +261,10 @@ watch(
   () => store.focusTracker,
   () => showPanel("tracker")
 );
+watch(
+  () => store.focusPreview,
+  () => showPanel("preview")
+);
 
 async function doBuild() {
   showPanel("build"); // surface the output panel so progress + diagnostics show

@@ -119,6 +119,7 @@ export const useProjectStore = defineStore("project", {
     goto: { path: "", line: 0, seq: 0 },
     // address↔source-line map from the last successful build (source-debug-link)
     sourceMap: [] as ide.LineAddr[],
+    focusPreview: 0,
     // path → (line → ControlDeck breakpoint id)
     lineBps: {} as Record<string, Record<number, number>>,
     // last halted source line (for editor highlight), bumped seq
@@ -162,6 +163,7 @@ export const useProjectStore = defineStore("project", {
       this.activePath = "";
       this.build = null;
       this.sourceMap = [];
+      this.focusPreview = 0;
       this.lineBps = {};
       this.halt = { path: "", line: 0, seq: this.halt.seq + 1, active: false };
       this.lastHaltPc = -1;
@@ -229,6 +231,9 @@ export const useProjectStore = defineStore("project", {
         }
         if (extra?.path && changed.includes("music") && this.song?.path === extra.path) {
           await this.openTracker(extra.path);
+        }
+        if (changed.includes("preview")) {
+          this.focusPreview++;
         }
         this.status = `MCP 已更新：${reason}`;
       } catch (e) {

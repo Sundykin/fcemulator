@@ -9,6 +9,7 @@
 - Make resource/CHR editor operations comfortable.
 - Make music editor operations smooth.
 - Editors should adapt to 100% of the usable parent area, then transform output data as needed. They should not expose tiny raw pixel/native-scale editing surfaces.
+- Runtime verification for this goal should use the real Tauri app and bundled MCP tools, not browser automation.
 
 ## Initial Code Findings
 - Overall IDE shell is `fc-tauri/src/views/IdeView.vue`, using Dockview panels: tree, editor, CHR, map, tracker, build, preview, inspect.
@@ -78,6 +79,15 @@
 - Frontend `syncFromIdeMcp()` needed a `changed.includes("music")` branch so an already-open tracker panel reloads when an agent updates the song through MCP.
 - `ide_write_file` previously wrote arbitrary text files but did not register new `src/*.s` / `.asm` files in `manifest.sources`, so agent-created source modules could be visible in the tree but excluded from builds.
 - The same applies to agent-written `music/*.s` / `.asm`: build-pipeline already assembles registered music assembly sources, but `ide_write_file` must register them for the next build to include them.
+
+## End-To-End MCP Simple Game Findings
+- The IDE MCP can now author a small retro game project without using Tauri DOM scripting: `ide_new_project`, `ide_read/write_file`, `ide_read/write_chr`, `ide_read/write_map`, `ide_bind_map_chr`, `ide_write_song`, `ide_build`, `ide_run`, `ide_press_buttons`, and `ide_read_memory` covered the full loop.
+- Phase 9 verification created `AgentSimpleGame`, patched `src/main.s`, replaced CHR target tiles 5-8 with a star pattern, added a map collision wall with a gap, wrote `music/agent_theme.song.json`, wrote `music/agent_marker.s`, built `build/game.nes`, and loaded it into the live Tauri preview.
+- The generated ROM evidence was concrete: `build/game.nes` existed at 40976 bytes, `chr/sprites.chr` stayed 8192 bytes, `map/room.bin` stayed 2164 bytes, the CHR star pixels matched, and the map had 29 blocked collision cells.
+- `ide_run` already loaded the ROM into `EmuState`, but the Dockview Preview panel did not mount unless the UI opened it. `project.ts` now bumps `focusPreview` on MCP `changed.includes("preview")`, and `IdeView.vue` watches it to call `showPanel("preview")`.
+- Tauri UI verification after the fix showed `mode=studio`, `rom=game.nes`, `previewPanel=true`, active Dockview panel `preview`, and one visible 1024x960 canvas displayed at about 524x393 CSS pixels.
+- Live `fc emu-mcp` verification read the same visible Tauri emulator state: mapper 0 NROM, running worker/audio runtime, nonzero CPU/PPU counters, and CPU memory changing after preview input.
+- Live `emu_capture_screen` returned a 256x240 PNG with 3376 bytes, 6 unique colors, and 6968 nonblack pixels, confirming the emulator MCP frame path is not a hidden blank core.
 
 ## Files To Inspect Next
 - `fc-tauri/src/ide/MapEditorPanel.vue` template/style sections
