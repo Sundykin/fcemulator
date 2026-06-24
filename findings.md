@@ -76,6 +76,8 @@
 - Direct MCP song writes need to register the song path in `project.toml` so manifest-backed resource counts and filters stay coherent.
 - The build pipeline only assembles `manifest.music` entries ending in `.s` or `.asm`, so keeping `.song.json` in the music resource list does not make ca65 try to assemble JSON.
 - Frontend `syncFromIdeMcp()` needed a `changed.includes("music")` branch so an already-open tracker panel reloads when an agent updates the song through MCP.
+- `ide_write_file` previously wrote arbitrary text files but did not register new `src/*.s` / `.asm` files in `manifest.sources`, so agent-created source modules could be visible in the tree but excluded from builds.
+- The same applies to agent-written `music/*.s` / `.asm`: build-pipeline already assembles registered music assembly sources, but `ide_write_file` must register them for the next build to include them.
 
 ## Files To Inspect Next
 - `fc-tauri/src/ide/MapEditorPanel.vue` template/style sections

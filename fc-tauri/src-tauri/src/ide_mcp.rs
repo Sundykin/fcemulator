@@ -346,8 +346,39 @@ fn write_file(app: &AppHandle, args: &Value) -> Result<Value, String> {
         std::fs::create_dir_all(parent).map_err(|e| format!("创建父目录失败: {e}"))?;
     }
     std::fs::write(&dst, content).map_err(|e| format!("写入 {path} 失败: {e}"))?;
-    emit_refresh(app, "file-write", &["tree", "source"], json!({"path": path}));
-    Ok(json!({"path": path, "bytes": content.len()}))
+    let mut registered = false;
+    let mut resource_kind: Option<&str> = None;
+    if path.ends_with(".s") || path.ends_with(".asm") {
+        let mut manifest = project::load_manifest(&root)?;
+        if path.starts_with("music/") {
+            resource_kind = Some("music");
+            if !manifest.music.contains(&path.to_string()) {
+                manifest.music.push(path.to_string());
+                registered = true;
+            }
+        } else if path.starts_with("src/") {
+            resource_kind = Some("source");
+            if !manifest.sources.contains(&path.to_string()) {
+                manifest.sources.push(path.to_string());
+                registered = true;
+            }
+        }
+        if registered {
+            project::save_manifest(&root, &manifest)?;
+        }
+    }
+    let changed: Vec<&str> = match (registered, resource_kind) {
+        (true, Some("music")) => vec!["tree", "manifest", "music"],
+        (true, _) => vec!["tree", "manifest", "source"],
+        _ => vec!["tree", "source"],
+    };
+    emit_refresh(
+        app,
+        "file-write",
+        &changed,
+        json!({"path": path, "registered": registered, "resource": resource_kind}),
+    );
+    Ok(json!({"path": path, "bytes": content.len(), "registered": registered, "resource": resource_kind}))
 }
 
 fn read_chr(app: &AppHandle, args: &Value) -> Result<Value, String> {

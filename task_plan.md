@@ -4,7 +4,7 @@
 Evolve the fc-tauri studio into a mature NES game-development IDE engine. The target experience is continuous project/resource/map/music workflows, comfortable editing controls, and editors that fill their available workspace instead of using tiny native-pixel canvases.
 
 ## Current Phase
-Phase 7: Creative MCP End-To-End Authoring
+Phase 8: Creative MCP Source Registration
 
 ## Phases
 
@@ -58,6 +58,13 @@ Phase 7: Creative MCP End-To-End Authoring
 - [x] Verify build/run still works with MCP-written creative resources
 - **Status:** complete
 
+### Phase 8: Creative MCP Source Registration
+- [x] Audit whether MCP-written source files are included in project manifests
+- [x] Register MCP-written `src/*.s` / `.asm` files as build sources
+- [x] Register MCP-written `music/*.s` / `.asm` files as music build inputs
+- [x] Verify live Tauri IDE manifest/file tree/build state after MCP writes
+- **Status:** complete
+
 ## Key Questions
 1. Which editor currently wastes the most available panel area or forces tiny pixel editing?
 2. Where is map-to-CHR binding surfaced, and does opening a map automatically load/show the right CHR resource?
@@ -73,6 +80,7 @@ Phase 7: Creative MCP End-To-End Authoring
 | Keep emulator MCP embedded in Tauri and surface it in the player UI | User specifically wants MCP to operate the visible Tauri emulator, not a hidden core; UI status makes that connection observable |
 | Make `.mcp.json` `fc-emu` point at `fc emu-mcp` by default | User wants game emulator MCP to attach to the Tauri emulator interface; retaining `fc-emu-core` preserves the headless option for pure core work |
 | Treat tracker `.song.json` as a music resource in IDE/MCP state, while build only assembles registered `.s/.asm` music sources | Agents need to author music semantically; the build pipeline already ignores non-assembly music entries, so song resources can be visible without breaking ca65 |
+| Auto-register MCP-written assembly files by location (`src/` → sources, `music/` → music) | A creative agent should be able to create modules through MCP and have them participate in the next build without manually editing `project.toml` |
 
 ## Errors Encountered
 | Error | Attempt | Resolution |

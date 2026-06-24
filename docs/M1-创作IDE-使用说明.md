@@ -32,7 +32,7 @@ Tauri IDE 启动时会同时启动一个语义级 MCP socket:`/tmp/fc-tauri-ide-
 `.mcp.json` 中的 `fc-ide` 服务器,通过 `ide_*` 工具直接操作**同一个** Tauri 后端工程状态:
 
 - `ide_new_project` / `ide_open_project` 新建或打开当前 IDE 工程。
-- `ide_read_file` / `ide_write_file` 写源码。
+- `ide_read_file` / `ide_write_file` 写源码;写入 `src/*.s` / `.asm` 会自动登记进 `sources`。
 - `ide_read_chr` / `ide_write_chr` 写 CHR 像素资源。
 - `ide_read_map` / `ide_write_map` / `ide_bind_map_chr` 写地图和资源绑定。
 - `ide_read_song` / `ide_write_song` 写 tracker 乐曲资源。
