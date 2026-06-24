@@ -19,33 +19,98 @@ enum Mmc3ChrLayout {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 enum Mmc3OuterBank {
     None,
-    Mapper12 { regs: [u8; 3] },
-    Mapper37 { block: u8 },
-    Mapper44 { block: u8 },
-    Mapper45 { regs: [u8; 4], index: u8 },
-    Mapper47 { block: u8, submapper: u8 },
-    Mapper49 { reg: u8, submapper: u8 },
-    Mapper52 { reg: u8, locked: bool },
-    Mapper114 { regs: [u8; 2], cmd_pending: bool },
-    Mapper115 { regs: [u8; 3] },
-    Mapper121 { regs: [u8; 8] },
-    Mapper126 { regs: [u8; 4], mirror: u8, sl0: u8 },
-    Mapper134 { regs: [u8; 4], dip: u8 },
-    Mapper182 { regs: [u8; 4] },
-    Mapper187 { regs: [u8; 2] },
-    Mapper189 { reg: u8 },
-    Mapper196 { enabled: bool, reg: u8 },
-    Mapper199 { regs: [u8; 4] },
+    Mapper14 {
+        mode: u8,
+        prg: [u8; 2],
+        chr: [u8; 8],
+        mirror: u8,
+    },
+    Mapper12 {
+        regs: [u8; 3],
+    },
+    Mapper37 {
+        block: u8,
+    },
+    Mapper44 {
+        block: u8,
+    },
+    Mapper45 {
+        regs: [u8; 4],
+        index: u8,
+    },
+    Mapper47 {
+        block: u8,
+        submapper: u8,
+    },
+    Mapper49 {
+        reg: u8,
+        submapper: u8,
+    },
+    Mapper52 {
+        reg: u8,
+        locked: bool,
+    },
+    Mapper114 {
+        regs: [u8; 2],
+        cmd_pending: bool,
+    },
+    Mapper115 {
+        regs: [u8; 3],
+    },
+    Mapper121 {
+        regs: [u8; 8],
+    },
+    Mapper126 {
+        regs: [u8; 4],
+        mirror: u8,
+        sl0: u8,
+    },
+    Mapper134 {
+        regs: [u8; 4],
+        dip: u8,
+    },
+    Mapper182 {
+        regs: [u8; 4],
+    },
+    Mapper187 {
+        regs: [u8; 2],
+    },
+    Mapper189 {
+        reg: u8,
+    },
+    Mapper196 {
+        enabled: bool,
+        reg: u8,
+    },
+    Mapper199 {
+        regs: [u8; 4],
+    },
     Mapper198,
-    Mapper205 { block: u8 },
-    Mapper208 { regs: [u8; 6], submapper: u8 },
-    Mapper215 { regs: [u8; 3] },
-    Mapper224 { outer_bank: u8 },
-    Mapper238 { ex_reg: u8 },
+    Mapper205 {
+        block: u8,
+    },
+    Mapper208 {
+        regs: [u8; 6],
+        submapper: u8,
+    },
+    Mapper215 {
+        regs: [u8; 3],
+    },
+    Mapper224 {
+        outer_bank: u8,
+    },
+    Mapper238 {
+        ex_reg: u8,
+    },
     Mapper245,
-    Mapper249 { reg: u8 },
+    Mapper249 {
+        reg: u8,
+    },
     Mapper250,
-    Mapper254 { unlocked: bool, xor_mask: u8 },
+    Mapper254 {
+        unlocked: bool,
+        xor_mask: u8,
+    },
 }
 
 const MAPPER208_PROTECTION_LUT: [u8; 256] = [
@@ -146,6 +211,19 @@ impl Mmc3 {
     pub(super) fn new_12(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
         let mut m = Mmc3::new(prg_16k, chr_8k, mirroring);
         m.outer_bank = Mmc3OuterBank::Mapper12 { regs: [0, 0, 1] };
+        m
+    }
+
+    /// Mapper 14 — Rex Soft SL-1632, an MMC3-compatible protected board that
+    /// can switch out of MMC3 banking into direct PRG/CHR latch mode.
+    pub(super) fn new_14(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
+        let mut m = Mmc3::new(prg_16k, chr_8k, mirroring);
+        m.outer_bank = Mmc3OuterBank::Mapper14 {
+            mode: 0,
+            prg: [0; 2],
+            chr: [0; 8],
+            mirror: 0,
+        };
         m
     }
 
@@ -688,6 +766,23 @@ impl Mmc3 {
         }
     }
 
+    fn mapper14_prg_bank(region: u16, prg: &[u8; 2]) -> usize {
+        match region {
+            0 => prg[0] as usize,
+            1 => prg[1] as usize,
+            2 => 0xFE,
+            _ => 0xFF,
+        }
+    }
+
+    fn mapper14_mirroring(mirror: u8) -> Mirroring {
+        if mirror & 1 == 0 {
+            Mirroring::Vertical
+        } else {
+            Mirroring::Horizontal
+        }
+    }
+
     fn mapper126_mmc3_bank_for_slot(&self, slot: u16) -> usize {
         let mut bank = slot as u8;
         if bank & 1 == 0 && self.prg_mode {
@@ -735,6 +830,13 @@ impl Mmc3 {
     fn outer_prg_bank(&self, region: u16, bank: usize) -> usize {
         match &self.outer_bank {
             Mmc3OuterBank::None => bank,
+            Mmc3OuterBank::Mapper14 { mode, prg, .. } => {
+                if mode & 0x02 != 0 {
+                    bank
+                } else {
+                    Self::mapper14_prg_bank(region, prg)
+                }
+            }
             Mmc3OuterBank::Mapper12 { .. } => bank,
             Mmc3OuterBank::Mapper37 { block } => {
                 let mask = if *block == 2 { 0x0F } else { 0x07 };
@@ -951,6 +1053,15 @@ impl Mmc3 {
     fn outer_chr_bank(&self, addr: u16, bank: usize) -> usize {
         match &self.outer_bank {
             Mmc3OuterBank::None => bank,
+            Mmc3OuterBank::Mapper14 { mode, chr, .. } => {
+                if mode & 0x02 != 0 {
+                    const HIGH_BIT_SHIFTS: [u8; 4] = [5, 5, 3, 1];
+                    let group = (((addr >> 11) as u8) ^ ((self.bank_select >> 6) & 0x02)) & 0x03;
+                    bank | (((*mode as usize) << HIGH_BIT_SHIFTS[group as usize]) & 0x100)
+                } else {
+                    chr[((addr >> 10) & 0x07) as usize] as usize
+                }
+            }
             Mmc3OuterBank::Mapper12 { regs } => {
                 bank | (((regs[((addr & 0x1000) >> 12) as usize] & 1) as usize) << 8)
             }
@@ -1353,6 +1464,60 @@ impl Mmc3 {
         }
     }
 
+    fn mapper14_write(&mut self, addr: u16, value: u8) {
+        if addr == 0xA131 {
+            let mut direct_mirror = None;
+            if let Mmc3OuterBank::Mapper14 { mode, mirror, .. } = &mut self.outer_bank {
+                *mode = value;
+                if value & 0x02 == 0 {
+                    direct_mirror = Some(*mirror);
+                }
+            }
+            if let Some(mirror) = direct_mirror {
+                self.mirroring = Self::mapper14_mirroring(mirror);
+            }
+        }
+
+        let mmc3_mode = matches!(
+            &self.outer_bank,
+            Mmc3OuterBank::Mapper14 { mode, .. } if mode & 0x02 != 0
+        );
+        if mmc3_mode {
+            self.write_standard_register(addr, value);
+            return;
+        }
+
+        match addr {
+            0xB000..=0xE003 => {
+                if let Mmc3OuterBank::Mapper14 { chr, .. } = &mut self.outer_bank {
+                    let index = ((((addr & 0x0002) | (addr >> 10)) >> 1) + 2) & 0x07;
+                    let shift = ((addr & 0x0001) << 2) as u8;
+                    let mask = 0xF0u8 >> shift;
+                    chr[index as usize] = (chr[index as usize] & mask) | ((value & 0x0F) << shift);
+                }
+            }
+            _ => match addr & 0xF003 {
+                0x8000 => {
+                    if let Mmc3OuterBank::Mapper14 { prg, .. } = &mut self.outer_bank {
+                        prg[0] = value;
+                    }
+                }
+                0x9000 => {
+                    if let Mmc3OuterBank::Mapper14 { mirror, .. } = &mut self.outer_bank {
+                        *mirror = value & 1;
+                    }
+                    self.mirroring = Self::mapper14_mirroring(value);
+                }
+                0xA000 => {
+                    if let Mmc3OuterBank::Mapper14 { prg, .. } = &mut self.outer_bank {
+                        prg[1] = value;
+                    }
+                }
+                _ => {}
+            },
+        }
+    }
+
     fn mapper196_remap_addr(addr: u16) -> u16 {
         if addr >= 0xC000 {
             (addr & 0xFFFE) | ((addr >> 2) & 1) | ((addr >> 3) & 1)
@@ -1422,7 +1587,9 @@ impl MapperOps for Mmc3 {
     }
 
     fn write_register(&mut self, addr: u16, value: u8) {
-        if matches!(self.outer_bank, Mmc3OuterBank::Mapper114 { .. }) {
+        if matches!(self.outer_bank, Mmc3OuterBank::Mapper14 { .. }) {
+            self.mapper14_write(addr, value);
+        } else if matches!(self.outer_bank, Mmc3OuterBank::Mapper114 { .. }) {
             self.mapper114_write(addr, value);
         } else if matches!(self.outer_bank, Mmc3OuterBank::Mapper121 { .. }) && addr < 0xA000 {
             self.mapper121_write(addr, value);
@@ -1833,6 +2000,19 @@ impl MapperOps for Mmc3 {
     fn reset(&mut self, _soft: bool) {
         let mut reset_standard = false;
         match &mut self.outer_bank {
+            Mmc3OuterBank::Mapper14 {
+                mode,
+                prg,
+                chr,
+                mirror,
+            } => {
+                *mode = 0;
+                *prg = [0; 2];
+                *chr = [0; 8];
+                *mirror = 0;
+                self.mirroring = Self::mapper14_mirroring(*mirror);
+                reset_standard = true;
+            }
             Mmc3OuterBank::Mapper12 { regs } => {
                 let language = regs[2] ^ 1;
                 *regs = [0, 0, language];
@@ -2063,6 +2243,40 @@ mod tests {
 
         mapper.write_low_register(0x6000, 0x00);
         assert_eq!(mapper.prg_index(0x8004), 0x10 * 0x2000 + 4);
+    }
+
+    #[test]
+    fn mapper14_switches_between_sl1632_direct_and_mmc3_modes() {
+        let mut mapper = Mmc3::new_14(128, 128, Mirroring::Vertical);
+
+        mapper.write_register(0x8000, 0x12);
+        mapper.write_register(0xA000, 0x34);
+        mapper.write_register(0x9000, 0x01);
+        assert_eq!(mapper.prg_index(0x8004), 0x12 * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xA004), 0x34 * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 0xFE * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xE004), 0xFF * 0x2000 + 4);
+        assert_eq!(mapper.mirroring(), Mirroring::Horizontal);
+
+        mapper.write_register(0xB000, 0x06);
+        mapper.write_register(0xB001, 0x07);
+        mapper.write_register(0xE000, 0x0A);
+        mapper.write_register(0xE001, 0x0B);
+        assert_eq!(mapper.chr_index(0x0004), 0x76 * 0x0400 + 4);
+        assert_eq!(mapper.chr_index(0x1804), 0xBA * 0x0400 + 4);
+
+        mapper.write_register(0xA131, 0x0A);
+        mapper.write_register(0x8000, 0x06);
+        mapper.write_register(0x8001, 0x09);
+        assert_eq!(mapper.prg_index(0x8004), 0x09 * 0x2000 + 4);
+
+        mapper.write_register(0x8000, 0x80);
+        mapper.write_register(0x8001, 0x05);
+        assert_eq!(mapper.chr_index(0x1404), 0x105 * 0x0400 + 4);
+
+        mapper.write_register(0xA131, 0x00);
+        assert_eq!(mapper.prg_index(0x8004), 0x12 * 0x2000 + 4);
+        assert_eq!(mapper.mirroring(), Mirroring::Horizontal);
     }
 
     #[test]

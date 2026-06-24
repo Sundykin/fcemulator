@@ -28,6 +28,7 @@ impl Mapper {
             11 => Mapper::ColorDreams(ColorDreams::new(mirroring)),
             12 => Mapper::Mmc3(Mmc3::new_12(prg_16k, chr_8k, mirroring)),
             13 => Mapper::Cprom(Cprom::new()),
+            14 => Mapper::Mmc3(Mmc3::new_14(prg_16k, chr_8k, mirroring)),
             15 => Mapper::Mapper15(Mapper15::new()),
             16 => Mapper::BandaiFcg(BandaiFcg::new(prg_16k, chr_8k, submapper)),
             17 => Mapper::FfeMapper(FfeMapper::new(prg_16k, chr_8k, FfeMode::Mapper17)),

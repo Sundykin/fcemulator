@@ -18,6 +18,7 @@ fn watches_ppu_bus_matches_notify_a12_overrides() {
         (11, false),   // ColorDreams
         (12, true),    // Mapper 12 MMC3 A12 IRQ
         (13, false),   // CPROM
+        (14, true),    // Mapper 14 SL-1632 uses MMC3 A12 IRQ in MMC3 mode
         (15, false),   // 100-in-1 multicart
         (16, false),   // Bandai FCG/LZ93D50
         (17, false),   // FFE F4xxx full mode
@@ -233,6 +234,7 @@ fn clocks_cpu_matches_cpu_clock_overrides() {
         (11, false),   // ColorDreams
         (12, false),   // Mapper 12 uses PPU A12 edges
         (13, false),   // CPROM
+        (14, false),   // Mapper 14 uses PPU A12 edges in MMC3 mode
         (15, false),   // 100-in-1 multicart
         (16, true),    // Bandai FCG/LZ93D50 IRQ counter clocks per CPU cycle
         (17, true),    // FFE IRQ counter clocks per CPU cycle
@@ -445,6 +447,7 @@ fn clocks_hblank_matches_hblank_clock_overrides() {
         (11, false),
         (12, false),
         (13, false),
+        (14, false),
         (15, false),
         (16, false),
         (17, false),
