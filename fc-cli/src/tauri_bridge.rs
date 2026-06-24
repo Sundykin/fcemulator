@@ -13,6 +13,7 @@ use std::os::unix::net::UnixStream;
 
 const SOCKET: &str = "/tmp/fc-tauri-mcp.sock";
 const IDE_SOCKET: &str = "/tmp/fc-tauri-ide-mcp.sock";
+const EMU_SOCKET: &str = "/tmp/fc-tauri-emu-mcp.sock";
 
 /// One request/response round-trip over the plugin's line-delimited JSON socket.
 fn socket_call(command: &str, payload: Value) -> Result<Value, String> {
@@ -180,6 +181,16 @@ pub fn run() -> anyhow::Result<()> {
 /// DOM; tool calls mutate the live IDE backend and the frontend receives events
 /// to refresh itself.
 pub fn run_ide_mcp() -> anyhow::Result<()> {
+    run_socket_mcp(IDE_SOCKET, "IDE MCP")
+}
+
+/// Raw JSON-RPC stdio bridge to the live emulator MCP socket hosted inside the
+/// running Tauri process. It drives the visible `EmuState`, not a headless core.
+pub fn run_emu_mcp() -> anyhow::Result<()> {
+    run_socket_mcp(EMU_SOCKET, "live emulator MCP")
+}
+
+fn run_socket_mcp(socket: &str, label: &str) -> anyhow::Result<()> {
     let stdin = std::io::stdin();
     let stdout = std::io::stdout();
     let reader = std::io::BufReader::new(stdin.lock());
@@ -194,10 +205,10 @@ pub fn run_ide_mcp() -> anyhow::Result<()> {
             .and_then(|v| v.get("id").cloned())
             .is_none();
         if is_notification {
-            let _ = forward_notification_to_ide(&line);
+            let _ = forward_notification_to_socket(socket, &line);
             continue;
         }
-        match forward_to_ide(&line) {
+        match forward_to_socket(socket, &line) {
             Ok(resp) => {
                 writeln!(out, "{resp}")?;
                 out.flush()?;
@@ -212,7 +223,7 @@ pub fn run_ide_mcp() -> anyhow::Result<()> {
                     "id": id,
                     "error": {
                         "code": -32000,
-                        "message": format!("connect {IDE_SOCKET}: {e} — is the fc-tauri app running?")
+                        "message": format!("connect {socket}: {e} — is the fc-tauri app running with {label} enabled?")
                     }
                 });
                 writeln!(out, "{resp}")?;
@@ -223,8 +234,8 @@ pub fn run_ide_mcp() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn forward_to_ide(line: &str) -> Result<String, String> {
-    let stream = UnixStream::connect(IDE_SOCKET).map_err(|e| e.to_string())?;
+fn forward_to_socket(socket: &str, line: &str) -> Result<String, String> {
+    let stream = UnixStream::connect(socket).map_err(|e| e.to_string())?;
     let mut w = stream.try_clone().map_err(|e| e.to_string())?;
     w.write_all(line.as_bytes()).map_err(|e| e.to_string())?;
     w.write_all(b"\n").map_err(|e| e.to_string())?;
@@ -235,8 +246,8 @@ fn forward_to_ide(line: &str) -> Result<String, String> {
     Ok(resp.trim_end().to_string())
 }
 
-fn forward_notification_to_ide(line: &str) -> Result<(), String> {
-    let stream = UnixStream::connect(IDE_SOCKET).map_err(|e| e.to_string())?;
+fn forward_notification_to_socket(socket: &str, line: &str) -> Result<(), String> {
+    let stream = UnixStream::connect(socket).map_err(|e| e.to_string())?;
     let mut w = stream.try_clone().map_err(|e| e.to_string())?;
     w.write_all(line.as_bytes()).map_err(|e| e.to_string())?;
     w.write_all(b"\n").map_err(|e| e.to_string())?;

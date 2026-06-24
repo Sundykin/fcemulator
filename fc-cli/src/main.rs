@@ -6,6 +6,7 @@
 //!   fc info <rom>
 //!   fc mcp [--rom <rom>]                          # start MCP server on stdio
 //!   fc ide-mcp                                    # bridge MCP to live Tauri IDE
+//!   fc emu-mcp                                    # bridge MCP to live Tauri emulator UI
 
 mod tauri_bridge;
 
@@ -136,6 +137,8 @@ enum Commands {
     TauriBridge,
     /// MCP bridge (stdio) to the running fc-tauri IDE engine.
     IdeMcp,
+    /// MCP bridge (stdio) to the running fc-tauri emulator UI.
+    EmuMcp,
 }
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
@@ -790,6 +793,9 @@ fn main() -> Result<()> {
         }
         Commands::IdeMcp => {
             tauri_bridge::run_ide_mcp()?;
+        }
+        Commands::EmuMcp => {
+            tauri_bridge::run_emu_mcp()?;
         }
     }
     Ok(())

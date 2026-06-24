@@ -23,6 +23,14 @@
         "ide-mcp"
       ],
       "env": {}
+    },
+    "fc-emu-live": {
+      "type": "stdio",
+      "command": "/Users/sunmeng/workspace/fc-creative-mode/target/debug/fc",
+      "args": [
+        "emu-mcp"
+      ],
+      "env": {}
     }
   }
 }

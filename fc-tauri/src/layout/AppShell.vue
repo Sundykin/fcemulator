@@ -29,6 +29,7 @@ useKeyboard();
 useHaltWatch();
 
 let ideMcpUiUnlisten: UnlistenFn | null = null;
+let emuMcpUiUnlisten: UnlistenFn | null = null;
 
 // Esc closes an open session drawer.
 function onEsc(e: KeyboardEvent) {
@@ -53,6 +54,30 @@ onMounted(async () => {
       }
     },
   );
+  emuMcpUiUnlisten = await listen<{
+    reason?: string;
+    changed?: string[];
+    extra?: { rom?: emuApi.RomInfo; romPath?: string; paused?: boolean; speed?: number; status?: string };
+  }>("emu-mcp-updated", (e) => {
+    const changed = e.payload?.changed || [];
+    const extra = e.payload?.extra || {};
+    if (changed.includes("rom") && extra.rom) {
+      store.romPath = extra.romPath || "";
+      store.onLoaded(extra.rom);
+      store.setMode("player");
+      store.setView("main");
+    }
+    if (typeof extra.paused === "boolean") {
+      store.paused = extra.paused;
+      store.navPaused = false;
+    }
+    if (typeof extra.speed === "number") {
+      store.speed = extra.speed;
+    }
+    if (extra.status) {
+      store.status = extra.status;
+    }
+  });
   window.addEventListener("keydown", onEsc);
   if (import.meta.env.DEV) {
     const w = window as unknown as {
@@ -69,6 +94,7 @@ onMounted(async () => {
 });
 onUnmounted(() => {
   ideMcpUiUnlisten?.();
+  emuMcpUiUnlisten?.();
   window.removeEventListener("keydown", onEsc);
 });
 </script>

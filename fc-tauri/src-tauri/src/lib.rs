@@ -3,6 +3,7 @@ mod build_pipeline;
 mod chr;
 mod converters;
 mod emu;
+mod emu_mcp;
 mod famistudio;
 mod ide_mcp;
 mod map;
@@ -44,6 +45,7 @@ pub fn run() {
         .manage(WatchState::new())
         .setup(|app| {
             ide_mcp::start(app.handle().clone());
+            emu_mcp::start(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
