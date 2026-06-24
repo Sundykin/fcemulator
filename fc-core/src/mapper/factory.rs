@@ -238,6 +238,7 @@ impl Mapper {
             218 => Mapper::Mapper218(Mapper218::new(mirroring)),
             221 => Mapper::AddrLatch16k(AddrLatch16k::new_221(prg_16k, submapper)),
             222 => Mapper::Mapper222(Mapper222::new(prg_16k, chr_8k)),
+            223 => Mapper::Mmc3(Mmc3::new_223(prg_16k, chr_8k, mirroring)),
             224 => Mapper::Mmc3(Mmc3::new_224(prg_16k, chr_8k, mirroring)),
             227 => Mapper::AddrLatch16k(AddrLatch16k::new(AddrLatchVariant::Mapper227)),
             228 => Mapper::ActionEnterprises(ActionEnterprises::new()),

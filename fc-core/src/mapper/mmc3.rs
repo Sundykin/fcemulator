@@ -96,6 +96,7 @@ enum Mmc3OuterBank {
     Mapper215 {
         regs: [u8; 3],
     },
+    Mapper223,
     Mapper224 {
         outer_bank: u8,
     },
@@ -500,6 +501,17 @@ impl Mmc3 {
     pub(super) fn new_215(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
         let mut m = Mmc3::new(prg_16k, chr_8k, mirroring);
         m.outer_bank = Mmc3OuterBank::Mapper215 { regs: [0, 3, 0] };
+        m
+    }
+
+    /// Mapper 223 — Waixing Type I, MMC3 with a WRAM-backed $5000 security
+    /// window.
+    ///
+    /// Reference:
+    /// - Nestopia `source/core/board/NstBoardWaixing.cpp:96-105,159-169`
+    pub(super) fn new_223(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
+        let mut m = Mmc3::new_with_low_wram(prg_16k, chr_8k, mirroring);
+        m.outer_bank = Mmc3OuterBank::Mapper223;
         m
     }
 
@@ -1012,6 +1024,7 @@ impl Mmc3 {
                     (((ex1 & 0x03) as usize) << 5) | (bank & mask) | sbank
                 }
             }
+            Mmc3OuterBank::Mapper223 => bank,
             Mmc3OuterBank::Mapper224 { outer_bank } => {
                 (((*outer_bank & 1) as usize) << 6) | (bank & 0x3F)
             }
@@ -1146,6 +1159,7 @@ impl Mmc3 {
                 }
             }
             Mmc3OuterBank::Mapper224 { .. } => bank,
+            Mmc3OuterBank::Mapper223 => bank,
             Mmc3OuterBank::Mapper238 { .. } => bank,
             Mmc3OuterBank::Mapper245 => bank & 0x07,
             Mmc3OuterBank::Mapper249 { reg } => {
@@ -2077,6 +2091,9 @@ impl MapperOps for Mmc3 {
                 *regs = [0, 3, 0];
                 reset_standard = true;
             }
+            Mmc3OuterBank::Mapper223 => {
+                reset_standard = true;
+            }
             Mmc3OuterBank::Mapper224 { outer_bank } => {
                 *outer_bank = 0;
                 reset_standard = true;
@@ -2589,6 +2606,31 @@ mod tests {
 
         mapper.reset(true);
         assert_eq!(mapper.prg_index(0xE004), 0x7F * 0x2000 + 4);
+    }
+
+    #[test]
+    fn mapper223_maps_5000_security_wram_and_keeps_mmc3_banking() {
+        let mut mapper = Mmc3::new_223(32, 32, Mirroring::Vertical);
+
+        assert_eq!(mapper.read_expansion(0x4FFF), None);
+        assert_eq!(mapper.read_expansion(0x5000), Some(0x00));
+        assert_eq!(mapper.read_expansion(0x5FFF), Some(0x00));
+        assert_eq!(mapper.read_expansion(0x6000), None);
+
+        mapper.write_expansion(0x5000, 0x5A);
+        mapper.write_expansion(0x5FFF, 0xA5);
+        mapper.write_expansion(0x6000, 0xFF);
+        assert_eq!(mapper.peek_expansion(0x5000), Some(0x5A));
+        assert_eq!(mapper.peek_expansion(0x5FFF), Some(0xA5));
+        assert_eq!(mapper.peek_expansion(0x6000), None);
+
+        mapper.write_register(0x8000, 0x06);
+        mapper.write_register(0x8001, 0x12);
+        assert_eq!(mapper.prg_index(0x8004), 0x12 * 0x2000 + 4);
+
+        mapper.write_register(0x8000, 0x46);
+        assert_eq!(mapper.prg_index(0x8004), 0x3E * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 0x12 * 0x2000 + 4);
     }
 
     #[test]
