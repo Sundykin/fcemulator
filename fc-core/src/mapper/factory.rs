@@ -132,6 +132,7 @@ impl Mapper {
             120 => Mapper::Mapper120(Mapper120::new(mirroring)),
             121 => Mapper::Mmc3(Mmc3::new_121(prg_16k, chr_8k, mirroring)),
             122 => Mapper::Mapper122(Mapper122::new(mirroring)),
+            126 => Mapper::Mmc3(Mmc3::new_126(prg_16k, chr_8k, mirroring)),
             128 => Mapper::Mapper128(Mapper128::new()),
             132 => Mapper::TxcMapper(TxcMapper::new(prg_16k, chr_8k, TxcVariant::Mapper132)),
             133 => Mapper::Sachen133(Sachen133::new(prg_16k, mirroring)),

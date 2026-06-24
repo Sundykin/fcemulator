@@ -102,6 +102,7 @@ fn watches_ppu_bus_matches_notify_a12_overrides() {
         (120, false),  // Mapper 120
         (121, true),   // Mapper 121 MMC3 A12 IRQ
         (122, false),  // Mapper 122
+        (126, true),   // Mapper 126 MMC3 A12 IRQ
         (128, false),  // Mapper 128
         (132, false),  // TXC 22211A
         (133, false),  // Sachen SA72008
@@ -316,6 +317,7 @@ fn clocks_cpu_matches_cpu_clock_overrides() {
         (120, false),  // Mapper 120
         (121, false),  // Mapper 121 uses PPU A12 edges
         (122, false),  // Mapper 122
+        (126, false),  // Mapper 126 uses PPU A12 edges
         (128, false),  // Mapper 128
         (132, false),  // TXC 22211A
         (133, false),  // Sachen SA72008
@@ -536,6 +538,7 @@ fn clocks_hblank_matches_hblank_clock_overrides() {
         (120, false),
         (121, false),
         (122, false),
+        (126, false),
         (128, false),
         (132, false),
         (133, false),
