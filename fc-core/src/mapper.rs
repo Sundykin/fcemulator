@@ -173,6 +173,12 @@ pub trait MapperOps {
     }
     /// Optional mapper-owned expansion-area write (`$4018..=$5FFF`).
     fn write_expansion(&mut self, _addr: u16, _value: u8) {}
+    /// Optional mapper notification for writes to `$4016` after the controller
+    /// strobe has been handled. VS System mapper 99 latches PRG/CHR select bits
+    /// on the same write while preserving normal controller behavior.
+    fn write_controller_strobe(&mut self, _value: u8) -> bool {
+        false
+    }
     /// Optional mapper-owned nametable read (`$2000..=$3EFF`).
     fn nametable_read(&mut self, _addr: u16, _ciram: &[u8; 0x1000]) -> Option<u8> {
         None
@@ -273,8 +279,8 @@ pub use basic::{
     Mapper235, Mapper240, Mapper241, Mapper244, Mapper246, Mapper253, Mapper29, Mapper31, Mapper35,
     Mapper36, Mapper40, Mapper42, Mapper43, Mapper50, Mapper51, Mapper57, Mapper60, Mapper63,
     Mapper65, Mapper67, Mapper72, Mapper73, Mapper79, Mapper8, Mapper81, Mapper83, Mapper91,
-    Mapper92, Mapper96, Namco108Mapper154, Namco108Mapper206, Namco108Mapper95, Namco118, Nina01,
-    Nina03_06, Nrom, Ntdec112, Sachen133, Sachen149, SachenSa0161m, Subor166, SuborVariant,
+    Mapper92, Mapper96, Mapper99, Namco108Mapper154, Namco108Mapper206, Namco108Mapper95, Namco118,
+    Nina01, Nina03_06, Nrom, Ntdec112, Sachen133, Sachen149, SachenSa0161m, Subor166, SuborVariant,
     Sunsoft184, Sunsoft4, Sunsoft89, TaitoTc0190, TaitoX1005, TaitoX1017, TxcMapper, TxcVariant,
     UnlPci556, Unrom, UnromVariant, UnromVariantMapper, Vrc1,
 };
@@ -342,6 +348,7 @@ pub enum Mapper {
     Mapper91(Mapper91),
     Mapper92(Mapper92),
     Mapper96(Mapper96),
+    Mapper99(Mapper99),
     AddrLatch16k(AddrLatch16k),
     Mapper103(Mapper103),
     Mapper104(Mapper104),

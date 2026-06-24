@@ -111,6 +111,7 @@ impl Mapper {
             )),
             95 => Mapper::Namco108Mapper95(Namco108Mapper95::new(prg_16k)),
             97 => Mapper::IremTamS1(IremTamS1::new(prg_16k)),
+            99 => Mapper::Mapper99(Mapper99::new(mirroring)),
             101 => Mapper::JalecoJfxx(JalecoJfxx::new(true, mirroring)),
             103 => Mapper::Mapper103(Mapper103::new(prg_16k, mirroring)),
             104 => Mapper::Mapper104(Mapper104::new(mirroring)),

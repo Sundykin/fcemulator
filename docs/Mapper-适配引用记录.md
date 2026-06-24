@@ -9,8 +9,8 @@
   - 新增 Mapper 43 / 60 / 83 / 106 / 183 / 212 / 222 / 235。
   - 覆盖 PRG/CHR bank 译码、低地址 PRG-ROM 窗口、mapper register read、open-bus 读侧效应、reset hook、CPU clock IRQ、A12 IRQ。
 - `fc-core/src/mapper/basic/latch/discrete.rs`
-  - 新增 Mapper 8 / 29 / 31 / 36 / 72 / 79 / 81 / 92 / 96 / 122。
-  - 覆盖 FFE/FJ-007 PRG16/CHR8 latch、Sealie Computing PRG16/CHR8 latch 与 32KB CHR-RAM 默认容量、NSF/INL 4KB PRG-ROM paging、TXC/Micro Genius 简化 latch、$4100 读回、bus conflict、NTDEC N715062 address/data latch、Jaleco 2-in-1/JF-17 PRG/CHR 写位规则、Mapper 96 的 PPU nametable latch、NINA-003/006 扩展区 latch，以及 Mapper 122 双 4KB CHR latch。
+  - 新增 Mapper 8 / 29 / 31 / 36 / 72 / 79 / 81 / 92 / 96 / 99 / 122。
+  - 覆盖 FFE/FJ-007 PRG16/CHR8 latch、Sealie Computing PRG16/CHR8 latch 与 32KB CHR-RAM 默认容量、NSF/INL 4KB PRG-ROM paging、TXC/Micro Genius 简化 latch、$4100 读回、bus conflict、NTDEC N715062 address/data latch、Jaleco 2-in-1/JF-17 PRG/CHR 写位规则、Mapper 96 的 PPU nametable latch、Mapper 99 的 `$4016` controller-strobe PRG/CHR latch、NINA-003/006 扩展区 latch，以及 Mapper 122 双 4KB CHR latch。
 - `fc-core/src/mapper/basic/latch/sachen.rs:1-135`
   - 新增 Mapper 133 / Sachen SA72008、Mapper 146 / Sachen SA016-1M、Mapper 148 / Sachen SA0037 与 Mapper 149 / Sachen SA0036。
   - 覆盖 SA72008 PRG32/CHR8 latch、SA016-1M/SA0037 PRG32/CHR8 latch 和 SA0036 CHR bit7 latch。
@@ -97,6 +97,8 @@
   - 低区默认 PRG-RAM 新增 mapper gate，用于 Mapper153 `$800D` 关闭 SRAM 读写时返回 open bus/忽略写入；默认开启，现有 mapper 行为不变。
 - `fc-core/src/bus.rs:478-479`
   - Bus 将 CPU open bus 传入 Cartridge 读路径。
+- `fc-core/src/mapper.rs:176-180`、`fc-core/src/cartridge.rs:407-409`、`fc-core/src/bus.rs:532-535`
+  - 新增 `$4016` controller-strobe mapper write hook；Bus 先处理普通控制器 strobe，再通知 mapper，用于 VS System/Mapper99 这类复用 `$4016` 写入的板卡。
 
 ## 对照来源
 
@@ -206,6 +208,10 @@
 | 95 | `namco.rs:34-203` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Namco/Namco108_95.h` | 5-18 | Mapper 95 reg0/reg1 bit5 到四个 nametable 页映射；当前实现采用此模型 |
 | 96 | `latch/discrete.rs:259-316; mapper.rs:235-237,297,445,612,881,1040,1201,2200-2221` | `/Users/sunmeng/workspace/fc/fceux/src/boards/96.cpp` | 25-68 | Oeka Kids board：reg/ppulatch 状态、PRG32=`reg&3`、CHR4 low=`reg&4|ppulatch`、CHR4 high=`reg&4|3`、固定单屏 0 mirroring、PPU nametable hook |
 | 96 | `latch/discrete.rs:259-316; mapper.rs:235-237,297,445,612,881,1040,1201,2200-2221` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/96.c` | 32-75 | FCEUmm mapper 96 cross-check；同样记录 Oeka Kids PPU hook 和 attribute-table 精度 TODO 注释 |
+| 99 | `latch/discrete.rs:238-292; mapper.rs:176-180,282,351; bus.rs:532-535,671-693; cartridge.rs:407-409; factory.rs:114; dispatch.rs:58; tests.rs:101,291,484,2011-2028` | `/Users/sunmeng/workspace/fc/fceux/src/boards/99.cpp` | 34-44,47-55,68-78 | Mapper 99 / VS UniSystem：`$4016` 写 latch 选择 CHR8 bank `(value >> 2) & 1`，并为 VS Gumshoe 选择 `$8000-$9FFF` PRG8 bank `value & 4`，写后继续调用原 controller strobe handler |
+| 99 | `latch/discrete.rs:238-292; mapper.rs:176-180,282,351; bus.rs:532-535,671-693; cartridge.rs:407-409; factory.rs:114; dispatch.rs:58; tests.rs:101,291,484,2011-2028` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/99.c` | 34-44,47-55,67-78 | FCEUmm mapper 99 cross-check；同源 PRG/CHR latch、8KB WRAM、`$4016` handler wrapping |
+| 99 | `latch/discrete.rs:238-292; mapper.rs:176-180,282,351; bus.rs:532-535,671-693; cartridge.rs:407-409; factory.rs:114; dispatch.rs:58; tests.rs:101,291,484,2011-2028` | `/Users/sunmeng/workspace/fc/nestopia/source/core/board/NstBoardVsSystem.cpp` | 38-61 | Nestopia VS System cross-check；`Poke_4016` 更新 CHR8/PRG8 后转发原 `$4016` poke，peek 也代理原控制器路径 |
+| 99 | `latch/discrete.rs:238-292; mapper.rs:176-180,282,351; bus.rs:532-535,671-693; cartridge.rs:407-409; factory.rs:114; dispatch.rs:58; tests.rs:101,291,484,2011-2028` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/VsSystem/VsSystem.h` | 16-19,82-97 | Mesen2 VS System cross-check；PRG/CHR page size、Work RAM size、控制管理器 bit 变化后更新 CHR8 与 VS Gumshoe PRG8；当前本项目先以 `$4016` 写通知表达同一 latch |
 | 108 | `special.rs:113-165,187-208` | `/Users/sunmeng/workspace/fc/fceux/src/boards/108.cpp` | 31-48,54-58 | Mapper 108 低区 `setprg8(0x6000, reg)`、高区 `setprg32(0x8000, ~0)`、固定 `setchr8(0)` 与写窗口 |
 | 108 | `special.rs:113-165,187-208` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/108.c` | 37-53,60-64 | FCEUmm Mapper 108 cross-check；同样覆盖 `$8000-$8FFF` 与 `$F000-$FFFF` 写处理 |
 | 206 | `namco.rs:86-154,275-301` | `/Users/sunmeng/workspace/fc/fceux/src/boards/206.cpp` | 33-78 | Mapper 206 Namco108 subset：2KB/1KB CHR、8KB PRG、cmd/data 写译码、power defaults |
@@ -442,6 +448,7 @@
 - `TaitoX1005::new_207()` / `set_chr_2k()` alternate mirroring 对应 FCEUX/FCEUmm `80.cpp`/`80.c:87-103,145-190` 与 Mesen2 `TaitoX1005.h:50-97,110-113`。
 - `TaitoX1017::chr_index()` 的 pattern half swap 对应 FCEUX `82.cpp:37-50` 与 FCEUmm `82_552.c:45-58`。
 - `Mapper81::write_register()` / `prg_index()` / `chr_index()` 对应 FCEUmm `81.c:24-31`；本项目显式保存地址 latch 和数据 latch，以等价表达 FCEUmm `Latch_Init` 提供的 `latch.addr` / `latch.data`。
+- `Mapper99::write_controller_strobe()` 对应 FCEUX/FCEUmm `99.cpp`/`99.c:34-44,47-55`、Nestopia `NstBoardVsSystem.cpp:38-61` 与 Mesen2 `VsSystem.h:82-97`；本项目新增 `MapperOps::write_controller_strobe()`，由 Bus 在普通 controller strobe 后调用，避免 mapper 复用 `$4016` 时破坏手柄写行为。
 - `Mapper104::write_register()` / `prg_index()` 对应 FCEUmm `104.c:35-69,77-91`；`setprg8r(0x10,0x6000,0)` 由本项目 Cartridge 的普通低区 PRG-RAM fallback 提供，mapper 内只保存两个 PRG16 register 并固定 vertical mirroring。
 - `Mapper168::write_register()` / `chr_read()` / `chr_write()` / `cpu_clock()` 对应 FCEUX/FCEUmm `168.cpp`/`168.c:33-42,48-56,68-77` 与 Mesen2 `Racermate.h:11-17,32-55`；本项目按 FCEUX/FCEUmm 的 PRG/CHR/CHR-RAM 行为，并补入 Mesen2 的 CPU-cycle IRQ 与 `$C000-$FFFF` reload/ack。
 - `Mapper175::read_register()` 对应 FCEUX/FCEUmm `175.cpp`/`175.c:54-59`；本项目用高区 read side-effect hook 在读 `$FFFC` 时提交 `committed_prg`，peek 路径保持无副作用。
@@ -466,7 +473,7 @@
 ## 以后替换时的删除边界
 
 - 先替换 `fc-core/src/mapper/basic/unlicensed.rs:1-884`。
-- 同批替换 `fc-core/src/mapper/basic/latch/discrete.rs` 里 Mapper 29 / 36 / 72 / 79 / 92 / 122 的新增段、`fc-core/src/mapper/basic/latch/sachen.rs` 的新增段、`fc-core/src/mapper/basic/core.rs` 里 ColorDreams/Mapper144 的扩展段、`fc-core/src/mapper/basic/taito.rs` 里 Mapper 80 / 207 / 82 的新增段，以及 `fc-core/src/mapper/basic/multicart.rs` 里 Mapper 51 / 59 / 63 / 201 / 217 / 221 / 228 / 255 的新增段。
+- 同批替换 `fc-core/src/mapper/basic/latch/discrete.rs` 里 Mapper 29 / 36 / 72 / 79 / 92 / 99 / 122 的新增段、`fc-core/src/mapper/basic/latch/sachen.rs` 的新增段、`fc-core/src/mapper/basic/core.rs` 里 ColorDreams/Mapper144 的扩展段、`fc-core/src/mapper/basic/taito.rs` 里 Mapper 80 / 207 / 82 的新增段，以及 `fc-core/src/mapper/basic/multicart.rs` 里 Mapper 51 / 59 / 63 / 201 / 217 / 221 / 228 / 255 的新增段。
 - 同批替换 `fc-core/src/mapper/basic/latch/sunsoft.rs` 里 Mapper 68 的新增段，并同步检查 `MapperOps::nametable_chr_index` 与 `Cartridge::mapper_has_nametable_chr_mapping` 是否仍有其他使用者。
 - 同批替换 `fc-core/src/mapper/basic/core.rs` 里 Mapper 232 的新增段。
 - 同批替换 `fc-core/src/mapper/basic/bandai.rs` 里 Mapper16 / 153 / 159、Bandai FCG、24C01/24C02 EEPROM 新增段，并同步检查 `MapperOps::read_low_register_with_open_bus` / `peek_low_register_with_open_bus` / `low_prg_ram_read_enabled` / `low_prg_ram_write_enabled` 是否仍有使用者。
@@ -475,6 +482,7 @@
 - 同批替换 `fc-core/src/mapper/basic/irq.rs` 里 FFE Mapper6/17 新增段。
 - 同批替换 `fc-core/src/mapper/basic/konami.rs` 的 VRC1 段、`fc-core/src/mapper/basic/jy.rs` 的 Mapper35/91 段、`fc-core/src/mapper/basic/sl12.rs` 的 Mapper116 段、`fc-core/src/mapper/basic/waixing.rs` 的 Mapper253 段、`fc-core/src/mapper/vrc4.rs` 的 VRC2/VRC4 段、`fc-core/src/mapper/rambo1.rs` 的 Mapper64/158 段，`fc-core/src/mapper/basic/taito.rs` 的 Mapper48 段，以及 `fc-core/src/mapper/mmc3.rs` 的 Mapper37/44/45/47/52/76/119 变体段。
 - 同批替换 `fc-core/src/mapper/basic/special.rs` 里 Mapper168 的新增段，并同步检查 `MapperOps::has_chr_read` / `chr_read` / `chr_write` / `cpu_clock` 是否仍有使用者。
-- 再处理 `fc-core/src/mapper.rs` 里 Mapper 43/60/75/76/83/91/106/168/183/212/222/235 的导出、枚举、构造和 dispatch 分支。
+- 若替换 Mapper99，请同步检查 `MapperOps::write_controller_strobe`、`Cartridge::cpu_write_controller_strobe` 与 `Bus::write($4016)` 是否仍有使用者。
+- 再处理 `fc-core/src/mapper.rs` 里 Mapper 43/60/75/76/83/91/99/106/168/183/212/222/235 的导出、枚举、构造和 dispatch 分支。
 - 若替换 Mapper91，请同步检查 `MapperOps::hblank_clock`、`Cartridge::mapper_clocks_hblank` 与 `Bus::clock_ppu_dot()` 的 HBlank hook 是否仍有使用者。
 - 最后检查 `fc-core/src/cartridge.rs` 的 open-bus aware 读钩子是否仍被其他 mapper 使用；如果无使用者，可收窄接口。

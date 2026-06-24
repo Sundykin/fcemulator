@@ -531,7 +531,7 @@ impl Bus {
             }
             0x4016 => {
                 self.controllers.write_strobe(value);
-                false
+                self.cartridge.cpu_write_controller_strobe(value)
             }
             0x4000..=0x4013 | 0x4015 | 0x4017 => {
                 self.apu.write(addr, value);
@@ -665,6 +665,30 @@ mod tests {
         assert_eq!(bus.cartridge.cpu_peek(0x7FFE), 0x04);
         assert!(bus.events.events().iter().any(|e| {
             e.kind == EventKind::MapperRegWrite && e.addr == 0x7FFE && e.value == 0x04
+        }));
+    }
+
+    #[test]
+    fn mapper99_observes_controller_strobe_without_stealing_controller_write() {
+        let mut rom = vec![0u8; 16 + 3 * 0x4000 + 2 * 0x2000];
+        rom[0..4].copy_from_slice(b"NES\x1A");
+        rom[4] = 3; // 48KB PRG so VS Gumshoe's 8KB bank 4 is addressable
+        rom[5] = 2; // 16KB CHR-ROM
+        rom[6] = 0x30; // mapper 99 low nibble
+        rom[7] = 0x60; // mapper 99 high nibble
+        let cart = Cartridge::from_bytes(&rom).expect("mapper 99 rom");
+        let mut bus = Bus::new(cart, Region::Ntsc);
+        bus.controllers.set_state(0, 0b0000_0001);
+        bus.set_event_recording(true);
+
+        bus.write(0x4016, 0x05);
+        assert_eq!(bus.cartridge.mapper.prg_index(0x8004), 4 * 0x2000 + 4);
+        assert_eq!(bus.cartridge.mapper.chr_index(0x0004), 0x2000 + 4);
+        assert_eq!(bus.read(0x4016) & 1, 1);
+
+        bus.events.end_frame();
+        assert!(bus.events.events().iter().any(|e| {
+            e.kind == EventKind::MapperRegWrite && e.addr == 0x4016 && e.value == 0x05
         }));
     }
 

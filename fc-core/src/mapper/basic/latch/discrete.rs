@@ -236,6 +236,62 @@ impl MapperOps for Mapper8 {
 }
 
 // ============================================================================
+// Mapper 99 — VS UniSystem
+//
+// References:
+// - FCEUX `src/boards/99.cpp:34-44,47-55,68-78`
+// - FCEUmm `src/boards/99.c:34-44,47-55,67-78`
+// - Nestopia `source/core/board/NstBoardVsSystem.cpp:38-61`
+// - Mesen2 `Core/NES/Mappers/VsSystem/VsSystem.h:16-19,82-97`
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Mapper99 {
+    latch: u8,
+    mirroring: Mirroring,
+}
+
+impl Mapper99 {
+    pub(in crate::mapper) fn new(mirroring: Mirroring) -> Self {
+        Mapper99 {
+            latch: 0,
+            mirroring,
+        }
+    }
+}
+
+impl MapperOps for Mapper99 {
+    fn prg_index(&self, addr: u16) -> usize {
+        let slot = ((addr - 0x8000) / 0x2000) as usize;
+        let bank = if slot == 0 {
+            (self.latch & 0x04) as usize
+        } else {
+            slot
+        };
+        bank * 0x2000 + (addr as usize & 0x1FFF)
+    }
+
+    fn chr_index(&self, addr: u16) -> usize {
+        (((self.latch >> 2) & 0x01) as usize) * 0x2000 + (addr as usize & 0x1FFF)
+    }
+
+    fn write_register(&mut self, _addr: u16, _value: u8) {}
+
+    fn write_controller_strobe(&mut self, value: u8) -> bool {
+        self.latch = value;
+        true
+    }
+
+    fn mirroring(&self) -> Mirroring {
+        self.mirroring
+    }
+
+    fn reset(&mut self, _soft: bool) {
+        self.latch = 0;
+    }
+}
+
+// ============================================================================
 // Mapper 29 — Sealie Computing / Glider
 //
 // References:

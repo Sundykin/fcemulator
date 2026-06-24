@@ -55,6 +55,7 @@ macro_rules! dispatch {
             Mapper::Mapper91($m) => $body,
             Mapper::Mapper92($m) => $body,
             Mapper::Mapper96($m) => $body,
+            Mapper::Mapper99($m) => $body,
             Mapper::AddrLatch16k($m) => $body,
             Mapper::Mapper103($m) => $body,
             Mapper::Mapper104($m) => $body,
@@ -229,6 +230,9 @@ impl MapperOps for Mapper {
     }
     fn write_expansion(&mut self, addr: u16, value: u8) {
         dispatch!(self, m => m.write_expansion(addr, value))
+    }
+    fn write_controller_strobe(&mut self, value: u8) -> bool {
+        dispatch!(self, m => m.write_controller_strobe(value))
     }
     fn nametable_read(&mut self, addr: u16, ciram: &[u8; 0x1000]) -> Option<u8> {
         dispatch!(self, m => m.nametable_read(addr, ciram))

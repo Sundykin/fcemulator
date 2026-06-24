@@ -85,6 +85,7 @@ fn watches_ppu_bus_matches_notify_a12_overrides() {
         (92, false),   // Mapper 92
         (96, true),    // Mapper 96 PPU nametable latch
         (95, false),   // Namco 108 mapper 95
+        (99, false),   // VS UniSystem controller-strobe latch
         (101, false),  // Jaleco JF-xx ordered bits
         (103, false),  // Mapper 103
         (104, false),  // Mapper 104
@@ -274,6 +275,7 @@ fn clocks_cpu_matches_cpu_clock_overrides() {
         (92, false),   // Mapper 92
         (96, false),   // Mapper 96 PPU nametable latch has no CPU clock
         (95, false),   // Namco 108 mapper 95
+        (99, false),   // VS UniSystem updates on $4016 writes, not CPU clock
         (101, false),  // Jaleco JF-xx ordered bits
         (103, false),  // Mapper 103
         (104, false),  // Mapper 104
@@ -465,6 +467,7 @@ fn clocks_hblank_matches_hblank_clock_overrides() {
         (95, false),
         (96, false),
         (97, false),
+        (99, false),
         (101, false),
         (103, false),
         (104, false),
@@ -2003,6 +2006,25 @@ fn mapper96_uses_ppu_nametable_latch_for_low_chr_bank() {
 
     m96.notify_a12(0x1000, 2);
     assert_eq!(m96.chr_index(0x0000), 0x07 * 0x1000);
+}
+
+#[test]
+fn mapper99_vs_system_latches_prg_chr_from_controller_strobe() {
+    let mut m99 = Mapper::new(99, 4, 2, Mirroring::FourScreen, 0).expect("mapper 99");
+    assert_eq!(m99.mirroring(), Mirroring::FourScreen);
+    assert_eq!(m99.prg_index(0x8004), 0x0004);
+    assert_eq!(m99.prg_index(0xA004), 1 * 0x2000 + 4);
+    assert_eq!(m99.prg_index(0xE004), 3 * 0x2000 + 4);
+    assert_eq!(m99.chr_index(0x1004), 0x1004);
+
+    assert!(m99.write_controller_strobe(0x04));
+    assert_eq!(m99.prg_index(0x8004), 4 * 0x2000 + 4);
+    assert_eq!(m99.prg_index(0xA004), 1 * 0x2000 + 4);
+    assert_eq!(m99.chr_index(0x0004), 1 * 0x2000 + 4);
+
+    m99.reset(true);
+    assert_eq!(m99.prg_index(0x8004), 0x0004);
+    assert_eq!(m99.chr_index(0x0004), 0x0004);
 }
 
 #[test]

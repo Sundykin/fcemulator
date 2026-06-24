@@ -404,6 +404,10 @@ impl Cartridge {
         }
     }
 
+    pub(crate) fn cpu_write_controller_strobe(&mut self, value: u8) -> bool {
+        self.mapper.write_controller_strobe(value)
+    }
+
     fn cpu_read_expansion_with_open_bus(&mut self, addr: u16, open_bus: u8) -> u8 {
         self.mapper
             .read_expansion_with_open_bus(addr, open_bus)
