@@ -186,6 +186,7 @@ impl Mapper {
             175 => Mapper::Mapper175(Mapper175::new()),
             177 => Mapper::Mapper177(Mapper177::new()),
             178 => Mapper::Mapper178(Mapper178::new(prg_16k, submapper)),
+            179 => Mapper::Mapper177(Mapper177::new_179()),
             180 => Mapper::UnromVariant(UnromVariantMapper::new(
                 prg_16k,
                 UnromVariant::Mapper180,

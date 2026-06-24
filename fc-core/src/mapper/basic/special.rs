@@ -868,27 +868,56 @@ impl MapperOps for Mapper175 {
 }
 
 // ============================================================================
-// Mapper 177 — Henggedianzi XH-32A
+// Mapper 177 / 179 — Henggedianzi
 //
 // References:
 // - FCEUX `src/boards/177.cpp`
 // - FCEUmm `src/boards/177.c`
+// - Mesen2 `Core/NES/Mappers/Unlicensed/Henggedianzi179.h`
+// - Nestopia `source/core/board/NstBoardHenggedianzi.cpp`
 // ============================================================================
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+enum HenggedianziVariant {
+    Mapper177,
+    Mapper179,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Mapper177 {
+    variant: HenggedianziVariant,
     reg: u8,
+    mirroring: Mirroring,
 }
 
 impl Mapper177 {
     pub(in crate::mapper) fn new() -> Self {
-        Mapper177 { reg: 0 }
+        Mapper177 {
+            variant: HenggedianziVariant::Mapper177,
+            reg: 0,
+            mirroring: Mirroring::Vertical,
+        }
+    }
+
+    pub(in crate::mapper) fn new_179() -> Self {
+        Mapper177 {
+            variant: HenggedianziVariant::Mapper179,
+            reg: 0,
+            mirroring: Mirroring::Vertical,
+        }
     }
 }
 
 impl MapperOps for Mapper177 {
     fn prg_index(&self, addr: u16) -> usize {
-        ((self.reg & 0x1F) as usize) * 0x8000 + (addr - 0x8000) as usize
+        match self.variant {
+            HenggedianziVariant::Mapper177 => {
+                ((self.reg & 0x1F) as usize) * 0x8000 + (addr - 0x8000) as usize
+            }
+            HenggedianziVariant::Mapper179 => {
+                ((self.reg >> 1) as usize) * 0x8000 + (addr - 0x8000) as usize
+            }
+        }
     }
 
     fn chr_index(&self, addr: u16) -> usize {
@@ -896,19 +925,40 @@ impl MapperOps for Mapper177 {
     }
 
     fn write_register(&mut self, _addr: u16, value: u8) {
-        self.reg = value;
+        match self.variant {
+            HenggedianziVariant::Mapper177 => self.reg = value,
+            HenggedianziVariant::Mapper179 => {
+                self.mirroring = if value & 0x01 != 0 {
+                    Mirroring::Horizontal
+                } else {
+                    Mirroring::Vertical
+                };
+            }
+        }
+    }
+
+    fn write_expansion(&mut self, addr: u16, value: u8) {
+        if self.variant == HenggedianziVariant::Mapper179 && (0x5000..=0x5FFF).contains(&addr) {
+            self.reg = value;
+        }
     }
 
     fn mirroring(&self) -> Mirroring {
-        if self.reg & 0x20 != 0 {
-            Mirroring::Horizontal
-        } else {
-            Mirroring::Vertical
+        match self.variant {
+            HenggedianziVariant::Mapper177 => {
+                if self.reg & 0x20 != 0 {
+                    Mirroring::Horizontal
+                } else {
+                    Mirroring::Vertical
+                }
+            }
+            HenggedianziVariant::Mapper179 => self.mirroring,
         }
     }
 
     fn reset(&mut self, _soft: bool) {
         self.reg = 0;
+        self.mirroring = Mirroring::Vertical;
     }
 }
 

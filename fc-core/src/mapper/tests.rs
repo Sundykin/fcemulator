@@ -145,6 +145,7 @@ fn watches_ppu_bus_matches_notify_a12_overrides() {
         (175, false),  // Mapper 175
         (177, false),  // Mapper 177
         (178, false),  // Waixing FS305/NJ0430
+        (179, false),  // Henggedianzi XJZB
         (181, false),  // Mapper 181 CNROM protection
         (182, true),   // Mapper 182 MMC3 A12 IRQ
         (183, false),  // Mapper 183 IRQ is CPU-clocked, not PPU-bus-clocked
@@ -364,6 +365,7 @@ fn clocks_cpu_matches_cpu_clock_overrides() {
         (175, false),  // Mapper 175
         (177, false),  // Mapper 177
         (178, false),  // Waixing FS305/NJ0430
+        (179, false),  // Henggedianzi XJZB
         (181, false),  // Mapper 181 CNROM protection
         (182, false),  // Mapper 182 uses PPU A12 edges
         (183, true),   // Mapper 183 IRQ counter clocks per CPU cycle
@@ -587,6 +589,7 @@ fn clocks_hblank_matches_hblank_clock_overrides() {
         (175, false),
         (177, false),
         (178, false),
+        (179, false),
         (180, false),
         (181, false),
         (182, false),
@@ -2050,6 +2053,20 @@ fn reset_selected_and_read_side_effect_mappers_follow_reference_rules() {
     m177.reset(true);
     assert_eq!(m177.prg_index(0x8004), 0x0004);
     assert_eq!(m177.mirroring(), Mirroring::Vertical);
+
+    let mut m179 = Mapper::new(179, 32, 0, Mirroring::Vertical, 0).expect("mapper 179");
+    assert_eq!(m179.prg_index(0x8004), 0x0004);
+    assert_eq!(m179.chr_index(0x1010), 0x1010);
+    assert_eq!(m179.mirroring(), Mirroring::Vertical);
+    m179.write_expansion(0x5000, 0x0A);
+    assert_eq!(m179.prg_index(0x8004), 5 * 0x8000 + 4);
+    m179.write_register(0x8000, 0x01);
+    assert_eq!(m179.mirroring(), Mirroring::Horizontal);
+    m179.write_expansion(0x4FFF, 0x1E);
+    assert_eq!(m179.prg_index(0x8004), 5 * 0x8000 + 4);
+    m179.reset(true);
+    assert_eq!(m179.prg_index(0x8004), 0x0004);
+    assert_eq!(m179.mirroring(), Mirroring::Vertical);
 
     let mut m230 = Mapper::new(230, 16, 0, Mirroring::Vertical, 0).expect("mapper 230");
     assert_eq!(m230.prg_index(0x8000), 0);
