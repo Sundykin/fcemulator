@@ -9,6 +9,7 @@ use crate::chr::{decode_sheet, encode_sheet};
 use crate::emu::EmuState;
 use crate::map::MapData;
 use crate::project::{self, ProjectState};
+use crate::tracker::Song;
 use fc_core::Button;
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader, Write};
@@ -76,6 +77,16 @@ const TOOLS: &[Tool] = &[
         name: "ide_bind_map_chr",
         description: "Persist a map-to-CHR preview/build binding in project.toml.",
         schema: r#"{"type":"object","properties":{"map":{"type":"string"},"chr":{"type":"string"}},"required":["map","chr"]}"#,
+    },
+    Tool {
+        name: "ide_read_song",
+        description: "Read a project tracker .song.json as editable 2A03 song data.",
+        schema: r#"{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}"#,
+    },
+    Tool {
+        name: "ide_write_song",
+        description: "Write tracker .song.json data and register it as a music resource in project.toml.",
+        schema: r#"{"type":"object","properties":{"path":{"type":"string"},"song":{"type":"object"}},"required":["path","song"]}"#,
     },
     Tool {
         name: "ide_build",
@@ -209,6 +220,8 @@ fn call_tool(app: &AppHandle, name: &str, args: &Value) -> Value {
         "ide_read_map" => with_result(|| read_map(app, args)),
         "ide_write_map" => with_result(|| write_map(app, args)),
         "ide_bind_map_chr" => with_result(|| bind_map_chr(app, args)),
+        "ide_read_song" => with_result(|| read_song(app, args)),
+        "ide_write_song" => with_result(|| write_song(app, args)),
         "ide_build" => with_result(|| build_project(app)),
         "ide_run" => with_result(|| run_project(app, args)),
         "ide_press_buttons" => with_result(|| press_buttons(app, args)),
@@ -412,6 +425,40 @@ fn bind_map_chr(app: &AppHandle, args: &Value) -> Result<Value, String> {
         json!({"map": map, "chr": chr, "manifest": manifest}),
     );
     Ok(json!({"map": map, "chr": chr}))
+}
+
+fn read_song(app: &AppHandle, args: &Value) -> Result<Value, String> {
+    let root = active_root(app)?;
+    let path = arg_str(args, "path")?;
+    let text = std::fs::read_to_string(resolve(&root, path)?)
+        .map_err(|e| format!("读取 {path} 失败: {e}"))?;
+    let song: Song = serde_json::from_str(&text).map_err(|e| format!("解析乐曲失败: {e}"))?;
+    Ok(json!({"path": path, "song": song}))
+}
+
+fn write_song(app: &AppHandle, args: &Value) -> Result<Value, String> {
+    let root = active_root(app)?;
+    let path = arg_str(args, "path")?;
+    let song_value = args.get("song").cloned().ok_or("缺少 song")?;
+    let song: Song = serde_json::from_value(song_value).map_err(|e| format!("解析 song 失败: {e}"))?;
+    let dst = resolve(&root, path)?;
+    if let Some(parent) = dst.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {e}"))?;
+    }
+    let text = serde_json::to_string_pretty(&song).map_err(|e| format!("序列化乐曲失败: {e}"))?;
+    std::fs::write(&dst, text).map_err(|e| format!("写入 {path} 失败: {e}"))?;
+    let mut manifest = project::load_manifest(&root)?;
+    if !manifest.music.contains(&path.to_string()) {
+        manifest.music.push(path.to_string());
+        project::save_manifest(&root, &manifest)?;
+    }
+    emit_refresh(app, "song-write", &["tree", "manifest", "music"], json!({"path": path}));
+    Ok(json!({
+        "path": path,
+        "name": song.name,
+        "patterns": song.patterns.len(),
+        "order": song.order.len(),
+    }))
 }
 
 fn build_project(app: &AppHandle) -> Result<Value, String> {

@@ -4,7 +4,7 @@
 Evolve the fc-tauri studio into a mature NES game-development IDE engine. The target experience is continuous project/resource/map/music workflows, comfortable editing controls, and editors that fill their available workspace instead of using tiny native-pixel canvases.
 
 ## Current Phase
-Phase 3: Map Editor Comfort
+Phase 7: Creative MCP End-To-End Authoring
 
 ## Phases
 
@@ -49,7 +49,14 @@ Phase 3: Map Editor Comfort
 - [x] Commit coherent increments for the music editor slice
 - [x] Commit coherent increments for the project/resource flow slice
 - [x] Commit coherent increments for the final map comfort slice
-- **Status:** in_progress
+- **Status:** complete
+
+### Phase 7: Creative MCP End-To-End Authoring
+- [x] Audit whether the live IDE MCP can write every first-class creative resource type
+- [x] Add missing semantic MCP tools for tracker/music resources
+- [x] Verify MCP-written music updates the visible Tauri IDE state and manifest
+- [x] Verify build/run still works with MCP-written creative resources
+- **Status:** complete
 
 ## Key Questions
 1. Which editor currently wastes the most available panel area or forces tiny pixel editing?
@@ -65,6 +72,7 @@ Phase 3: Map Editor Comfort
 | Prefer frontend/layout improvements first, preserving backend formats | The pain is mostly interaction and workspace sizing; backend map/CHR/tracker formats already exist and should stay stable |
 | Keep emulator MCP embedded in Tauri and surface it in the player UI | User specifically wants MCP to operate the visible Tauri emulator, not a hidden core; UI status makes that connection observable |
 | Make `.mcp.json` `fc-emu` point at `fc emu-mcp` by default | User wants game emulator MCP to attach to the Tauri emulator interface; retaining `fc-emu-core` preserves the headless option for pure core work |
+| Treat tracker `.song.json` as a music resource in IDE/MCP state, while build only assembles registered `.s/.asm` music sources | Agents need to author music semantically; the build pipeline already ignores non-assembly music entries, so song resources can be visible without breaking ca65 |
 
 ## Errors Encountered
 | Error | Attempt | Resolution |

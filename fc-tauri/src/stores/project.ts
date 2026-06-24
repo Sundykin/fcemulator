@@ -227,6 +227,9 @@ export const useProjectStore = defineStore("project", {
         if (extra?.path && changed.includes("map") && this.map?.path === extra.path) {
           await this.openMap(extra.path);
         }
+        if (extra?.path && changed.includes("music") && this.song?.path === extra.path) {
+          await this.openTracker(extra.path);
+        }
         this.status = `MCP 已更新：${reason}`;
       } catch (e) {
         this.status = `MCP 同步失败：${e}`;
@@ -614,6 +617,10 @@ export const useProjectStore = defineStore("project", {
       if (!this.song) return;
       await ide.trackerSave(this.song.path, this.song.data);
       this.songSaved = JSON.stringify(this.song.data);
+      if (this.manifest && !this.manifest.music.includes(this.song.path)) {
+        this.manifest.music.push(this.song.path);
+        await ide.projectSave(this.manifest);
+      }
       await this.refreshTree();
       this.status = `已保存乐曲 ${this.song.path}`;
     },

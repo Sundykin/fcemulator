@@ -71,6 +71,12 @@
 - The roll view already computed cell metrics from `rollArea`, so turning the inspector into an overlay lets the existing metric code scale to the full parent area.
 - Tracker data remains `store.song.data`; `saveTracker()`, `playSong()`, and `exportTracker()` keep using the same backend APIs, so this pass only changes editor layout and context display.
 
+## Creative MCP Authoring Findings
+- Before this slice, the live IDE MCP could write source files, CHR sheets, maps, map→CHR bindings, build, run, press buttons, and read memory, but it could not semantically read/write tracker `.song.json` resources.
+- Direct MCP song writes need to register the song path in `project.toml` so manifest-backed resource counts and filters stay coherent.
+- The build pipeline only assembles `manifest.music` entries ending in `.s` or `.asm`, so keeping `.song.json` in the music resource list does not make ca65 try to assemble JSON.
+- Frontend `syncFromIdeMcp()` needed a `changed.includes("music")` branch so an already-open tracker panel reloads when an agent updates the song through MCP.
+
 ## Files To Inspect Next
 - `fc-tauri/src/ide/MapEditorPanel.vue` template/style sections
 - `fc-tauri/src/ide/ChrEditorPanel.vue` template/style sections
