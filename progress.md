@@ -163,6 +163,15 @@
   - Runtime verified a failing ca65 build in the real Tauri IDE with a deliberately inserted `BROKEN_OPCODE_FOR_DIAG` line.
   - Verified the failing source line was visible and active in CodeMirror, `goto` targeted `src/main.s:2`, and BuildPanel showed the diagnostics tab/error row after its build action.
 
+### Phase 16: Run Focuses Playable Preview
+- **Status:** complete
+- Actions taken:
+  - Audited PreviewPanel and found keyboard handling already worked once the stage had focus, but top-level Run did not request stage focus.
+  - Changed top-level IDE Run to use `requestPreviewFocus()` instead of directly showing Preview.
+  - Updated PreviewPanel to focus the stage when preview focus is requested, when the ROM changes, and when the stage first mounts after Dockview opens the panel.
+  - Added short delayed focus retries to survive Dockview layout/focus churn after a panel is created.
+  - Runtime verified real Tauri top-level Run opens Preview, focuses the stage, changes the hint to `试玩中`, and accepts `ArrowRight` as controller input immediately.
+
 ## Test Results
 | Test | Result |
 |------|--------|
@@ -236,6 +245,11 @@
 | `npm --prefix fc-tauri run build` after diagnostic-focus change | PASS, with existing Vite large chunk warning |
 | `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml` after diagnostic-focus change | PASS |
 | `git diff --check` after diagnostic-focus change | PASS |
+| Top-level IDE Run focuses Preview stage | PASS; real Tauri run left Preview active with `.stage.focused`, hint `试玩中`, and visible 438 x 328.5 canvas |
+| Preview stage receives keyboard controller input immediately | PASS; focused stage handled `ArrowRight`, setting `lastSentInput=128`, then keyup returned it to `0` |
+| `npm --prefix fc-tauri run build` after preview-focus change | PASS, with existing Vite large chunk warning |
+| `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml` after preview-focus change | PASS |
+| `git diff --check` after preview-focus change | PASS |
 | `fc-tauri/node_modules/.bin/vue-tsc --noEmit` | NOT RUN; local project has no `vue-tsc` binary |
 | `cd fc-tauri && npx vue-tsc --noEmit` | BLOCKED by restricted network; `npx` attempted `registry.npmmirror.com/vue-tsc` and failed DNS |
 

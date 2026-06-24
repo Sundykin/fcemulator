@@ -130,6 +130,13 @@
 - Runtime verification inserted `BROKEN_OPCODE_FOR_DIAG` into `src/main.s`, built through the real Tauri store, and observed one ca65 diagnostic at `src/main.s:2`, `goto={path:"src/main.s", line:2}`, the active CodeMirror line equal to the broken source line, and saved tab content matching disk after build autosave.
 - BuildPanel verification started from the Health tab, ran its build action, and confirmed the panel switched to Diagnostics with the error row visible while the editor stayed focused on the failing source line.
 
+## Preview Input Focus Findings
+- PreviewPanel already rendered a responsive Pixi canvas and handled keyboard input when focused, but top-level IDE Run only opened the panel; the user still had to click the preview stage before controller keys worked.
+- Top-level Run now reuses `store.requestPreviewFocus()`, matching BuildPanel run and MCP preview sync.
+- PreviewPanel watches the project preview-focus signal, ROM path changes, and stage mounting; it retries focus after Dockview layout settles so the stage becomes active after a run opens the panel.
+- Runtime verification created `/tmp/fc-preview-focus3-XA5W0W`, ran the demo through the real Tauri IdeView `doRun()`, and observed Preview as the active Dockview panel, `.stage.focused`, hint text `试玩中`, and a visible 438 x 328.5 canvas.
+- Keyboard verification dispatched `ArrowRight` to the focused stage and saw `held=["ArrowRight"]` plus `lastSentInput=128`, then keyup cleared `held` and returned `lastSentInput=0`.
+
 ## Files To Inspect Next
 - `fc-tauri/src/ide/MapEditorPanel.vue` template/style sections
 - `fc-tauri/src/ide/ChrEditorPanel.vue` template/style sections

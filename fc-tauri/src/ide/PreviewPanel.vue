@@ -2,15 +2,46 @@
 // Studio run-preview: the emulator as a dockview panel (not the player's full
 // game page). Reuses the same Pixi render loop as PlayView; the worker keeps
 // running the built ROM, this just renders the latest frame.
-import { ref } from "vue";
+import { nextTick, ref, watch } from "vue";
 import { useEmuLoop } from "../composables/useEmuLoop";
 import { useEmuStore } from "../stores/emu";
+import { useProjectStore } from "../stores/project";
 import Icon from "../components/Icon.vue";
 
 const stage = ref<HTMLElement | null>(null);
 useEmuLoop(stage); // reactively creates/destroys the renderer as `stage` appears
 const store = useEmuStore();
+const project = useProjectStore();
 const focused = ref(false);
+
+async function focusStage() {
+  await nextTick();
+  requestAnimationFrame(() => stage.value?.focus());
+  setTimeout(() => stage.value?.focus(), 80);
+  setTimeout(() => stage.value?.focus(), 180);
+}
+
+watch(
+  () => project.focusPreview,
+  () => {
+    if (store.rom) focusStage();
+  }
+);
+
+watch(
+  () => store.romPath,
+  () => {
+    if (project.focusPreview && store.rom) focusStage();
+  }
+);
+
+watch(
+  stage,
+  () => {
+    if (project.focusPreview && store.rom) focusStage();
+  },
+  { flush: "post" }
+);
 
 function handleKey(e: KeyboardEvent) {
   const handled = e.type === "keydown" ? store.keyDown(e.code) : store.keyUp(e.code);

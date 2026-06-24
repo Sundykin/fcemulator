@@ -4,7 +4,7 @@
 Evolve the fc-tauri studio into a mature NES game-development IDE engine. The target experience is continuous project/resource/map/music workflows, comfortable editing controls, and editors that fill their available workspace instead of using tiny native-pixel canvases.
 
 ## Current Phase
-Phase 15: Build Failure Focuses Source Diagnostics
+Phase 16: Run Focuses Playable Preview
 
 ## Phases
 
@@ -115,6 +115,13 @@ Phase 15: Build Failure Focuses Source Diagnostics
 - [x] Verify the real Tauri IDE highlights the failing source line after a failed build
 - **Status:** complete
 
+### Phase 16: Run Focuses Playable Preview
+- [x] Audit PreviewPanel focus and keyboard-input behavior after IDE Run
+- [x] Reuse the project-store Preview focus signal from top-level Run
+- [x] Make PreviewPanel focus its stage when the panel/ROM appears after a run request
+- [x] Verify the real Tauri preview stage becomes active and receives controller keys immediately after Run
+- **Status:** complete
+
 ## Key Questions
 1. Which editor currently wastes the most available panel area or forces tiny pixel editing?
 2. Where is map-to-CHR binding surfaced, and does opening a map automatically load/show the right CHR resource?
@@ -138,6 +145,7 @@ Phase 15: Build Failure Focuses Source Diagnostics
 | New creative resources should default to an available path | Repeated source/CHR/map/song creation should not begin from a path that immediately fails or overwrites user intent; numbered stems should advance predictably |
 | Project load should land on editable source when one exists | A template or MCP-created game project should be immediately writable; an empty source editor while `src/main.s` exists adds needless friction to the creative loop |
 | Build failures should bring the user directly to the broken source line | The write/build/fix loop is core to making the IDE feel usable for game creation; diagnostics should be actionable without a manual hunt |
+| Running should immediately enter playable preview input | A game IDE should let the user press Run and test controls immediately, without first clicking the preview canvas |
 
 ## Errors Encountered
 | Error | Attempt | Resolution |
