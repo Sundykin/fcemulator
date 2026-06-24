@@ -13,6 +13,7 @@ const tool = ref<Tool>("pencil");
 const selTile = ref(0);
 const pickingSlot = ref<number | null>(null); // which of the 4 slots is being recolored
 const root = ref<HTMLElement | null>(null);
+const sheetPanelOpen = ref(true);
 
 const sheet = computed(() => store.chr);
 const tileCount = computed(() => sheet.value?.tiles ?? 0);
@@ -29,8 +30,13 @@ const toolLabel = computed(() => {
 });
 const pixelStatus = computed(() => {
   const p = hoverPixel.value;
-  return p ? `像素 ${p.x},${p.y} · 槽 ${p.value}` : "指向像素查看颜色槽";
+  return p ? `像素 ${p.x},${p.y} · 槽 ${p.value}` : "像素 --,-- · 槽 -";
 });
+const sheetLabel = computed(() => sheet.value?.path ?? "未打开 CHR");
+const currentTileLabel = computed(() =>
+  tileCount.value ? `图块 ${selTile.value} / ${Math.max(0, tileCount.value - 1)}` : "无图块"
+);
+const sheetDensityLabel = computed(() => `图块表 ${overviewCols.value} 列 · ${overviewTile.value}px`);
 
 const HISTORY_LIMIT = 50;
 let editBefore: number[] | null = null;
@@ -282,6 +288,16 @@ async function saveChr() {
   await store.saveChr();
 }
 
+function toggleSheetPanel() {
+  sheetPanelOpen.value = !sheetPanelOpen.value;
+  nextTick(() => {
+    syncZoomSize();
+    syncSheetTileSize();
+    drawZoom();
+    drawSheet();
+  });
+}
+
 function stepTile(delta: number) {
   if (!tileCount.value) return;
   stopStroke();
@@ -350,8 +366,8 @@ function onKeydown(e: KeyboardEvent) {
 }
 
 // ---- tile-sheet overview canvas ----
-const COLS = 16;
 const overviewTile = ref(24); // px per tile (rendered 8px scaled up... draw 8x8 then scale)
+const overviewCols = ref(16);
 const sheetCanvas = ref<HTMLCanvasElement | null>(null);
 const sheetWrap = ref<HTMLElement | null>(null);
 let sheetObserver: ResizeObserver | null = null;
@@ -359,9 +375,17 @@ let sheetObserver: ResizeObserver | null = null;
 function syncSheetTileSize() {
   const el = sheetWrap.value;
   if (!el) return;
-  const width = el.getBoundingClientRect().width - 18;
-  if (width <= 0) return;
-  overviewTile.value = Math.max(18, Math.min(44, Math.floor(width / COLS)));
+  const box = el.getBoundingClientRect();
+  const width = box.width - 18;
+  const height = box.height - 18;
+  if (width <= 0 || height <= 0) return;
+  const maxCols = Math.max(4, Math.floor(width / 18));
+  const cols = Math.max(4, Math.min(32, Math.min(tileCount.value || 16, maxCols)));
+  const rows = Math.max(1, Math.ceil((tileCount.value || 1) / cols));
+  const byWidth = Math.floor(width / cols);
+  const byHeight = Math.floor(height / Math.min(rows, 12));
+  overviewCols.value = cols;
+  overviewTile.value = Math.max(18, Math.min(52, Math.min(byWidth, byHeight || byWidth)));
   nextTick(drawSheet);
 }
 
@@ -369,14 +393,15 @@ function drawSheet() {
   const cv = sheetCanvas.value;
   if (!cv || !sheet.value) return;
   const ctx = cv.getContext("2d")!;
-  const rows = Math.ceil(tileCount.value / COLS);
+  const cols = overviewCols.value;
+  const rows = Math.ceil(tileCount.value / cols);
   const tcell = overviewTile.value;
-  cv.width = COLS * tcell;
+  cv.width = cols * tcell;
   cv.height = rows * tcell;
   ctx.imageSmoothingEnabled = false;
   const sub = tcell / 8;
   for (let t = 0; t < tileCount.value; t++) {
-    const tx = (t % COLS) * tcell, ty = Math.floor(t / COLS) * tcell;
+    const tx = (t % cols) * tcell, ty = Math.floor(t / cols) * tcell;
     const base = t * 64;
     for (let y = 0; y < 8; y++)
       for (let x = 0; x < 8; x++) {
@@ -388,7 +413,7 @@ function drawSheet() {
   ctx.strokeStyle = "var(--accent)";
   ctx.lineWidth = 2;
   ctx.strokeStyle = "#7c5cff";
-  const sx = (selTile.value % COLS) * tcell, sy = Math.floor(selTile.value / COLS) * tcell;
+  const sx = (selTile.value % cols) * tcell, sy = Math.floor(selTile.value / cols) * tcell;
   ctx.strokeRect(sx + 1, sy + 1, tcell - 2, tcell - 2);
 }
 function pickTile(ev: MouseEvent) {
@@ -399,7 +424,7 @@ function pickTile(ev: MouseEvent) {
   const tcell = overviewTile.value;
   const ty = Math.floor(((ev.clientY - r.top) * sy) / tcell);
   const scaledTx = Math.floor(((ev.clientX - r.left) * sx) / tcell);
-  const t = ty * COLS + scaledTx;
+  const t = ty * overviewCols.value + scaledTx;
   if (t >= 0 && t < tileCount.value) {
     stopStroke();
     selTile.value = t;
@@ -456,7 +481,7 @@ onBeforeUnmount(() => {
   <div ref="root" class="chr" tabindex="0" @keydown="onKeydown">
     <div v-if="!sheet" class="empty">
       <Icon name="library" :size="40" />
-      <p>从文件树打开一个 .chr,或新建 CHR 资源</p>
+      <p>未打开 CHR 资源</p>
     </div>
     <template v-else>
       <div class="toolbar">
@@ -472,10 +497,24 @@ onBeforeUnmount(() => {
         <button class="iconbtn" title="重做" :disabled="!hasRedo" @click="redo">
           <Icon name="redo" :size="15" />
         </button>
+        <button
+          class="iconbtn"
+          :class="{ on: sheetPanelOpen }"
+          title="图块表"
+          @click="toggleSheetPanel"
+        >
+          <Icon name="library" :size="15" />
+        </button>
         <div class="grow" />
         <span class="meta strong">{{ toolLabel }} · 槽 {{ color }}</span>
         <span class="dirty" v-if="store.chrDirty">●未保存</span>
         <button class="t save" @click="saveChr">保存</button>
+      </div>
+      <div class="contextbar">
+        <span class="crumb"><Icon name="library" :size="14" />{{ sheetLabel }}</span>
+        <span class="crumb"><Icon name="file" :size="14" />{{ tileCount }} 图块</span>
+        <span class="crumb">{{ currentTileLabel }}</span>
+        <span class="crumb pixel">{{ pixelStatus }}</span>
       </div>
       <div class="body">
         <div class="left">
@@ -502,7 +541,7 @@ onBeforeUnmount(() => {
           </div>
           <div class="hintline">
             <span>{{ pixelStatus }}</span>
-            <span>右键/Shift/Alt 擦除</span>
+            <span>{{ sheetDensityLabel }}</span>
           </div>
           <div v-if="pickingSlot != null" class="picker">
             <span class="ptitle">选 NES 颜色 → 槽 {{ pickingSlot }}</span>
@@ -514,11 +553,11 @@ onBeforeUnmount(() => {
             </div>
           </div>
         </div>
-        <div class="right">
+        <div v-if="sheetPanelOpen" class="right">
           <div ref="sheetWrap" class="sheetwrap">
             <canvas ref="sheetCanvas" class="sheetcv" @click="pickTile" />
           </div>
-          <div class="meta">图块 {{ selTile }} / {{ tileCount }} · {{ sheet.path }}</div>
+          <div class="meta">{{ currentTileLabel }} · {{ sheet.path }}</div>
         </div>
       </div>
     </template>
@@ -536,12 +575,16 @@ onBeforeUnmount(() => {
 .t.save { color: var(--accent); }
 .iconbtn { width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--border); background: var(--surface); color: var(--text-dim); border-radius: var(--radius-sm); cursor: pointer; flex: 0 0 auto; }
 .iconbtn:hover { color: var(--text); border-color: var(--border-strong); }
+.iconbtn.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
 .iconbtn:disabled { opacity: 0.4; cursor: default; }
 .grow { flex: 1; }
 .dirty { color: var(--accent); font-size: 12px; }
-.body { flex: 1; display: grid; grid-template-columns: minmax(300px, 42%) minmax(320px, 1fr); gap: 16px; padding: 14px; min-height: 0; overflow: hidden; }
-.left { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
-.zoomstage { flex: 1; min-height: 260px; min-width: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; border: 1px solid var(--border); border-radius: 6px; background: #05070d; }
+.contextbar { min-height: 32px; padding: 6px 12px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border); background: rgba(5, 7, 13, 0.28); overflow: hidden; }
+.crumb { min-width: 0; max-width: 38%; height: 20px; padding: 0 8px; display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--border); border-radius: 5px; color: var(--text-dim); font-size: 11.5px; font-family: var(--font-mono, monospace); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.crumb.pixel { max-width: 34%; color: var(--text); border-color: rgba(124, 92, 255, 0.34); background: rgba(124, 92, 255, 0.1); }
+.body { flex: 1; position: relative; padding: 14px; min-height: 0; overflow: hidden; }
+.left { width: 100%; height: 100%; display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+.zoomstage { flex: 1; min-height: 0; min-width: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; border: 1px solid var(--border); border-radius: 6px; background: #05070d; }
 .zoomcv { image-rendering: pixelated; cursor: crosshair; max-width: 100%; max-height: 100%; }
 .pal { display: flex; gap: 8px; }
 .swatch { width: 38px; height: 38px; border-radius: 7px; border: 2px solid transparent; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #fff; mix-blend-mode: difference; font-size: 12px; }
@@ -552,8 +595,8 @@ onBeforeUnmount(() => {
 .grid { display: grid; grid-template-columns: repeat(16, 1fr); gap: 2px; margin-top: 6px; }
 .pc { width: 14px; height: 14px; border-radius: 2px; cursor: pointer; }
 .pc:hover { outline: 2px solid var(--accent); }
-.right { min-width: 0; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
-.sheetwrap { flex: 1; overflow: auto; border: 1px solid var(--border); border-radius: 6px; padding: 8px; background: #05070d; }
+.right { position: absolute; top: 20px; right: 20px; bottom: 20px; width: clamp(260px, 32%, 440px); display: flex; flex-direction: column; gap: 8px; min-height: 0; padding: 10px; border: 1px solid var(--border); border-radius: 7px; background: rgba(10, 15, 28, 0.94); box-shadow: 0 16px 44px rgba(0, 0, 0, 0.35); backdrop-filter: blur(10px); }
+.sheetwrap { flex: 1; min-height: 0; overflow: auto; border: 1px solid var(--border); border-radius: 6px; padding: 8px; background: #05070d; }
 .sheetcv { image-rendering: pixelated; cursor: pointer; transform-origin: top left; }
 .meta { font-size: 12px; color: var(--text-dim); font-family: var(--font-mono, monospace); }
 .meta.strong { color: var(--text); white-space: nowrap; }

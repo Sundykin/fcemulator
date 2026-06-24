@@ -38,6 +38,12 @@
 - Map context details are surfaced in a narrow context bar: current map path, bound CHR path, selection, and hover coordinate.
 - The tile resource drawer can be toggled from the toolbar, keeping map-to-CHR context visible without permanently reducing canvas layout width.
 
+## CHR Editor Findings
+- `fc-tauri/src/ide/ChrEditorPanel.vue` already had a responsive single-tile zoom canvas, undo/redo, palette slots, fill/picker/pencil tools, and a separate tile-sheet overview.
+- The main usability issue was template/CSS layout: the zoom editor and tile sheet were permanent grid columns, so the sheet consumed a large fraction of the dock panel even when the user needed a full drawing surface.
+- The tile sheet was fixed to 16 columns, which wastes width in large panels and becomes cramped in narrow panels.
+- The current CHR data path is local to `store.chr.pixels` and `store.saveChr()` writes the same project `.chr` format, so layout/selection changes can remain frontend-only.
+
 ## Files To Inspect Next
 - `fc-tauri/src/ide/MapEditorPanel.vue` template/style sections
 - `fc-tauri/src/ide/ChrEditorPanel.vue` template/style sections
@@ -52,3 +58,7 @@
 - After live MCP operations, `window.__emu.liveMcp.online` is true, the toolbar MCP pill has class `mcpstat on`, and its title reports the latest MCP reason.
 - `emu_get_state` after live load reports the visible emulator running with mapper 0, NTSC timing, active CPU/PPU counters, and worker runtime state.
 - `tauri_screenshot` could not locate the native window in this environment, but direct Tauri DOM/store inspection and live `emu_capture_screen` output both worked.
+- CHR runtime verification used a temporary demo project at `/tmp/fc-chr-verify` created through `ide_new_project`; it opened `chr/sprites.chr` in the visible studio shell.
+- In Dockview, the CHR panel measured about 780x607, the CHR body about 780x529, and the zoom stage about 752x421. The selected tile canvas rendered 416x416 from available height, not a tiny native 8x8 surface.
+- The CHR sheet drawer measured about 260x489 as an overlay; hiding it removed `.chr .right` while the zoom stage stayed at full body width.
+- The adaptive sheet overview chose 12 columns at 18px tiles in that panel size, confirming the fixed 16-column layout is gone.

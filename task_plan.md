@@ -4,7 +4,7 @@
 Evolve the fc-tauri studio into a mature NES game-development IDE engine. The target experience is continuous project/resource/map/music workflows, comfortable editing controls, and editors that fill their available workspace instead of using tiny native-pixel canvases.
 
 ## Current Phase
-Phase 1: UX inventory and first resizing/workflow pass
+Phase 4: CHR resource editor comfort
 
 ## Phases
 
@@ -29,10 +29,10 @@ Phase 1: UX inventory and first resizing/workflow pass
 - **Status:** pending
 
 ### Phase 4: CHR Resource Editor Comfort
-- [ ] Make the zoom editor and sheet browser responsive to available space
-- [ ] Improve tile selection, palette editing, and drawing ergonomics
-- [ ] Verify CHR encoding output is unchanged
-- **Status:** pending
+- [x] Make the zoom editor and sheet browser responsive to available space
+- [x] Improve tile selection and drawing workspace ergonomics
+- [x] Verify CHR encoding output path is unchanged
+- **Status:** complete
 
 ### Phase 5: Music Editor Comfort
 - [ ] Make pattern and piano-roll views use full panel height/width
@@ -44,7 +44,8 @@ Phase 1: UX inventory and first resizing/workflow pass
 - [x] Run type checks and Tauri backend checks
 - [x] Build frontend production bundle
 - [x] Use the Tauri UI/MCP to verify actual editor geometry and workflow behavior
-- [ ] Commit coherent increments
+- [x] Commit coherent increments for the live MCP / map editor slice
+- [ ] Commit coherent increments for the CHR editor slice
 - **Status:** in_progress
 
 ## Key Questions
