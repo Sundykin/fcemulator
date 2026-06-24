@@ -69,6 +69,13 @@ enum Mmc3OuterBank {
         regs: [u8; 4],
         dip: u8,
     },
+    Mapper176 {
+        regs: [u8; 8],
+        extra: [u8; 4],
+        latch: u8,
+        wram: u8,
+        submapper: u8,
+    },
     Mapper182 {
         regs: [u8; 4],
     },
@@ -406,6 +413,33 @@ impl Mmc3 {
             latch: [false, false],
         };
         m.chr_ram = vec![0u8; 0x1000];
+        m
+    }
+
+    /// Mapper 176 — BMC-FK23C MMC3 clone with low-register outer banking,
+    /// alternate PRG modes, CNROM-style CHR latch, and extended MMC3 registers.
+    ///
+    /// References:
+    /// - FCEUmm `src/boards/fk23c.c:52-94,116-232,267-365,367-437`
+    /// - Mesen2 `Core/NES/Mappers/Waixing/Fk23C.h:7-112,147-230,260-390`
+    pub(super) fn new_176(
+        prg_16k: usize,
+        chr_8k: usize,
+        mirroring: Mirroring,
+        submapper: u8,
+    ) -> Self {
+        let mut m = Mmc3::new(prg_16k, chr_8k, mirroring);
+        let mut regs = [0; 8];
+        if submapper == 1 {
+            regs[1] = 0xFF;
+        }
+        m.outer_bank = Mmc3OuterBank::Mapper176 {
+            regs,
+            extra: [0xFE, 0xFF, 0xFF, 0xFF],
+            latch: 0,
+            wram: 0x80,
+            submapper,
+        };
         m
     }
 
@@ -839,6 +873,146 @@ impl Mmc3 {
         (bank & prg_and) | (prg_or & !prg_and)
     }
 
+    fn mapper176_extended(regs: &[u8; 8]) -> bool {
+        regs[3] & 0x02 != 0
+    }
+
+    fn mapper176_chr_cnrom(regs: &[u8; 8], submapper: u8) -> bool {
+        regs[0] & 0x20 == 0 && matches!(submapper, 1 | 5)
+    }
+
+    fn mapper176_fk23_enabled(wram: u8, submapper: u8) -> bool {
+        let wram_extended = wram & 0x20 != 0 && submapper == 2;
+        wram & 0x40 != 0 || !wram_extended
+    }
+
+    fn mapper176_prg_base(regs: &[u8; 8], submapper: u8) -> usize {
+        let mut base = (regs[1] & 0x7F) as usize;
+        match submapper {
+            2 => {
+                base |= (((regs[0] as usize) << 4) & 0x080)
+                    | (((regs[0] as usize) << 1) & 0x100)
+                    | (((regs[2] as usize) << 3) & 0x600)
+                    | (((regs[2] as usize) << 6) & 0x800);
+            }
+            3 => base |= (regs[5] as usize) << 7,
+            4 => base |= (regs[2] & 0x80) as usize,
+            5 => base = (base & 0x1F) | ((regs[5] as usize) << 5),
+            _ => {}
+        }
+        base
+    }
+
+    fn mapper176_mmc3_prg_bank(&self, region: u16, regs: &[u8; 8], extra: &[u8; 4]) -> usize {
+        if Self::mapper176_extended(regs) {
+            match (region, self.prg_mode) {
+                (0, false) => self.banks[6] as usize,
+                (0, true) => extra[0] as usize,
+                (1, _) => self.banks[7] as usize,
+                (2, false) => extra[0] as usize,
+                (2, true) => self.banks[6] as usize,
+                _ => extra[1] as usize,
+            }
+        } else {
+            self.mmc3_prg_bank_for_region(region)
+        }
+    }
+
+    fn mapper176_prg_bank(
+        &self,
+        region: u16,
+        bank: usize,
+        regs: &[u8; 8],
+        extra: &[u8; 4],
+        latch: u8,
+        submapper: u8,
+    ) -> usize {
+        let mode = regs[0] & 0x07;
+        let base = Self::mapper176_prg_base(regs, submapper);
+        match mode {
+            0..=2 => {
+                let mut mask = 0x3Fusize >> mode;
+                if mode == 0
+                    && (submapper == 3 || (submapper == 1 && Self::mapper176_extended(regs)))
+                {
+                    mask = 0xFF;
+                }
+                let base = (base << 1) & !mask;
+                let bank = self.mapper176_mmc3_prg_bank(region, regs, extra);
+                (bank & mask) | base
+            }
+            3 => (base << 1) | (region as usize & 0x01),
+            4 => ((base >> 1) << 2) | region as usize,
+            5 => {
+                let bank16 = if region < 2 {
+                    (latch as usize & 0x07) | (base & !0x07)
+                } else {
+                    0x07 | base
+                };
+                (bank16 << 1) | (region as usize & 0x01)
+            }
+            _ => bank,
+        }
+    }
+
+    fn mapper176_chr_outer(regs: &[u8; 8], submapper: u8) -> usize {
+        regs[2] as usize
+            | if submapper == 3 {
+                (regs[6] as usize) << 8
+            } else {
+                0
+            }
+    }
+
+    fn mapper176_chr_bank(
+        &self,
+        addr: u16,
+        bank: usize,
+        regs: &[u8; 8],
+        extra: &[u8; 4],
+        latch: u8,
+        submapper: u8,
+    ) -> usize {
+        let outer = Self::mapper176_chr_outer(regs, submapper);
+        if regs[0] & 0x40 != 0 {
+            let mask = if Self::mapper176_chr_cnrom(regs, submapper) {
+                if regs[0] & 0x10 != 0 {
+                    0x01
+                } else {
+                    0x03
+                }
+            } else {
+                0
+            };
+            let base = if submapper == 5 {
+                outer | (latch as usize & mask)
+            } else {
+                (outer & !mask) | (latch as usize & mask)
+            };
+            return (base << 3) | ((addr as usize >> 10) & 0x07);
+        }
+
+        let mask = if regs[0] & 0x10 != 0 { 0x7F } else { 0xFF };
+        let outer = (outer << 3) & !mask;
+        let bank = if Self::mapper176_extended(regs) {
+            match ((!self.chr_mode, addr & 0x1C00), self.chr_mode) {
+                ((true, 0x0000), _) => self.banks[0] as usize,
+                ((true, 0x0400), _) => extra[2] as usize,
+                ((true, 0x0800), _) => self.banks[1] as usize,
+                ((true, 0x0C00), _) => extra[3] as usize,
+                ((true, _), _) => bank,
+                ((false, 0x1000), true) => self.banks[0] as usize,
+                ((false, 0x1400), true) => extra[2] as usize,
+                ((false, 0x1800), true) => self.banks[1] as usize,
+                ((false, 0x1C00), true) => extra[3] as usize,
+                _ => bank,
+            }
+        } else {
+            bank
+        };
+        (bank & mask) | outer
+    }
+
     fn outer_prg_bank(&self, region: u16, bank: usize) -> usize {
         match &self.outer_bank {
             Mmc3OuterBank::None => bank,
@@ -929,6 +1103,13 @@ impl Mmc3 {
                 };
                 (bank & prg_and) | (prg_or & !prg_and)
             }
+            Mmc3OuterBank::Mapper176 {
+                regs,
+                extra,
+                latch,
+                submapper,
+                ..
+            } => self.mapper176_prg_bank(region, bank, regs, extra, *latch, *submapper),
             Mmc3OuterBank::Mapper182 { regs } => {
                 if regs[0] & 0x80 != 0 {
                     if regs[0] & 0x20 != 0 {
@@ -1128,6 +1309,13 @@ impl Mmc3 {
                 };
                 (bank & chr_and) | (chr_or & !chr_and)
             }
+            Mmc3OuterBank::Mapper176 {
+                regs,
+                extra,
+                latch,
+                submapper,
+                ..
+            } => self.mapper176_chr_bank(addr, bank, regs, extra, *latch, *submapper),
             Mmc3OuterBank::Mapper182 { regs } => {
                 let chr_and = if regs[1] & 0x40 != 0 { 0xFF } else { 0x7F };
                 let chr_or = ((regs[1] & 0x02) as usize) << 6 | ((regs[1] & 0x10) as usize) << 4;
@@ -1552,6 +1740,86 @@ impl Mmc3 {
             | ((bank << 3) & 0x20)
             | ((bank << 2) & 0xC0)
     }
+
+    fn mapper176_write(&mut self, addr: u16, value: u8) {
+        let mut latch = None;
+        if let Mmc3OuterBank::Mapper176 { latch: l, .. } = &mut self.outer_bank {
+            *l = value;
+            latch = Some(*l);
+        }
+        if latch.is_none() {
+            return;
+        }
+
+        match addr & 0xE001 {
+            0x8000 => {
+                if addr & 0x0002 != 0 {
+                    return;
+                }
+                let mut value = value;
+                if matches!(
+                    &self.outer_bank,
+                    Mmc3OuterBank::Mapper176 { submapper: 2, .. }
+                ) && matches!(value, 0x46 | 0x47)
+                {
+                    value ^= 1;
+                }
+                self.write_bank_select(value);
+            }
+            0x8001 => {
+                if addr & 0x0002 != 0 {
+                    return;
+                }
+                let extended = match &self.outer_bank {
+                    Mmc3OuterBank::Mapper176 { regs, .. } => Self::mapper176_extended(regs),
+                    _ => false,
+                };
+                let reg = (self.bank_select & if extended { 0x0F } else { 0x07 }) as usize;
+                if reg < 8 {
+                    self.banks[reg] = value;
+                    if reg <= 5 {
+                        self.rebuild_txsrom_nametables();
+                    }
+                } else if reg < 12 {
+                    if let Mmc3OuterBank::Mapper176 { extra, .. } = &mut self.outer_bank {
+                        extra[reg - 8] = value;
+                    }
+                }
+            }
+            0xA000 => {
+                let submapper = match &self.outer_bank {
+                    Mmc3OuterBank::Mapper176 { submapper, .. } => *submapper,
+                    _ => 0,
+                };
+                self.mirroring = if submapper == 2 {
+                    match value & 0x03 {
+                        0 => Mirroring::Vertical,
+                        1 => Mirroring::Horizontal,
+                        2 => Mirroring::SingleScreenLow,
+                        _ => Mirroring::SingleScreenHigh,
+                    }
+                } else if value & 1 == 0 {
+                    Mirroring::Vertical
+                } else {
+                    Mirroring::Horizontal
+                };
+            }
+            0xA001 => {
+                if let Mmc3OuterBank::Mapper176 { wram, .. } = &mut self.outer_bank {
+                    *wram = if value & 0x20 == 0 {
+                        value & 0xC0
+                    } else {
+                        value
+                    };
+                }
+            }
+            0xC000 => self.irq.write_latch(value),
+            0xC001 => self.irq.request_reload(),
+            0xE000 => self.irq.disable(),
+            0xE001 => self.irq.enable(),
+            _ => {}
+        }
+    }
 }
 
 impl MapperOps for Mmc3 {
@@ -1607,6 +1875,8 @@ impl MapperOps for Mmc3 {
             self.mapper114_write(addr, value);
         } else if matches!(self.outer_bank, Mmc3OuterBank::Mapper121 { .. }) && addr < 0xA000 {
             self.mapper121_write(addr, value);
+        } else if matches!(self.outer_bank, Mmc3OuterBank::Mapper176 { .. }) {
+            self.mapper176_write(addr, value);
         } else if matches!(self.outer_bank, Mmc3OuterBank::Mapper182 { .. }) {
             self.mapper182_write(addr, value);
         } else if matches!(self.outer_bank, Mmc3OuterBank::Mapper215 { .. }) {
@@ -1738,6 +2008,19 @@ impl MapperOps for Mmc3 {
                 } else if (addr & 0x03) == 2 {
                     regs[2] = (regs[2] & !0x03) | (value & 0x03);
                 }
+                true
+            }
+            Mmc3OuterBank::Mapper176 {
+                regs,
+                wram,
+                submapper,
+                ..
+            } if (0x5000..=0x5FFF).contains(&addr)
+                && Self::mapper176_fk23_enabled(*wram, *submapper)
+                && addr & 0x0010 != 0 =>
+            {
+                let mask = if *submapper == 3 { 0x07 } else { 0x03 };
+                regs[(addr as usize) & mask] = value;
                 true
             }
             Mmc3OuterBank::Mapper182 { regs } => {
@@ -1897,6 +2180,25 @@ impl MapperOps for Mmc3 {
                 return;
             }
             Mmc3OuterBank::Mapper208 { regs, .. } if (0x4800..=0x4FFF).contains(&addr) => {
+                regs[5] = value;
+                return;
+            }
+            Mmc3OuterBank::Mapper176 {
+                regs,
+                wram,
+                submapper,
+                ..
+            } if (0x5000..=0x5FFF).contains(&addr)
+                && Self::mapper176_fk23_enabled(*wram, *submapper)
+                && addr & 0x0010 != 0 =>
+            {
+                let mask = if *submapper == 3 { 0x07 } else { 0x03 };
+                regs[(addr as usize) & mask] = value;
+                return;
+            }
+            Mmc3OuterBank::Mapper176 {
+                regs, submapper: 5, ..
+            } if (0x4800..=0x4FFF).contains(&addr) => {
                 regs[5] = value;
                 return;
             }
@@ -2060,6 +2362,22 @@ impl MapperOps for Mmc3 {
             Mmc3OuterBank::Mapper134 { regs, dip } => {
                 *dip = dip.wrapping_add(1) & 0x0F;
                 *regs = [0; 4];
+                reset_standard = true;
+            }
+            Mmc3OuterBank::Mapper176 {
+                regs,
+                extra,
+                latch,
+                wram,
+                submapper,
+            } => {
+                *regs = [0; 8];
+                if *submapper == 1 {
+                    regs[1] = 0xFF;
+                }
+                *extra = [0xFE, 0xFF, 0xFF, 0xFF];
+                *latch = 0;
+                *wram = 0x80;
                 reset_standard = true;
             }
             Mmc3OuterBank::Mapper182 { regs } => {
@@ -2505,6 +2823,80 @@ mod tests {
         mapper.notify_a12(0x0000, 15);
         mapper.notify_a12(0x1000, 27);
         assert!(mapper.irq());
+    }
+
+    #[test]
+    fn mapper176_fk23c_selects_prg_modes_and_outer_banks() {
+        let mut mapper = Mmc3::new_176(128, 128, Mirroring::Vertical, 0);
+
+        assert_eq!(mapper.prg_index(0x8004), 0x00 * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xE004), 0x3F * 0x2000 + 4);
+
+        mapper.write_register(0x8000, 0x06);
+        mapper.write_register(0x8001, 0x2A);
+        mapper.write_expansion(0x5010, 0x00);
+        mapper.write_expansion(0x5011, 0x21);
+        assert_eq!(mapper.prg_index(0x8004), 0x6A * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xE004), 0x7F * 0x2000 + 4);
+
+        mapper.write_expansion(0x5010, 0x03);
+        assert_eq!(mapper.prg_index(0x8004), 0x42 * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xA004), 0x43 * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 0x42 * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xE004), 0x43 * 0x2000 + 4);
+
+        mapper.write_expansion(0x5010, 0x04);
+        assert_eq!(mapper.prg_index(0x8004), 0x40 * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xA004), 0x41 * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 0x42 * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xE004), 0x43 * 0x2000 + 4);
+
+        mapper.write_expansion(0x5010, 0x05);
+        mapper.write_register(0x8000, 0x04);
+        assert_eq!(mapper.prg_index(0x8004), 0x48 * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xE004), 0x4F * 0x2000 + 4);
+    }
+
+    #[test]
+    fn mapper176_fk23c_supports_chr_8k_cnrom_and_extended_mmc3() {
+        let mut mapper = Mmc3::new_176(64, 512, Mirroring::Vertical, 1);
+
+        mapper.write_expansion(0x5010, 0x50);
+        mapper.write_expansion(0x5012, 0x12);
+        assert_eq!(mapper.chr_index(0x0004), 0x90 * 0x0400 + 4);
+        assert_eq!(mapper.chr_index(0x1C04), 0x97 * 0x0400 + 4);
+
+        mapper.write_register(0x8000, 0x03);
+        assert_eq!(mapper.chr_index(0x0004), 0x98 * 0x0400 + 4);
+
+        let mut mapper = Mmc3::new_176(64, 512, Mirroring::Vertical, 0);
+        mapper.write_expansion(0x5010, 0x00);
+        mapper.write_expansion(0x5012, 0x24);
+        mapper.write_expansion(0x5013, 0x02);
+        mapper.write_register(0x8000, 0x0A);
+        mapper.write_register(0x8001, 0x44);
+        mapper.write_register(0x8000, 0x0B);
+        mapper.write_register(0x8001, 0x55);
+        mapper.write_register(0x8000, 0x00);
+        mapper.write_register(0x8001, 0x20);
+        mapper.write_register(0x8000, 0x01);
+        mapper.write_register(0x8001, 0x30);
+
+        assert_eq!(mapper.chr_index(0x0004), 0x120 * 0x0400 + 4);
+        assert_eq!(mapper.chr_index(0x0404), 0x144 * 0x0400 + 4);
+        assert_eq!(mapper.chr_index(0x0804), 0x130 * 0x0400 + 4);
+        assert_eq!(mapper.chr_index(0x0C04), 0x155 * 0x0400 + 4);
+
+        mapper.write_register(0x8000, 0x80);
+        assert_eq!(mapper.chr_index(0x1004), 0x120 * 0x0400 + 4);
+        assert_eq!(mapper.chr_index(0x1404), 0x144 * 0x0400 + 4);
+
+        mapper.write_register(0x8000, 0x08);
+        mapper.write_register(0x8001, 0x2C);
+        mapper.write_register(0x8000, 0x09);
+        mapper.write_register(0x8001, 0x2D);
+        assert_eq!(mapper.prg_index(0xC004), 0x2C * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xE004), 0x2D * 0x2000 + 4);
     }
 
     #[test]

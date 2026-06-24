@@ -144,6 +144,7 @@ fn watches_ppu_bus_matches_notify_a12_overrides() {
         (152, false),  // Bandai 74161/7432
         (174, false),  // Mapper 174
         (175, false),  // Mapper 175
+        (176, true),   // Mapper 176 FK23C MMC3 A12 IRQ
         (177, false),  // Mapper 177
         (178, false),  // Waixing FS305/NJ0430
         (179, false),  // Henggedianzi XJZB
@@ -365,6 +366,7 @@ fn clocks_cpu_matches_cpu_clock_overrides() {
         (152, false),  // Bandai 74161/7432
         (174, false),  // Mapper 174
         (175, false),  // Mapper 175
+        (176, false),  // Mapper 176 uses PPU A12 edges
         (177, false),  // Mapper 177
         (178, false),  // Waixing FS305/NJ0430
         (179, false),  // Henggedianzi XJZB
@@ -590,6 +592,7 @@ fn clocks_hblank_matches_hblank_clock_overrides() {
         (173, false),
         (174, false),
         (175, false),
+        (176, false),
         (177, false),
         (178, false),
         (179, false),

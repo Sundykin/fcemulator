@@ -185,6 +185,7 @@ impl Mapper {
             173 => Mapper::TxcMapper(TxcMapper::new(prg_16k, chr_8k, TxcVariant::Mapper173)),
             174 => Mapper::AddrLatch16k(AddrLatch16k::new(AddrLatchVariant::Mapper174)),
             175 => Mapper::Mapper175(Mapper175::new()),
+            176 => Mapper::Mmc3(Mmc3::new_176(prg_16k, chr_8k, mirroring, submapper)),
             177 => Mapper::Mapper177(Mapper177::new()),
             178 => Mapper::Mapper178(Mapper178::new(prg_16k, submapper)),
             179 => Mapper::Mapper177(Mapper177::new_179()),
