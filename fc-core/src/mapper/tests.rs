@@ -159,6 +159,7 @@ fn watches_ppu_bus_matches_notify_a12_overrides() {
         (196, true),   // Mapper 196 MMC3 A12 IRQ
         (197, true),   // Mapper 197 MMC3 A12 IRQ
         (198, true),   // Mapper 198 MMC3 A12 IRQ
+        (199, true),   // Mapper 199 MMC3 A12 IRQ
         (200, false),  // Mapper 200
         (201, false),  // Mapper 201
         (202, false),  // Mapper 202
@@ -374,6 +375,7 @@ fn clocks_cpu_matches_cpu_clock_overrides() {
         (196, false),  // Mapper 196 uses PPU A12 edges
         (197, false),  // Mapper 197 uses PPU A12 edges
         (198, false),  // Mapper 198 uses PPU A12 edges
+        (199, false),  // Mapper 199 uses PPU A12 edges
         (200, false),  // Mapper 200
         (201, false),  // Mapper 201
         (202, false),  // Mapper 202
@@ -587,6 +589,7 @@ fn clocks_hblank_matches_hblank_clock_overrides() {
         (196, false),
         (197, false),
         (198, false),
+        (199, false),
         (200, false),
         (201, false),
         (202, false),

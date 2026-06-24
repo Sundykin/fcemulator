@@ -34,6 +34,7 @@ enum Mmc3OuterBank {
     Mapper187 { regs: [u8; 2] },
     Mapper189 { reg: u8 },
     Mapper196 { enabled: bool, reg: u8 },
+    Mapper199 { regs: [u8; 4] },
     Mapper198,
     Mapper205 { block: u8 },
     Mapper208 { regs: [u8; 6], submapper: u8 },
@@ -372,6 +373,16 @@ impl Mmc3 {
         m
     }
 
+    /// Mapper 199 — Waixing Type G, MMC3 with CHR-RAM selected by low CHR bank
+    /// numbers and four extra registers for fixed PRG/CHR slots.
+    pub(super) fn new_199(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
+        let mut m = Mmc3::new(prg_16k, chr_8k, mirroring).with_chr_ram_window(0, 7, 0x2000);
+        m.outer_bank = Mmc3OuterBank::Mapper199 {
+            regs: [0xFE, 0xFF, 1, 3],
+        };
+        m
+    }
+
     /// Mapper 205 — BMC 15-in-1 MMC3 clone with a low-register outer block.
     pub(super) fn new_205(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
         let mut m = Mmc3::new(prg_16k, chr_8k, mirroring);
@@ -586,6 +597,25 @@ impl Mmc3 {
     /// consistent with CHR-ROM.
     fn chr_1k_bank(&self, a: u16) -> (u16, u16) {
         let off = a & 0x03FF;
+        if let Mmc3OuterBank::Mapper199 { regs } = &self.outer_bank {
+            let bank = match a {
+                0x0000..=0x03FF => self.banks[0] as u16,
+                0x0400..=0x07FF => regs[2] as u16,
+                0x0800..=0x0BFF => self.banks[1] as u16,
+                0x0C00..=0x0FFF => regs[3] as u16,
+                _ => {
+                    let (bank, off) = self.standard_chr_1k_bank(a);
+                    return (self.mask_chr_bank(bank), off);
+                }
+            };
+            return (self.mask_chr_bank(bank), off);
+        }
+        let (bank, off) = self.standard_chr_1k_bank(a);
+        (self.mask_chr_bank(bank), off)
+    }
+
+    fn standard_chr_1k_bank(&self, a: u16) -> (u16, u16) {
+        let off = a & 0x03FF;
         let two = |b: u8, hi: bool| (b & 0xFE) as u16 | hi as u16; // 1KB half of a 2KB reg
         let bank = if !self.chr_mode {
             match a {
@@ -610,7 +640,7 @@ impl Mmc3 {
                 _ => two(self.banks[1], true),
             }
         };
-        (self.mask_chr_bank(bank), off)
+        (bank, off)
     }
 
     fn mask_chr_bank(&self, bank: u16) -> u16 {
@@ -767,6 +797,11 @@ impl Mmc3 {
                     bank
                 }
             }
+            Mmc3OuterBank::Mapper199 { regs } => match region {
+                2 => regs[0] as usize,
+                3 => regs[1] as usize,
+                _ => bank,
+            },
             Mmc3OuterBank::Mapper198 => {
                 if bank >= 0x50 {
                     bank & 0x4F
@@ -908,6 +943,7 @@ impl Mmc3 {
             }
             Mmc3OuterBank::Mapper189 { .. } => bank,
             Mmc3OuterBank::Mapper196 { .. } => bank,
+            Mmc3OuterBank::Mapper199 { .. } => bank,
             Mmc3OuterBank::Mapper198 => bank,
             Mmc3OuterBank::Mapper205 { block } => {
                 let bank = if *block >= 2 { bank & 0x7F } else { bank };
@@ -1005,7 +1041,14 @@ impl Mmc3 {
             }
             0xA000..=0xBFFF => {
                 if even && !matches!(self.nametable_layout, Mmc3NametableLayout::TxSrom { .. }) {
-                    self.mirroring = if value & 1 == 0 {
+                    self.mirroring = if matches!(self.outer_bank, Mmc3OuterBank::Mapper199 { .. }) {
+                        match value & 0x03 {
+                            0 => Mirroring::Vertical,
+                            1 => Mirroring::Horizontal,
+                            2 => Mirroring::SingleScreenLow,
+                            _ => Mirroring::SingleScreenHigh,
+                        }
+                    } else if value & 1 == 0 {
                         Mirroring::Vertical
                     } else {
                         Mirroring::Horizontal
@@ -1241,27 +1284,8 @@ impl MapperOps for Mmc3 {
         if self.chr_is_ram {
             return a as usize;
         }
-        // In chr_mode, the two 2KB banks and four 1KB banks swap halves.
-        let (slot, off) = if !self.chr_mode {
-            match a {
-                0x0000..=0x07FF => (self.banks[0] & 0xFE, a & 0x07FF),
-                0x0800..=0x0FFF => (self.banks[1] & 0xFE, a & 0x07FF),
-                0x1000..=0x13FF => (self.banks[2], a & 0x03FF),
-                0x1400..=0x17FF => (self.banks[3], a & 0x03FF),
-                0x1800..=0x1BFF => (self.banks[4], a & 0x03FF),
-                _ => (self.banks[5], a & 0x03FF),
-            }
-        } else {
-            match a {
-                0x0000..=0x03FF => (self.banks[2], a & 0x03FF),
-                0x0400..=0x07FF => (self.banks[3], a & 0x03FF),
-                0x0800..=0x0BFF => (self.banks[4], a & 0x03FF),
-                0x0C00..=0x0FFF => (self.banks[5], a & 0x03FF),
-                0x1000..=0x17FF => (self.banks[0] & 0xFE, a & 0x07FF),
-                _ => (self.banks[1] & 0xFE, a & 0x07FF),
-            }
-        };
-        let slot = self.outer_chr_bank(a, self.mask_chr_bank(slot as u16) as usize);
+        let (slot, off) = self.chr_1k_bank(a);
+        let slot = self.outer_chr_bank(a, slot as usize);
         (slot % self.chr_1k) * 0x400 + off as usize
     }
 
@@ -1278,6 +1302,12 @@ impl MapperOps for Mmc3 {
             self.write_standard_register(Self::mapper196_remap_addr(addr), value);
         } else if matches!(self.outer_bank, Mmc3OuterBank::Mapper250) {
             self.write_standard_register(Self::mapper250_remap_addr(addr), (addr & 0xFF) as u8);
+        } else if let Mmc3OuterBank::Mapper199 { regs } = &mut self.outer_bank {
+            if addr == 0x8001 && self.bank_select & 0x08 != 0 {
+                regs[(self.bank_select & 0x03) as usize] = value;
+            } else {
+                self.write_standard_register(addr, value);
+            }
         } else if matches!(self.outer_bank, Mmc3OuterBank::Mapper187 { .. }) {
             let write_standard = match addr {
                 0x8000 => {
@@ -1706,6 +1736,9 @@ impl MapperOps for Mmc3 {
             Mmc3OuterBank::Mapper196 { enabled, reg } => {
                 *enabled = false;
                 *reg = 0;
+            }
+            Mmc3OuterBank::Mapper199 { regs } => {
+                *regs = [0xFE, 0xFF, 1, 3];
             }
             Mmc3OuterBank::Mapper198 => {}
             Mmc3OuterBank::Mapper205 { block } => {
@@ -2356,6 +2389,41 @@ mod tests {
         mapper.write_expansion(0x5004, 0xA5);
         assert_eq!(mapper.read_expansion(0x5004), Some(0xA5));
         assert_eq!(mapper.chr_index(0x1804), 0x1804);
+    }
+
+    #[test]
+    fn mapper199_uses_extra_regs_for_fixed_prg_and_chr_ram_slots() {
+        let mut mapper = Mmc3::new_199(256, 256, Mirroring::Vertical);
+
+        assert_eq!(mapper.prg_index(0xC004), 0xFE * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xE004), 0xFF * 0x2000 + 4);
+
+        mapper.write_register(0x8000, 0x08);
+        mapper.write_register(0x8001, 0x12);
+        mapper.write_register(0x8000, 0x09);
+        mapper.write_register(0x8001, 0x13);
+        assert_eq!(mapper.prg_index(0xC004), 0x12 * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xE004), 0x13 * 0x2000 + 4);
+
+        mapper.write_register(0x8000, 0x06);
+        mapper.write_register(0x8001, 0x22);
+        assert_eq!(mapper.prg_index(0x8004), 0x22 * 0x2000 + 4);
+
+        mapper.write_register(0x8000, 0x0A);
+        mapper.write_register(0x8001, 0x05);
+        assert_eq!(mapper.chr_index(0x0404), 5 * 0x0400 + 4);
+        assert!(mapper.chr_write(0x0404, 0x66));
+        assert_eq!(mapper.chr_read(0x0404, ChrAccess::Default), Some(0x66));
+
+        mapper.write_register(0x8001, 0x08);
+        assert_eq!(mapper.chr_index(0x0404), 8 * 0x0400 + 4);
+        assert!(!mapper.chr_write(0x0404, 0x77));
+        assert_eq!(mapper.chr_read(0x0404, ChrAccess::Default), None);
+
+        mapper.write_register(0xA000, 0x02);
+        assert_eq!(mapper.mirroring(), Mirroring::SingleScreenLow);
+        mapper.write_register(0xA000, 0x03);
+        assert_eq!(mapper.mirroring(), Mirroring::SingleScreenHigh);
     }
 
     #[test]
