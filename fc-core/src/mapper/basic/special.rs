@@ -1,4 +1,4 @@
-use crate::mapper::bank::{chr_8k, prg_8k_at};
+use crate::mapper::bank::{chr_4k_at, chr_8k, prg_8k_at};
 use crate::mapper::{ChrAccess, MapperOps};
 use crate::types::Mirroring;
 use serde::{Deserialize, Serialize};
@@ -382,6 +382,62 @@ impl MapperOps for Mapper168 {
 }
 
 // ============================================================================
+// Mapper 171 — Kaiser KS-7058
+//
+// References:
+// - Mesen2 `Core/NES/Mappers/Kaiser/Kaiser7058.h:5-24`
+// - Nestopia `source/core/board/NstBoardKaiser.cpp:181-188`
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Mapper171 {
+    chr_4k_total: usize,
+    chr_4k: [u8; 2],
+    mirroring: Mirroring,
+}
+
+impl Mapper171 {
+    pub(in crate::mapper) fn new(chr_8k: usize, mirroring: Mirroring) -> Self {
+        Mapper171 {
+            chr_4k_total: (chr_8k * 2).max(2),
+            chr_4k: [0, 0],
+            mirroring,
+        }
+    }
+}
+
+impl MapperOps for Mapper171 {
+    fn prg_index(&self, addr: u16) -> usize {
+        (addr as usize) & 0x7FFF
+    }
+
+    fn chr_index(&self, addr: u16) -> usize {
+        let slot = usize::from(addr >= 0x1000);
+        chr_4k_at(
+            self.chr_4k[slot] as usize % self.chr_4k_total,
+            addr,
+            (slot as u16) << 12,
+        )
+    }
+
+    fn write_register(&mut self, addr: u16, value: u8) {
+        match addr & 0xF080 {
+            0xF000 => self.chr_4k[0] = value,
+            0xF080 => self.chr_4k[1] = value,
+            _ => {}
+        }
+    }
+
+    fn mirroring(&self) -> Mirroring {
+        self.mirroring
+    }
+
+    fn reset(&mut self, _soft: bool) {
+        self.chr_4k = [0, 0];
+    }
+}
+
+// ============================================================================
 // Mapper 170 — low-address protection reads
 // ============================================================================
 
@@ -508,6 +564,32 @@ mod tests {
             mapper.cpu_clock();
         }
         assert!(mapper.irq());
+    }
+
+    #[test]
+    fn mapper171_kaiser7058_switches_two_4k_chr_windows() {
+        let mut mapper = Mapper171::new(4, Mirroring::SingleScreenHigh);
+
+        assert_eq!(mapper.prg_index(0x8004), 0x0004);
+        assert_eq!(mapper.prg_index(0xFFFF), 0x7FFF);
+        assert_eq!(mapper.chr_index(0x0004), 0x0004);
+        assert_eq!(mapper.chr_index(0x1004), 0x0004);
+        assert_eq!(mapper.mirroring(), Mirroring::SingleScreenHigh);
+
+        mapper.write_register(0xF000, 0x03);
+        mapper.write_register(0xF080, 0x05);
+        assert_eq!(mapper.chr_index(0x0004), 3 * 0x1000 + 4);
+        assert_eq!(mapper.chr_index(0x1004), 5 * 0x1000 + 4);
+
+        mapper.write_register(0xF180, 0x06);
+        assert_eq!(mapper.chr_index(0x1004), 6 * 0x1000 + 4);
+
+        mapper.write_register(0xE000, 0x02);
+        assert_eq!(mapper.chr_index(0x0004), 3 * 0x1000 + 4);
+
+        mapper.reset(true);
+        assert_eq!(mapper.chr_index(0x0004), 0x0004);
+        assert_eq!(mapper.chr_index(0x1004), 0x0004);
     }
 }
 

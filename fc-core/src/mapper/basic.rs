@@ -51,8 +51,8 @@ pub use ntdec::Ntdec112;
 pub use opencorp::Mapper156;
 pub use sl12::Mapper116;
 pub use special::{
-    Mapper103, Mapper104, Mapper108, Mapper120, Mapper168, Mapper170, Mapper175, Mapper177,
-    Mapper190, Mapper230, Mapper233, Mapper234,
+    Mapper103, Mapper104, Mapper108, Mapper120, Mapper168, Mapper170, Mapper171, Mapper175,
+    Mapper177, Mapper190, Mapper230, Mapper233, Mapper234,
 };
 pub use subor::{Subor166, SuborVariant};
 pub use taito::{TaitoTc0190, TaitoX1005, TaitoX1017};

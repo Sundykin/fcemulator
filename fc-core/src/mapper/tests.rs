@@ -124,6 +124,7 @@ fn watches_ppu_bus_matches_notify_a12_overrides() {
         (155, false),  // MMC1 mapper 155
         (168, false),  // Racermate CPU IRQ; no PPU-bus hook
         (170, false),  // Mapper 170
+        (171, false),  // Kaiser KS-7058
         (172, false),  // TXC 22211B
         (173, false),  // TXC 22211C
         (152, false),  // Bandai 74161/7432
@@ -314,6 +315,7 @@ fn clocks_cpu_matches_cpu_clock_overrides() {
         (155, false),  // MMC1 mapper 155
         (168, true),   // Racermate IRQ counter clocks per CPU cycle
         (170, false),  // Mapper 170
+        (171, false),  // Kaiser KS-7058
         (172, false),  // TXC 22211B
         (173, false),  // TXC 22211C
         (152, false),  // Bandai 74161/7432
@@ -510,6 +512,7 @@ fn clocks_hblank_matches_hblank_clock_overrides() {
         (167, false),
         (168, false),
         (170, false),
+        (171, false),
         (172, false),
         (173, false),
         (174, false),

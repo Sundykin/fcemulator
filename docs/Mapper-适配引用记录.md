@@ -451,6 +451,7 @@
 - `Mapper99::write_controller_strobe()` 对应 FCEUX/FCEUmm `99.cpp`/`99.c:34-44,47-55`、Nestopia `NstBoardVsSystem.cpp:38-61` 与 Mesen2 `VsSystem.h:82-97`；本项目新增 `MapperOps::write_controller_strobe()`，由 Bus 在普通 controller strobe 后调用，避免 mapper 复用 `$4016` 时破坏手柄写行为。
 - `Mapper104::write_register()` / `prg_index()` 对应 FCEUmm `104.c:35-69,77-91`；`setprg8r(0x10,0x6000,0)` 由本项目 Cartridge 的普通低区 PRG-RAM fallback 提供，mapper 内只保存两个 PRG16 register 并固定 vertical mirroring。
 - `Mapper168::write_register()` / `chr_read()` / `chr_write()` / `cpu_clock()` 对应 FCEUX/FCEUmm `168.cpp`/`168.c:33-42,48-56,68-77` 与 Mesen2 `Racermate.h:11-17,32-55`；本项目按 FCEUX/FCEUmm 的 PRG/CHR/CHR-RAM 行为，并补入 Mesen2 的 CPU-cycle IRQ 与 `$C000-$FFFF` reload/ack。
+- `Mapper171::write_register()` / `chr_index()` / `prg_index()` 对应 Mesen2 `Core/NES/Mappers/Kaiser/Kaiser7058.h:5-24` 与 Nestopia `source/core/board/NstBoardKaiser.cpp:181-188`；本项目按 KAISER KS-7058 的固定 PRG32 与 `$F000/$F080` 两个 CHR4 register 实现。FCEUX `src/boards/mmc1.cpp:338-343` 把 iNES 171 作为“MMC1 with fixed mirroring”处理，作为参考差异记录，未作为本次主实现。
 - `Mapper175::read_register()` 对应 FCEUX/FCEUmm `175.cpp`/`175.c:54-59`；本项目用高区 read side-effect hook 在读 `$FFFC` 时提交 `committed_prg`，peek 路径保持无副作用。
 - `Mapper177::write_register()` / `prg_index()` 对应 FCEUX/FCEUmm `177.cpp`/`177.c:34-53`；参考中的 `$6000-$7FFF` WRAM mapping 继续由 Cartridge 默认低区 PRG-RAM fallback 提供。
 - `MapperOps::read_expansion_with_open_bus()` / `peek_expansion_with_open_bus()` 是为 TXC/Sachen 低寄存器读增加的 open-bus aware 钩子；默认仍回落到旧 `read_expansion()` / `peek_expansion()`，现有 mapper 行为不变。
@@ -481,7 +482,7 @@
 - 同批替换 `fc-core/src/mapper/basic/discrete.rs` 里 Mapper 185 / 188 / 193 / 218 的新增段，以及 `fc-core/src/mapper/mmc3.rs` 里 Mapper187 / Mapper189 / Mapper191 / Mapper196 / Mapper197 / Mapper198 / Mapper208 / Mapper245 / Mapper254 的 `Mmc3OuterBank` / `Mmc3ChrLayout` 分支、构造、低区写、扩展区读写、低区读、reset 和测试段。
 - 同批替换 `fc-core/src/mapper/basic/irq.rs` 里 FFE Mapper6/17 新增段。
 - 同批替换 `fc-core/src/mapper/basic/konami.rs` 的 VRC1 段、`fc-core/src/mapper/basic/jy.rs` 的 Mapper35/91 段、`fc-core/src/mapper/basic/sl12.rs` 的 Mapper116 段、`fc-core/src/mapper/basic/waixing.rs` 的 Mapper253 段、`fc-core/src/mapper/vrc4.rs` 的 VRC2/VRC4 段、`fc-core/src/mapper/rambo1.rs` 的 Mapper64/158 段，`fc-core/src/mapper/basic/taito.rs` 的 Mapper48 段，以及 `fc-core/src/mapper/mmc3.rs` 的 Mapper37/44/45/47/52/76/119 变体段。
-- 同批替换 `fc-core/src/mapper/basic/special.rs` 里 Mapper168 的新增段，并同步检查 `MapperOps::has_chr_read` / `chr_read` / `chr_write` / `cpu_clock` 是否仍有使用者。
+- 同批替换 `fc-core/src/mapper/basic/special.rs` 里 Mapper168 / Mapper171 的新增段，并同步检查 `MapperOps::has_chr_read` / `chr_read` / `chr_write` / `cpu_clock` 是否仍有使用者。
 - 若替换 Mapper99，请同步检查 `MapperOps::write_controller_strobe`、`Cartridge::cpu_write_controller_strobe` 与 `Bus::write($4016)` 是否仍有使用者。
 - 再处理 `fc-core/src/mapper.rs` 里 Mapper 43/60/75/76/83/91/99/106/168/183/212/222/235 的导出、枚举、构造和 dispatch 分支。
 - 若替换 Mapper91，请同步检查 `MapperOps::hblank_clock`、`Cartridge::mapper_clocks_hblank` 与 `Bus::clock_ppu_dot()` 的 HBlank hook 是否仍有使用者。
