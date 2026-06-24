@@ -30,6 +30,7 @@ enum Mmc3OuterBank {
     Mapper115 { regs: [u8; 3] },
     Mapper121 { regs: [u8; 8] },
     Mapper134 { regs: [u8; 4], dip: u8 },
+    Mapper182 { regs: [u8; 4] },
     Mapper187 { regs: [u8; 2] },
     Mapper189 { reg: u8 },
     Mapper196 { enabled: bool, reg: u8 },
@@ -241,6 +242,14 @@ impl Mmc3 {
             regs: [0; 4],
             dip: 0,
         };
+        m
+    }
+
+    /// Mapper 182 — MMC3 clone with remapped high-register writes and AX5202P
+    /// style outer PRG/CHR selection registers in the low address window.
+    pub(super) fn new_182(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
+        let mut m = Mmc3::new(prg_16k, chr_8k, mirroring);
+        m.outer_bank = Mmc3OuterBank::Mapper182 { regs: [0; 4] };
         m
     }
 
@@ -692,6 +701,20 @@ impl Mmc3 {
                 };
                 (bank & prg_and) | (prg_or & !prg_and)
             }
+            Mmc3OuterBank::Mapper182 { regs } => {
+                if regs[0] & 0x80 != 0 {
+                    if regs[0] & 0x20 != 0 {
+                        (((regs[0] as usize) >> 1) << 2) | region as usize
+                    } else {
+                        ((regs[0] as usize) << 1) | (region as usize & 1)
+                    }
+                } else {
+                    let prg_and = if regs[1] & 0x20 != 0 { 0x1F } else { 0x0F };
+                    let prg_or =
+                        ((regs[1] & 0x02) as usize) << 3 | ((regs[1] & 0x10) as usize) << 1;
+                    (bank & prg_and) | (prg_or & !prg_and)
+                }
+            }
             Mmc3OuterBank::Mapper187 { regs } => {
                 if regs[0] & 0x80 != 0 {
                     let ex = (regs[0] & 0x1F) as usize;
@@ -808,6 +831,11 @@ impl Mmc3 {
                 } else {
                     bank
                 };
+                (bank & chr_and) | (chr_or & !chr_and)
+            }
+            Mmc3OuterBank::Mapper182 { regs } => {
+                let chr_and = if regs[1] & 0x40 != 0 { 0xFF } else { 0x7F };
+                let chr_or = ((regs[1] & 0x02) as usize) << 6 | ((regs[1] & 0x10) as usize) << 4;
                 (bank & chr_and) | (chr_or & !chr_and)
             }
             Mmc3OuterBank::Mapper187 { .. } => {
@@ -1025,6 +1053,21 @@ impl Mmc3 {
         }
     }
 
+    fn mapper182_write(&mut self, addr: u16, value: u8) {
+        const ADDR_LUT: [u16; 8] = [
+            0xA001, 0xA000, 0x8000, 0xC000, 0x8001, 0xC001, 0xE000, 0xE001,
+        ];
+        const INDEX_LUT: [u8; 8] = [0, 3, 1, 5, 6, 7, 2, 4];
+
+        let remapped = ADDR_LUT[(((addr >> 12) & 6) | (addr & 1)) as usize];
+        let value = if (addr & 0xE001) == 0xA000 {
+            (value & 0xF8) | INDEX_LUT[(value & 7) as usize]
+        } else {
+            value
+        };
+        self.write_standard_register(remapped, value);
+    }
+
     fn mapper115_write_extra(regs: &mut [u8; 3], addr: u16, value: u8) {
         if addr == 0x5080 || (addr & 3) == 2 {
             regs[2] = value;
@@ -1118,6 +1161,8 @@ impl MapperOps for Mmc3 {
             self.mapper114_write(addr, value);
         } else if matches!(self.outer_bank, Mmc3OuterBank::Mapper121 { .. }) && addr < 0xA000 {
             self.mapper121_write(addr, value);
+        } else if matches!(self.outer_bank, Mmc3OuterBank::Mapper182 { .. }) {
+            self.mapper182_write(addr, value);
         } else if matches!(self.outer_bank, Mmc3OuterBank::Mapper196 { .. }) {
             self.write_standard_register(Self::mapper196_remap_addr(addr), value);
         } else if matches!(self.outer_bank, Mmc3OuterBank::Mapper250) {
@@ -1236,6 +1281,12 @@ impl MapperOps for Mmc3 {
                 }
                 true
             }
+            Mmc3OuterBank::Mapper182 { regs } => {
+                if regs[1] & 0x01 == 0 {
+                    regs[(addr & 0x03) as usize] = value;
+                }
+                true
+            }
             Mmc3OuterBank::Mapper187 { regs } if (0x6000..=0x6FFF).contains(&addr) => {
                 if addr == 0x6000 {
                     regs[0] = value;
@@ -1275,6 +1326,7 @@ impl MapperOps for Mmc3 {
             self.outer_bank,
             Mmc3OuterBank::Mapper47 { .. }
                 | Mmc3OuterBank::Mapper134 { .. }
+                | Mmc3OuterBank::Mapper182 { .. }
                 | Mmc3OuterBank::Mapper205 { .. }
         )
     }
@@ -1495,6 +1547,10 @@ impl MapperOps for Mmc3 {
             }
             Mmc3OuterBank::Mapper134 { regs, dip } => {
                 *dip = dip.wrapping_add(1) & 0x0F;
+                *regs = [0; 4];
+                reset_standard = true;
+            }
+            Mmc3OuterBank::Mapper182 { regs } => {
                 *regs = [0; 4];
                 reset_standard = true;
             }
@@ -2152,6 +2208,36 @@ mod tests {
         assert_eq!(mapper.read_expansion(0x5000), Some(0x42));
         mapper.write_expansion(0x5180, 0x00);
         assert_eq!(mapper.prg_index(0xE004), 0x01 * 0x2000 + 4);
+    }
+
+    #[test]
+    fn mapper182_remaps_writes_and_applies_ax5202p_outer_regs() {
+        let mut mapper = Mmc3::new_182(128, 128, Mirroring::Vertical);
+
+        mapper.write_register(0xA000, 0x04);
+        mapper.write_register(0xC000, 0x24);
+        assert_eq!(mapper.prg_index(0x8004), 0x04 * 0x2000 + 4);
+
+        mapper.write_register(0xA000, 0x06);
+        mapper.write_register(0xC000, 0x24);
+        assert_eq!(mapper.chr_index(0x1004), 0x24 * 0x400 + 4);
+
+        assert!(mapper.write_low_register(0x6001, 0x32));
+        assert!(mapper.low_register_write_falls_through(0x6001));
+        assert_eq!(mapper.prg_index(0x8004), 0x24 * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xA004), 0x21 * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xE004), 0x3F * 0x2000 + 4);
+        assert_eq!(mapper.chr_index(0x1004), 0x1A4 * 0x400 + 4);
+
+        mapper.write_register(0x8001, 0x01);
+        assert_eq!(mapper.mirroring(), Mirroring::Horizontal);
+
+        mapper.write_low_register(0x6000, 0x80);
+        mapper.write_low_register(0x6001, 0x01);
+        assert_eq!(mapper.prg_index(0x8004), 4);
+        assert_eq!(mapper.prg_index(0xA004), 1 * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 4);
+        assert_eq!(mapper.prg_index(0xE004), 1 * 0x2000 + 4);
     }
 
     #[test]

@@ -134,6 +134,7 @@ fn watches_ppu_bus_matches_notify_a12_overrides() {
         (177, false),  // Mapper 177
         (178, false),  // Waixing FS305/NJ0430
         (181, false),  // Mapper 181 CNROM protection
+        (182, true),   // Mapper 182 MMC3 A12 IRQ
         (183, false),  // Mapper 183 IRQ is CPU-clocked, not PPU-bus-clocked
         (188, false),  // Mapper 188
         (230, false),  // Mapper 230
@@ -331,6 +332,7 @@ fn clocks_cpu_matches_cpu_clock_overrides() {
         (177, false),  // Mapper 177
         (178, false),  // Waixing FS305/NJ0430
         (181, false),  // Mapper 181 CNROM protection
+        (182, false),  // Mapper 182 uses PPU A12 edges
         (183, true),   // Mapper 183 IRQ counter clocks per CPU cycle
         (188, false),  // Mapper 188
         (230, false),  // Mapper 230
@@ -534,6 +536,7 @@ fn clocks_hblank_matches_hblank_clock_overrides() {
         (178, false),
         (180, false),
         (181, false),
+        (182, false),
         (183, false),
         (184, false),
         (187, false),

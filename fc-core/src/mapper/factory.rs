@@ -170,6 +170,7 @@ impl Mapper {
                 mirroring,
             )),
             181 => Mapper::Mapper181(Mapper181::new_181(prg_16k, mirroring)),
+            182 => Mapper::Mmc3(Mmc3::new_182(prg_16k, chr_8k, mirroring)),
             183 => Mapper::Mapper183(Mapper183::new(prg_16k, chr_8k)),
             184 => Mapper::Sunsoft184(Sunsoft184::new(mirroring)),
             185 => Mapper::Mapper185(Mapper185::new(prg_16k, mirroring)),

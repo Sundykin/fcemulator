@@ -480,6 +480,7 @@
 - `Mmc3::new_250()` / `mapper250_remap_addr()` 对应 FCEUX `mmc3.cpp:1332-1350`、FCEUmm `mmc3.c:1421-1440` 与 Mesen2 `MMC3_250.h:5-11`；本项目把地址线写协议折回 `write_standard_register()`，继续复用普通 MMC3 PRG/CHR/mirroring 和 A12 IRQ。
 - `Mmc3::new_205()` / `Mmc3OuterBank::Mapper205` 对应 Mesen2 `MMC3_205.h:20-49`、FCEUX `mmc3.cpp:1167-1199` 与 FCEUmm `mmc3.c:1245-1270`；本项目按 single-ROM outer block 语义实现，低区写后通过 `low_register_write_falls_through()` 继续写 PRG-RAM 以覆盖 FCEUX `CartBW` 行为。
 - `Mmc3::new_249()` / `mapper249_permute_large_bank()` 对应 Mesen2 `MMC3_249.h:24-55` 与 FCEUX/FCEUmm `mmc3.cpp`/`mmc3.c:1294-1315,1383-1404`；本项目用 `$5000` expansion write 保存 exReg，并在 PRG/CHR wrapper 层复刻 security permutation。
+- `Mmc3::new_182()` / `Mmc3OuterBank::Mapper182` / `mapper182_write()` 对应 FCEUmm `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/182.c:28-75` 与 Mesen2 `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Mmc3Variants/MMC3_182.h:9-37`；本项目复用 MMC3 标准寄存器 helper 表达 remapped high writes、AX5202P outer PRG/CHR bank mask/OR、低区 `$6000-$7FFF` register write，并通过 `low_register_write_falls_through()` 保留普通 PRG-RAM 写入。
 
 ## 以后替换时的删除边界
 
@@ -489,7 +490,7 @@
 - 同批替换 `fc-core/src/mapper/basic/core.rs` 里 Mapper 232 的新增段。
 - 同批替换 `fc-core/src/mapper/basic/bandai.rs` 里 Mapper16 / 153 / 159、Bandai FCG、24C01/24C02 EEPROM 新增段，并同步检查 `MapperOps::read_low_register_with_open_bus` / `peek_low_register_with_open_bus` / `low_prg_ram_read_enabled` / `low_prg_ram_write_enabled` 是否仍有使用者。
 - 同批替换 `fc-core/src/mapper/basic/txc.rs` 里 TXC chip/helper 与 Mapper132/136/147/172/173 新增段，并同步检查 `MapperOps::read_expansion_with_open_bus` / `peek_expansion_with_open_bus` 是否仍有使用者。
-- 同批替换 `fc-core/src/mapper/basic/discrete.rs` 里 Mapper 181 / 185 / 188 / 193 / 218 的新增段，以及 `fc-core/src/mapper/mmc3.rs` 里 Mapper187 / Mapper189 / Mapper191 / Mapper196 / Mapper197 / Mapper198 / Mapper208 / Mapper245 / Mapper254 的 `Mmc3OuterBank` / `Mmc3ChrLayout` 分支、构造、低区写、扩展区读写、低区读、reset 和测试段。
+- 同批替换 `fc-core/src/mapper/basic/discrete.rs` 里 Mapper 181 / 185 / 188 / 193 / 218 的新增段，以及 `fc-core/src/mapper/mmc3.rs` 里 Mapper182 / Mapper187 / Mapper189 / Mapper191 / Mapper196 / Mapper197 / Mapper198 / Mapper208 / Mapper245 / Mapper254 的 `Mmc3OuterBank` / `Mmc3ChrLayout` 分支、构造、低区写、扩展区读写、低区读、reset 和测试段。
 - 同批替换 `fc-core/src/mapper/basic/irq.rs` 里 FFE Mapper6/17 新增段。
 - 同批替换 `fc-core/src/mapper/basic/konami.rs` 的 VRC1 段、`fc-core/src/mapper/basic/jy.rs` 的 Mapper35/91 段、`fc-core/src/mapper/basic/sl12.rs` 的 Mapper116 段、`fc-core/src/mapper/basic/waixing.rs` 的 Mapper178 / Mapper253 段、`fc-core/src/mapper/vrc4.rs` 的 VRC2/VRC4 段、`fc-core/src/mapper/rambo1.rs` 的 Mapper64/158 段，`fc-core/src/mapper/basic/taito.rs` 的 Mapper48 段，以及 `fc-core/src/mapper/mmc3.rs` 的 Mapper37/44/45/47/52/76/119 变体段。
 - 同批替换 `fc-core/src/mapper/basic/special.rs` 里 Mapper168 / Mapper171 的新增段，并同步检查 `MapperOps::has_chr_read` / `chr_read` / `chr_write` / `cpu_clock` 是否仍有使用者。
