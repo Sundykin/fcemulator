@@ -135,7 +135,17 @@ impl Mapper {
             133 => Mapper::Sachen133(Sachen133::new(prg_16k, mirroring)),
             134 => Mapper::Mmc3(Mmc3::new_134(prg_16k, chr_8k, mirroring)),
             136 => Mapper::TxcMapper(TxcMapper::new(prg_16k, chr_8k, TxcVariant::Mapper136)),
+            137 => Mapper::Sachen8259(Sachen8259::new(
+                prg_16k,
+                chr_8k,
+                Sachen8259Variant::Mapper137D,
+            )),
             140 => Mapper::JalecoJf11_14(JalecoJf11_14::new(mirroring)),
+            141 => Mapper::Sachen8259(Sachen8259::new(
+                prg_16k,
+                chr_8k,
+                Sachen8259Variant::Mapper141A,
+            )),
             142 => Mapper::Mapper142(Mapper142::new(prg_16k, mirroring)),
             144 => Mapper::ColorDreams(ColorDreams::new_144(mirroring)),
             147 => Mapper::TxcMapper(TxcMapper::new(prg_16k, chr_8k, TxcVariant::Mapper147)),

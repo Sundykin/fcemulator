@@ -105,8 +105,10 @@ fn watches_ppu_bus_matches_notify_a12_overrides() {
         (133, false),  // Sachen SA72008
         (134, true),   // Mapper 134 MMC3 A12 IRQ
         (136, false),  // Sachen JV001
+        (137, false),  // Sachen 8259D
         (142, false),  // Mapper 142 IRQ is CPU-clocked, not PPU-bus-clocked
         (144, false),  // Mapper 144 ColorDreams variant
+        (141, false),  // Sachen 8259A
         (147, false),  // Sachen JV001
         (146, false),  // Sachen SA016-1M
         (148, false),  // Sachen SA0037
@@ -307,8 +309,10 @@ fn clocks_cpu_matches_cpu_clock_overrides() {
         (133, false),  // Sachen SA72008
         (134, false),  // Mapper 134 uses PPU A12 edges
         (136, false),  // Sachen JV001
+        (137, false),  // Sachen 8259D
         (142, true),   // Mapper 142 IRQ counter clocks per CPU cycle
         (144, false),  // Mapper 144 ColorDreams variant
+        (141, false),  // Sachen 8259A
         (147, false),  // Sachen JV001
         (146, false),  // Sachen SA016-1M
         (148, false),  // Sachen SA0037
@@ -515,7 +519,9 @@ fn clocks_hblank_matches_hblank_clock_overrides() {
         (133, false),
         (134, false),
         (136, false),
+        (137, false),
         (144, false),
+        (141, false),
         (147, false),
         (146, false),
         (148, false),

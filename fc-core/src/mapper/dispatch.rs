@@ -70,6 +70,7 @@ macro_rules! dispatch {
             Mapper::Sachen133($m) => $body,
             Mapper::SachenSa0161m($m) => $body,
             Mapper::Sachen149($m) => $body,
+            Mapper::Sachen8259($m) => $body,
             Mapper::Sachen74Ls374N($m) => $body,
             Mapper::Mapper142($m) => $body,
             Mapper::Mapper156($m) => $body,

@@ -281,9 +281,10 @@ pub use basic::{
     Mapper42, Mapper43, Mapper50, Mapper51, Mapper57, Mapper60, Mapper63, Mapper65, Mapper67,
     Mapper72, Mapper73, Mapper79, Mapper8, Mapper81, Mapper83, Mapper91, Mapper92, Mapper96,
     Mapper99, Namco108Mapper154, Namco108Mapper206, Namco108Mapper95, Namco118, Nina01, Nina03_06,
-    Nrom, Ntdec112, Sachen133, Sachen149, Sachen74Ls374N, Sachen74Ls374NVariant, SachenSa0161m,
-    Subor166, SuborVariant, Sunsoft184, Sunsoft4, Sunsoft89, TaitoTc0190, TaitoX1005, TaitoX1017,
-    TxcMapper, TxcVariant, UnlPci556, Unrom, UnromVariant, UnromVariantMapper, Vrc1,
+    Nrom, Ntdec112, Sachen133, Sachen149, Sachen74Ls374N, Sachen74Ls374NVariant, Sachen8259,
+    Sachen8259Variant, SachenSa0161m, Subor166, SuborVariant, Sunsoft184, Sunsoft4, Sunsoft89,
+    TaitoTc0190, TaitoX1005, TaitoX1017, TxcMapper, TxcVariant, UnlPci556, Unrom, UnromVariant,
+    UnromVariantMapper, Vrc1,
 };
 pub use expansion_mappers::{Fme7, Namco163, Vrc6, Vrc6Variant, Vrc7};
 pub use mmc1::Mmc1;
@@ -364,6 +365,7 @@ pub enum Mapper {
     Sachen133(Sachen133),
     SachenSa0161m(SachenSa0161m),
     Sachen149(Sachen149),
+    Sachen8259(Sachen8259),
     Sachen74Ls374N(Sachen74Ls374N),
     Mapper142(Mapper142),
     Mapper156(Mapper156),

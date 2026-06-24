@@ -12,6 +12,9 @@ pub use discrete::{
     Mapper96, Mapper99, Nina03_06, UnlPci556,
 };
 pub use jaleco::{JalecoJf13, JalecoJf16, JalecoJfxx};
-pub use sachen::{Sachen133, Sachen149, Sachen74Ls374N, Sachen74Ls374NVariant, SachenSa0161m};
+pub use sachen::{
+    Sachen133, Sachen149, Sachen74Ls374N, Sachen74Ls374NVariant, Sachen8259, Sachen8259Variant,
+    SachenSa0161m,
+};
 pub use sunsoft::{Sunsoft184, Sunsoft4, Sunsoft89};
 pub use variants::{IremTamS1, UnromVariant, UnromVariantMapper};
