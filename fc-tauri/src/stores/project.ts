@@ -124,6 +124,8 @@ export const useProjectStore = defineStore("project", {
     tabs: [] as EditorTab[],
     activePath: "" as string,
     focusEditor: 0, // bumped to ask the IDE to bring the source editor forward
+    focusBuild: 0, // bumped to ask the IDE to bring the Build panel forward
+    buildPanelTab: "diagnostics" as "diagnostics" | "health" | "log",
     building: false,
     build: null as ide.BuildResult | null,
     status: "未打开工程",
@@ -206,6 +208,20 @@ export const useProjectStore = defineStore("project", {
     },
     requestPreviewFocus() {
       this.focusPreview++;
+    },
+    requestBuildFocus(tab: "diagnostics" | "health" | "log" = "diagnostics") {
+      this.buildPanelTab = tab;
+      this.focusBuild++;
+    },
+    async applyExternalBuildResult(result: ide.BuildResult) {
+      this.build = result;
+      if (result.success) this.sourceMap = result.source_map;
+      await this.refreshTree();
+      this.status = result.success
+        ? `MCP 构建成功 → ${result.output}`
+        : `MCP 构建失败（${this.errorCount} 错误）`;
+      this.requestBuildFocus(result.diagnostics.length ? "diagnostics" : "health");
+      if (!result.success) await this.focusFirstDiagnostic();
     },
     resourceKindFor(path: string, requested = "auto"): Exclude<ResourceKind, ""> {
       if (requested === "source" || requested === "chr" || requested === "map" || requested === "music") return requested;
@@ -318,14 +334,11 @@ export const useProjectStore = defineStore("project", {
         ideMcpSyncQueue = ideMcpSyncQueue
           .catch(() => {})
           .then(async () => {
+            const result = changed.includes("build") ? extra?.result : undefined;
             await this.syncFromIdeMcp(reason, extra?.root, extra, changed);
             if (changed.includes("build")) {
               try {
-                const result = extra?.result;
-                if (result) {
-                  this.build = result;
-                  if (result.success) this.sourceMap = result.source_map;
-                }
+                if (result) await this.applyExternalBuildResult(result);
               } catch {
                 /* refreshTree/projectGet already handled the project state */
               }

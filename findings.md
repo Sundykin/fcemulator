@@ -146,6 +146,13 @@
 - The first rapid-open verification exposed an async race: map loading completed after the music event and stole active focus. Queueing `syncFromIdeMcp()` fixed it; the repeat run ended on the requested music resource.
 - A follow-up MCP `ide_build`/`ide_run` succeeded, opened Preview, focused the preview stage, and live `fc emu-mcp` reported the same running mapper 0 ROM with advancing CPU/PPU state.
 
+## IDE MCP Build Feedback Findings
+- Before this slice, `ide_build` emitted build results and the frontend stored them, but it did not explicitly request the visible Build panel or reuse the manual-build diagnostic focus path.
+- The project store now applies external MCP build results through one action: it updates `build`, refreshes `sourceMap` on success, refreshes the tree, sets a clear MCP build status, requests Build panel focus, and focuses the first source diagnostic when a build fails.
+- The Build panel now watches a store-level focus signal and opens the requested tab. Failed MCP builds select Problems; successful MCP builds select Health.
+- Runtime verification created `/tmp/fc-mcp-build-diag-*`, wrote an invalid `src/main.s`, and invoked `ide_build` through `target/debug/fc ide-mcp`. The real Tauri IDE showed Build at the bottom with the `src/main.s:2` diagnostic row visible while the editor was focused on `BROKEN_OPCODE_FOR_MCP_BUILD`.
+- A follow-up MCP source fix and `ide_build` succeeded; the visible Build panel switched to Health, `build/game.nes` was recorded, and the source map contained 5 line entries.
+
 ## Files To Inspect Next
 - `fc-tauri/src/ide/MapEditorPanel.vue` template/style sections
 - `fc-tauri/src/ide/ChrEditorPanel.vue` template/style sections

@@ -4,7 +4,7 @@
 Evolve the fc-tauri studio into a mature NES game-development IDE engine. The target experience is continuous project/resource/map/music workflows, comfortable editing controls, and editors that fill their available workspace instead of using tiny native-pixel canvases.
 
 ## Current Phase
-Phase 17: IDE MCP Opens Visible Creative Resources
+Phase 18: IDE MCP Build Surfaces Diagnostics
 
 ## Phases
 
@@ -129,6 +129,14 @@ Phase 17: IDE MCP Opens Visible Creative Resources
 - [x] Verify the real Tauri IDE switches to studio and opens MCP-requested source/CHR/map/music panels
 - **Status:** complete
 
+### Phase 18: IDE MCP Build Surfaces Diagnostics
+- [x] Audit whether MCP-triggered builds use the same visible diagnostics path as toolbar builds
+- [x] Apply external build results through project-store state, source maps, status, and Build panel focus
+- [x] Open the visible Build panel on MCP build results and select Problems or Health appropriately
+- [x] Verify failed MCP builds show the diagnostic row and jump to the source line in the real Tauri IDE
+- [x] Verify successful MCP builds switch Build panel to Health and update source-map/build state
+- **Status:** complete
+
 ## Key Questions
 1. Which editor currently wastes the most available panel area or forces tiny pixel editing?
 2. Where is map-to-CHR binding surfaced, and does opening a map automatically load/show the right CHR resource?
@@ -154,6 +162,7 @@ Phase 17: IDE MCP Opens Visible Creative Resources
 | Build failures should bring the user directly to the broken source line | The write/build/fix loop is core to making the IDE feel usable for game creation; diagnostics should be actionable without a manual hunt |
 | Running should immediately enter playable preview input | A game IDE should let the user press Run and test controls immediately, without first clicking the preview canvas |
 | IDE MCP should be able to focus the visible creative context | A programming agent should not need the DOM bridge just to show the source/resource it is writing; the in-process MCP should notify the Tauri UI through IPC |
+| MCP builds should surface diagnostics in the visible IDE | A programming agent writing code through MCP needs the same build/fix feedback loop as a human pressing Build: visible problems, source jump, and success health state |
 
 ## Errors Encountered
 | Error | Attempt | Resolution |

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import Icon from "../components/Icon.vue";
 defineOptions({ inheritAttrs: false });
 import { useProjectStore } from "../stores/project";
@@ -9,6 +9,14 @@ import type { Diagnostic, FileNode } from "../ide";
 const store = useProjectStore();
 const emu = useEmuStore();
 const tab = ref<"diagnostics" | "health" | "log">("diagnostics");
+tab.value = store.buildPanelTab;
+
+watch(
+  () => store.focusBuild,
+  () => {
+    tab.value = store.buildPanelTab;
+  }
+);
 
 type HealthLevel = "ok" | "warn" | "fail";
 type HealthAction = "saveAll" | "repairBindings" | "build" | "run";

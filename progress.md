@@ -186,6 +186,17 @@
   - Runtime verified from launcher: IDE MCP created a demo project, wrote a tracker song, opened source/CHR/map/music resources in sequence, and the real Tauri IDE ended in studio mode with tracker active and all creative panels mounted.
   - Runtime verified follow-up `ide_build`/`ide_run`: `build/game.nes` loaded into visible Preview, Preview stage was focused, and live emulator MCP read the same running ROM state.
 
+### Phase 18: IDE MCP Build Surfaces Diagnostics
+- **Status:** complete
+- Actions taken:
+  - Audited MCP build result handling and found `ide_build` updated build data but did not request the visible Build panel or trigger the first-diagnostic source jump used by manual builds.
+  - Added `focusBuild` and `buildPanelTab` state to the project store.
+  - Added `applyExternalBuildResult()` so MCP build results update build/source-map/tree/status, open Build, choose Problems vs Health, and focus the first source diagnostic on failures.
+  - Updated `IdeView.vue` to show the Build panel when `focusBuild` is bumped.
+  - Updated `BuildPanel.vue` to initialize from and watch the requested store tab.
+  - Runtime verified a failing `ide_build` from launcher/studio: Build panel was visible, Problems tab showed `src/main.s:2`, and the editor jumped to `BROKEN_OPCODE_FOR_MCP_BUILD`.
+  - Runtime verified a fixed successful `ide_build`: Build panel switched to Health, status read `MCP 构建成功 → build/game.nes`, and source map entries were updated.
+
 ## Test Results
 | Test | Result |
 |------|--------|
@@ -272,6 +283,8 @@
 | rapid `ide_open_resource` ordering | PASS after queue fix; final music request won instead of a slower map open stealing focus |
 | live `fc-ide` build/run after resource-open | PASS; built `build/game.nes`, loaded it into visible Preview, and focused the preview stage |
 | live `fc emu-mcp` state after resource-open build/run | PASS; reported mapper 0 `game.nes`, running worker/audio runtime, and advancing CPU/PPU counters |
+| MCP failed build surfaces visible diagnostics | PASS; real Tauri Build panel displayed `src/main.s:2` and editor active line was `BROKEN_OPCODE_FOR_MCP_BUILD` |
+| MCP successful build switches Build panel to Health | PASS; real Tauri Build panel showed Health, status `MCP 构建成功 → build/game.nes`, and source map count 5 |
 | `fc-tauri/node_modules/.bin/vue-tsc --noEmit` | NOT RUN; local project has no `vue-tsc` binary |
 | `cd fc-tauri && npx vue-tsc --noEmit` | BLOCKED by restricted network; `npx` attempted `registry.npmmirror.com/vue-tsc` and failed DNS |
 
