@@ -172,6 +172,154 @@ impl MapperOps for Sachen149 {
     }
 }
 
+// ============================================================================
+// Mapper 150 / 243 — Sachen 74LS374N
+// ============================================================================
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Sachen74Ls374NVariant {
+    Mapper150,
+    Mapper243,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Sachen74Ls374N {
+    prg_32k: usize,
+    variant: Sachen74Ls374NVariant,
+    current_register: u8,
+    regs: [u8; 8],
+    dip: u8,
+}
+
+impl Sachen74Ls374N {
+    pub(in crate::mapper) fn new(prg_16k: usize, variant: Sachen74Ls374NVariant) -> Self {
+        Sachen74Ls374N {
+            prg_32k: prg_16k.div_ceil(2).max(1),
+            variant,
+            current_register: 0,
+            regs: [0; 8],
+            dip: 0,
+        }
+    }
+
+    fn chr_bank(&self) -> usize {
+        match self.variant {
+            Sachen74Ls374NVariant::Mapper150 => {
+                (((self.regs[4] & 0x01) << 2) | (self.regs[6] & 0x03)) as usize
+            }
+            Sachen74Ls374NVariant::Mapper243 => {
+                ((self.regs[2] & 0x01)
+                    | ((self.regs[4] & 0x01) << 1)
+                    | ((self.regs[6] & 0x03) << 2)) as usize
+            }
+        }
+    }
+
+    fn prg_bank(&self) -> usize {
+        (self.regs[5] & 0x03) as usize
+    }
+
+    fn selected_mirroring(&self) -> Mirroring {
+        match (self.regs[7] >> 1) & 0x03 {
+            0 => Mirroring::FourScreen,
+            1 => Mirroring::Horizontal,
+            2 => Mirroring::Vertical,
+            _ => Mirroring::SingleScreenLow,
+        }
+    }
+
+    fn accepts_register_addr(addr: u16) -> bool {
+        matches!(addr & 0xC101, 0x4100 | 0x4101)
+    }
+
+    fn write_sachen_register(&mut self, addr: u16, mut value: u8) -> bool {
+        if !Self::accepts_register_addr(addr) {
+            return false;
+        }
+        if matches!(self.variant, Sachen74Ls374NVariant::Mapper150) && self.dip & 0x01 != 0 {
+            value |= 0x04;
+        }
+        match addr & 0xC101 {
+            0x4100 => self.current_register = value & 0x07,
+            0x4101 => self.regs[self.current_register as usize] = value & 0x07,
+            _ => {}
+        }
+        true
+    }
+
+    fn read_sachen_register(&self, addr: u16, open_bus: u8) -> Option<u8> {
+        if !matches!(self.variant, Sachen74Ls374NVariant::Mapper150) || (addr & 0xC101) != 0x4101 {
+            return None;
+        }
+        let value = self.regs[self.current_register as usize];
+        Some(if self.dip & 0x01 != 0 {
+            (open_bus & 0xFC) | (value & 0x03)
+        } else {
+            (open_bus & 0xF8) | (value & 0x07)
+        })
+    }
+}
+
+impl MapperOps for Sachen74Ls374N {
+    fn prg_index(&self, addr: u16) -> usize {
+        prg_32k(self.prg_bank() % self.prg_32k, addr)
+    }
+
+    fn chr_index(&self, addr: u16) -> usize {
+        chr_8k(self.chr_bank(), addr)
+    }
+
+    fn write_register(&mut self, addr: u16, value: u8) {
+        self.write_sachen_register(addr, value);
+    }
+
+    fn write_low_register(&mut self, addr: u16, value: u8) -> bool {
+        self.write_sachen_register(addr, value)
+    }
+
+    fn write_expansion(&mut self, addr: u16, value: u8) {
+        self.write_sachen_register(addr, value);
+    }
+
+    fn read_low_register_with_open_bus(
+        &mut self,
+        addr: u16,
+        _prg_ram_value: u8,
+        open_bus: u8,
+    ) -> Option<u8> {
+        self.read_sachen_register(addr, open_bus)
+    }
+
+    fn peek_low_register_with_open_bus(
+        &self,
+        addr: u16,
+        _prg_ram_value: u8,
+        open_bus: u8,
+    ) -> Option<u8> {
+        self.read_sachen_register(addr, open_bus)
+    }
+
+    fn read_expansion_with_open_bus(&mut self, addr: u16, open_bus: u8) -> Option<u8> {
+        self.read_sachen_register(addr, open_bus)
+    }
+
+    fn peek_expansion_with_open_bus(&self, addr: u16, open_bus: u8) -> Option<u8> {
+        self.read_sachen_register(addr, open_bus)
+    }
+
+    fn mirroring(&self) -> Mirroring {
+        self.selected_mirroring()
+    }
+
+    fn reset(&mut self, soft: bool) {
+        self.current_register = 0;
+        self.regs = [0; 8];
+        if soft && matches!(self.variant, Sachen74Ls374NVariant::Mapper150) {
+            self.dip ^= 1;
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -241,5 +389,68 @@ mod tests {
         mapper.write_register(0x8000, 0x80);
         assert_eq!(mapper.chr_index(0x1004), 1 * 0x2000 + 0x1004);
         assert_eq!(mapper.mirroring(), Mirroring::Vertical);
+    }
+
+    #[test]
+    fn mapper150_74ls374n_selects_registers_and_dip_open_bus_reads() {
+        let mut mapper = Sachen74Ls374N::new(16, Sachen74Ls374NVariant::Mapper150);
+
+        mapper.write_expansion(0x4100, 0x05);
+        mapper.write_expansion(0x4101, 0x03);
+        mapper.write_expansion(0x4100, 0x06);
+        mapper.write_expansion(0x4101, 0x02);
+        mapper.write_expansion(0x4100, 0x04);
+        mapper.write_expansion(0x4101, 0x01);
+        assert_eq!(mapper.prg_index(0x8004), 3 * 0x8000 + 4);
+        assert_eq!(mapper.chr_index(0x1004), 6 * 0x2000 + 0x1004);
+
+        mapper.write_expansion(0x4100, 0x07);
+        mapper.write_expansion(0x4101, 0x06);
+        assert_eq!(mapper.mirroring(), Mirroring::SingleScreenLow);
+
+        mapper.write_expansion(0x4100, 0x06);
+        assert_eq!(
+            mapper.read_expansion_with_open_bus(0x4101, 0xA0),
+            Some(0xA2)
+        );
+
+        mapper.reset(true);
+        mapper.write_expansion(0x4100, 0x05);
+        assert_eq!(
+            mapper.read_expansion_with_open_bus(0x4101, 0xA4),
+            Some(0xA4)
+        );
+        mapper.write_expansion(0x4100, 0x03);
+        mapper.write_expansion(0x4101, 0x00);
+        assert_eq!(mapper.mirroring(), Mirroring::Vertical);
+        mapper.write_expansion(0x4100, 0x05);
+        mapper.write_expansion(0x4101, 0x00);
+        assert_eq!(mapper.prg_index(0x8004), 0x0004);
+        assert_eq!(
+            mapper.read_expansion_with_open_bus(0x4101, 0xA4),
+            Some(0xA4)
+        );
+    }
+
+    #[test]
+    fn mapper243_74ls374n_uses_alternate_chr_bits_without_readback() {
+        let mut mapper = Sachen74Ls374N::new(8, Sachen74Ls374NVariant::Mapper243);
+
+        mapper.write_expansion(0x4100, 0x02);
+        mapper.write_expansion(0x4101, 0x01);
+        mapper.write_expansion(0x4100, 0x04);
+        mapper.write_expansion(0x4101, 0x01);
+        mapper.write_expansion(0x4100, 0x06);
+        mapper.write_expansion(0x4101, 0x02);
+        assert_eq!(mapper.chr_index(0x1004), 0x0B * 0x2000 + 0x1004);
+
+        mapper.write_expansion(0x4100, 0x05);
+        mapper.write_expansion(0x4101, 0x02);
+        assert_eq!(mapper.prg_index(0xC004), 2 * 0x8000 + 0x4004);
+        assert_eq!(mapper.read_expansion_with_open_bus(0x4101, 0xA0), None);
+
+        mapper.write_expansion(0x4100, 0x07);
+        mapper.write_expansion(0x4101, 0x02);
+        assert_eq!(mapper.mirroring(), Mirroring::Horizontal);
     }
 }

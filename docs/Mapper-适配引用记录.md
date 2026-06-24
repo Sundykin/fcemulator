@@ -11,9 +11,9 @@
 - `fc-core/src/mapper/basic/latch/discrete.rs`
   - 新增 Mapper 8 / 29 / 31 / 36 / 72 / 79 / 81 / 92 / 96 / 99 / 122。
   - 覆盖 FFE/FJ-007 PRG16/CHR8 latch、Sealie Computing PRG16/CHR8 latch 与 32KB CHR-RAM 默认容量、NSF/INL 4KB PRG-ROM paging、TXC/Micro Genius 简化 latch、$4100 读回、bus conflict、NTDEC N715062 address/data latch、Jaleco 2-in-1/JF-17 PRG/CHR 写位规则、Mapper 96 的 PPU nametable latch、Mapper 99 的 `$4016` controller-strobe PRG/CHR latch、NINA-003/006 扩展区 latch，以及 Mapper 122 双 4KB CHR latch。
-- `fc-core/src/mapper/basic/latch/sachen.rs:1-135`
-  - 新增 Mapper 133 / Sachen SA72008、Mapper 146 / Sachen SA016-1M、Mapper 148 / Sachen SA0037 与 Mapper 149 / Sachen SA0036。
-  - 覆盖 SA72008 PRG32/CHR8 latch、SA016-1M/SA0037 PRG32/CHR8 latch 和 SA0036 CHR bit7 latch。
+- `fc-core/src/mapper/basic/latch/sachen.rs:1-456`
+  - 新增 Mapper 133 / Sachen SA72008、Mapper 146 / Sachen SA016-1M、Mapper 148 / Sachen SA0037、Mapper 149 / Sachen SA0036，以及 Mapper 150 / 243 的 Sachen 74LS374N。
+  - 覆盖 SA72008 PRG32/CHR8 latch、SA016-1M/SA0037 PRG32/CHR8 latch、SA0036 CHR bit7 latch、Sachen 74LS374N 的 current-register/data-register 写协议、PRG32/CHR8/mirroring 译码，以及 Mapper150 DIP/open-bus 读回。
 - `fc-core/src/mapper/basic/core.rs:163-217,373-403`
   - 扩展 Mapper 11 / Color Dreams，并新增 Mapper 144 / AGCI 50282 变体。
   - 覆盖 Color Dreams 4-bit PRG/CHR latch、bus conflict，以及 Mapper 144 奇地址写窗口与 bit0-only conflict 规则。
@@ -467,6 +467,7 @@
 - `TxcMapper::Mapper136` 对应 FCEUmm `src/boards/txcchip.c:248-276` 与 Mesen2 `Core/NES/Mappers/Sachen/Sachen_136.h:8-58`；本项目采用 Mesen2 的 Sachen_136 PRG32 固定 0、CHR8=`output`，读值保留 open-bus bit6-7。
 - `TxcMapper::Mapper147` 对应 FCEUmm `src/boards/txcchip.c:278-308` 与 Mesen2 `Core/NES/Mappers/Sachen/Sachen_147.h:8-61`；写值使用 `((value & 0xFC) >> 2) | ((value & 0x03) << 6)`，读值反向展开，PRG/CHR 分别取 `output` 的 board-specific bit fields。
 - `TxcMapper::Mapper172` 对应 FCEUmm `src/boards/txcchip.c:310-344` 与 Mesen2 `Core/NES/Mappers/Txc/Txc22211B.h:6-62`；写读值使用 6-bit reverse permutation，CHR8=`output`，mirroring 由 TXC invert flag 选择 vertical/horizontal。
+- `Sachen74Ls374N::new()` / Mapper150/243 对应 Mesen2 `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Sachen/Sachen74LS374N.h:14-79`、FCEUmm `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/sachen.c:250-331`、FCEUX `/Users/sunmeng/workspace/fc/fceux/src/boards/sachen.cpp:26-93` 与 Nestopia `/Users/sunmeng/workspace/fc/nestopia/source/core/board/NstBoard.hpp:502-503`；本项目按 Mesen2 的 8-register 74LS374N 模型实现，Mapper150 支持 DIP 影响写值 bit2 与读回 D2 open-bus，Mapper243 禁用读回。FCEUmm/FCEUX 的 Mapper150 PRG/CHR bit packing 与 Mesen2 不完全一致，当前按 Mesen2/Nestopia 元数据落第一版；`SetNametables(0,0,0,1)` 暂用 `Mirroring::FourScreen` 近似，后续若扩 per-nametable page hook 可精修。
 - `FfeMapper` / `FfeMode::{Mapper6,Mapper17}` 对应 FCEUX `src/boards/ffe.cpp:26-153`；Mapper6 使用 latch 模式的 PRG16/CHR8，Mapper17 使用 `$4504-$4507` PRG8 与 `$4510-$4517` CHR1 寄存器，`$42FE-$42FF` mirroring 和 `$4501-$4503` CPU-cycle IRQ 按同文件 `65-75,108-117` 实现。本项目继续通过 Cartridge 默认 PRG-RAM 路径提供 `$6000-$7FFF` WRAM。
 - `Mapper218` 对应 FCEUX `src/boards/datalatch.cpp:462-493`、FCEUmm `src/boards/218.c:23-34` 与 Mesen2 `Core/NES/Mappers/Homebrew/MagicFloor218.h:4-31`；本项目用 mapper-owned 2KB pattern RAM 表达 `$0000-$1FFF` pattern table 到 NTARAM page A/B 的 1KB 页映射，PRG32 固定 0。Four-screen header 的 bit0 细分目前由 `Mirroring::FourScreen -> SingleScreenLow` 近似，后续若扩 factory/header bit 透传可精修到 FCEUX `mirrorAs2Bits` 语义。
 - `TaitoTc0190::new_48()` / `hblank_clock()` 对应 FCEUX/FCEUmm `33.cpp`/`33.c:66-97,110-115`；普通 TC0190 bank writes 复用同文件 `52-63`。
@@ -487,7 +488,7 @@
 ## 以后替换时的删除边界
 
 - 先替换 `fc-core/src/mapper/basic/unlicensed.rs:1-884`。
-- 同批替换 `fc-core/src/mapper/basic/latch/discrete.rs` 里 Mapper 29 / 36 / 72 / 79 / 92 / 99 / 122 的新增段、`fc-core/src/mapper/basic/latch/sachen.rs` 的新增段、`fc-core/src/mapper/basic/core.rs` 里 ColorDreams/Mapper144 的扩展段、`fc-core/src/mapper/basic/taito.rs` 里 Mapper 80 / 207 / 82 的新增段，以及 `fc-core/src/mapper/basic/multicart.rs` 里 Mapper 51 / 59 / 63 / 128 / 201 / 217 / 221 / 228 / 236 / 237 / 239 / 255 的新增段。
+- 同批替换 `fc-core/src/mapper/basic/latch/discrete.rs` 里 Mapper 29 / 36 / 72 / 79 / 92 / 99 / 122 的新增段、`fc-core/src/mapper/basic/latch/sachen.rs` 里 Sachen 133 / 146 / 148 / 149 / 150 / 243 的新增段、`fc-core/src/mapper/basic/core.rs` 里 ColorDreams/Mapper144 的扩展段、`fc-core/src/mapper/basic/taito.rs` 里 Mapper 80 / 207 / 82 的新增段，以及 `fc-core/src/mapper/basic/multicart.rs` 里 Mapper 51 / 59 / 63 / 128 / 201 / 217 / 221 / 228 / 236 / 237 / 239 / 255 的新增段。
 - 同批替换 `fc-core/src/mapper/basic/latch/sunsoft.rs` 里 Mapper 68 的新增段，并同步检查 `MapperOps::nametable_chr_index` 与 `Cartridge::mapper_has_nametable_chr_mapping` 是否仍有其他使用者。
 - 同批替换 `fc-core/src/mapper/basic/core.rs` 里 Mapper 232 的新增段。
 - 同批替换 `fc-core/src/mapper/basic/bandai.rs` 里 Mapper16 / 153 / 159、Bandai FCG、24C01/24C02 EEPROM 新增段，并同步检查 `MapperOps::read_low_register_with_open_bus` / `peek_low_register_with_open_bus` / `low_prg_ram_read_enabled` / `low_prg_ram_write_enabled` 是否仍有使用者。

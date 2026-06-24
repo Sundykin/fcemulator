@@ -111,6 +111,8 @@ fn watches_ppu_bus_matches_notify_a12_overrides() {
         (146, false),  // Sachen SA016-1M
         (148, false),  // Sachen SA0037
         (149, false),  // Sachen SA0036
+        (150, false),  // Sachen 74LS374N
+        (243, false),  // Sachen 74LS374N
         (156, false),  // Mapper 156
         (158, true),   // Mapper 158 RAMBO-1 can use PPU A12 IRQ mode
         (159, false),  // Bandai LZ93D50 with 24C01
@@ -311,6 +313,8 @@ fn clocks_cpu_matches_cpu_clock_overrides() {
         (146, false),  // Sachen SA016-1M
         (148, false),  // Sachen SA0037
         (149, false),  // Sachen SA0036
+        (150, false),  // Sachen 74LS374N
+        (243, false),  // Sachen 74LS374N
         (156, false),  // Mapper 156
         (158, true),   // Mapper 158 RAMBO-1 can use CPU-cycle IRQ mode
         (159, true),   // Bandai LZ93D50 IRQ counter clocks per CPU cycle
@@ -516,6 +520,7 @@ fn clocks_hblank_matches_hblank_clock_overrides() {
         (146, false),
         (148, false),
         (149, false),
+        (150, false),
         (156, false),
         (158, false),
         (159, false),
@@ -589,6 +594,7 @@ fn clocks_hblank_matches_hblank_clock_overrides() {
         (240, false),
         (241, false),
         (242, false),
+        (243, false),
         (244, false),
         (245, false),
         (249, false),

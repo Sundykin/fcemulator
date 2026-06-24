@@ -142,6 +142,10 @@ impl Mapper {
             146 => Mapper::SachenSa0161m(SachenSa0161m::new(mirroring, false)),
             148 => Mapper::SachenSa0161m(SachenSa0161m::new(mirroring, true)),
             149 => Mapper::Sachen149(Sachen149::new(mirroring)),
+            150 => Mapper::Sachen74Ls374N(Sachen74Ls374N::new(
+                prg_16k,
+                Sachen74Ls374NVariant::Mapper150,
+            )),
             25 => Mapper::Vrc4(Vrc4::new(number, prg_16k, chr_8k, submapper)),
             74 => Mapper::Mmc3(Mmc3::new_74(prg_16k, chr_8k, mirroring)),
             151 => Mapper::Mapper151(Mapper151::new(prg_16k, mirroring)),
@@ -227,6 +231,10 @@ impl Mapper {
             240 => Mapper::Mapper240(Mapper240::new(mirroring)),
             241 => Mapper::Mapper241(Mapper241::new(mirroring)),
             242 => Mapper::AddrLatch16k(AddrLatch16k::new(AddrLatchVariant::Mapper242)),
+            243 => Mapper::Sachen74Ls374N(Sachen74Ls374N::new(
+                prg_16k,
+                Sachen74Ls374NVariant::Mapper243,
+            )),
             244 => Mapper::Mapper244(Mapper244::new(mirroring)),
             245 => Mapper::Mmc3(Mmc3::new_245(prg_16k, chr_8k, mirroring)),
             249 => Mapper::Mmc3(Mmc3::new_249(prg_16k, chr_8k, mirroring)),
