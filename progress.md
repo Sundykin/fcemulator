@@ -153,6 +153,16 @@
   - Runtime verified the real Tauri IDE after MCP project creation: `src/main.s` opened automatically, CodeMirror contained source text, active resource was `源码 src/main.s`, and the empty editor hint was hidden.
   - Closed tabs and re-opened the same project through IDE MCP to verify the project-open path also restores `src/main.s`.
 
+### Phase 15: Build Failure Focuses Source Diagnostics
+- **Status:** complete
+- Actions taken:
+  - Audited build diagnostics, BuildPanel tab behavior, and CodeMirror source syncing.
+  - Added store `focusFirstDiagnostic()` and invoked it after failed manual builds.
+  - Updated BuildPanel build/run actions to remain on the Problems tab when diagnostics are produced.
+  - Changed EditorPanel to watch active-tab content replacement, so external store/MCP source writes are reflected in CodeMirror.
+  - Runtime verified a failing ca65 build in the real Tauri IDE with a deliberately inserted `BROKEN_OPCODE_FOR_DIAG` line.
+  - Verified the failing source line was visible and active in CodeMirror, `goto` targeted `src/main.s:2`, and BuildPanel showed the diagnostics tab/error row after its build action.
+
 ## Test Results
 | Test | Result |
 |------|--------|
@@ -220,6 +230,12 @@
 | `npm --prefix fc-tauri run build` after primary-source change | PASS, with existing Vite large chunk warning |
 | `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml` after primary-source change | PASS |
 | `git diff --check` after primary-source change | PASS |
+| Build failure focuses first diagnostic | PASS; real Tauri build failure set `goto` to `src/main.s:2` and CodeMirror active line was `BROKEN_OPCODE_FOR_DIAG` |
+| BuildPanel failed build stays on Problems tab | PASS; BuildPanel action from Health switched to `diagnostics` and displayed the `src/main.s:2` error row |
+| EditorPanel reflects externally replaced active source content | PASS; after store content replacement, CodeMirror text contained `BROKEN_OPCODE_FOR_DIAG` before building |
+| `npm --prefix fc-tauri run build` after diagnostic-focus change | PASS, with existing Vite large chunk warning |
+| `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml` after diagnostic-focus change | PASS |
+| `git diff --check` after diagnostic-focus change | PASS |
 | `fc-tauri/node_modules/.bin/vue-tsc --noEmit` | NOT RUN; local project has no `vue-tsc` binary |
 | `cd fc-tauri && npx vue-tsc --noEmit` | BLOCKED by restricted network; `npx` attempted `registry.npmmirror.com/vue-tsc` and failed DNS |
 

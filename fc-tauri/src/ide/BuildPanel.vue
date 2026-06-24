@@ -98,13 +98,14 @@ async function repairMapBindings() {
 }
 
 async function buildProject() {
-  await store.build_();
-  tab.value = "health";
+  const result = await store.build_();
+  tab.value = result?.diagnostics.length ? "diagnostics" : "health";
 }
 
 async function runProject() {
   if (!store.build?.success || !store.build.output) {
-    await store.build_();
+    const result = await store.build_();
+    if (result?.diagnostics.length) tab.value = "diagnostics";
   }
   if (store.build?.success && store.build.output) {
     await emu.openPath(`${store.root}/${store.build.output}`, true);

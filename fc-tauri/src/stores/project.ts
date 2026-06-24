@@ -354,6 +354,17 @@ export const useProjectStore = defineStore("project", {
       await this.openFile(path, name);
       this.goto = { path, line: line ?? 1, seq: this.goto.seq + 1 };
     },
+    async focusFirstDiagnostic() {
+      const diagnostic = this.build?.diagnostics.find((d) => !!d.file);
+      if (!diagnostic?.file) return false;
+      try {
+        await this.gotoSource(diagnostic.file, diagnostic.line ?? 1);
+        return true;
+      } catch (e) {
+        console.warn("focus first diagnostic failed", e);
+        return false;
+      }
+    },
     closeTab(path: string) {
       const i = this.tabs.findIndex((t) => t.path === path);
       if (i < 0) return;
@@ -495,6 +506,7 @@ export const useProjectStore = defineStore("project", {
         this.status = this.build.success
           ? `构建成功 → ${this.build.output}`
           : `构建失败（${this.errorCount} 错误）`;
+        if (!this.build.success) await this.focusFirstDiagnostic();
       } catch (e) {
         this.status = `${phase}失败：${e}`;
       } finally {

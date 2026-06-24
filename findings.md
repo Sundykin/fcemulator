@@ -122,6 +122,14 @@
 - Runtime verification created `/tmp/fc-primary-source-9XAzdF` through `target/debug/fc ide-mcp`, switched the real Tauri app to studio mode, and found `tabs=[src/main.s]`, `activePath=src/main.s`, active resource `源码 src/main.s`, the CodeMirror editor mounted with source text, and the empty editor hint hidden.
 - Reopening the same project through IDE MCP after closing tabs again restored `src/main.s` as the active editor tab, confirming both project-new and project-open sync paths behave the same.
 
+## Build Diagnostic Focus Findings
+- The build pipeline already parses ca65 diagnostics with `file` and `line`, and the store already had `gotoSource()`, but a failed manual build did not automatically move the editor to the first actionable diagnostic.
+- `EditorPanel.vue` only reloaded CodeMirror when tab count changed, so active-tab content replaced externally by store/MCP paths could leave the visible editor stale.
+- The editor now watches the active tab content and reloads only when the CodeMirror document differs, keeping external source writes visible without reloading on every local keystroke.
+- Manual build failure now calls `focusFirstDiagnostic()`, opening the diagnostic source and scrolling/selecting the reported line.
+- Runtime verification inserted `BROKEN_OPCODE_FOR_DIAG` into `src/main.s`, built through the real Tauri store, and observed one ca65 diagnostic at `src/main.s:2`, `goto={path:"src/main.s", line:2}`, the active CodeMirror line equal to the broken source line, and saved tab content matching disk after build autosave.
+- BuildPanel verification started from the Health tab, ran its build action, and confirmed the panel switched to Diagnostics with the error row visible while the editor stayed focused on the failing source line.
+
 ## Files To Inspect Next
 - `fc-tauri/src/ide/MapEditorPanel.vue` template/style sections
 - `fc-tauri/src/ide/ChrEditorPanel.vue` template/style sections

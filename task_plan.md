@@ -4,7 +4,7 @@
 Evolve the fc-tauri studio into a mature NES game-development IDE engine. The target experience is continuous project/resource/map/music workflows, comfortable editing controls, and editors that fill their available workspace instead of using tiny native-pixel canvases.
 
 ## Current Phase
-Phase 14: Open Primary Source On Project Load
+Phase 15: Build Failure Focuses Source Diagnostics
 
 ## Phases
 
@@ -107,6 +107,14 @@ Phase 14: Open Primary Source On Project Load
 - [x] Verify the real Tauri IDE opens `src/main.s` automatically after MCP project creation/open
 - **Status:** complete
 
+### Phase 15: Build Failure Focuses Source Diagnostics
+- [x] Audit build diagnostics, BuildPanel, and source editor jump behavior
+- [x] Keep CodeMirror in sync when the active source tab content is replaced externally
+- [x] Focus the first source diagnostic after a failed manual build
+- [x] Make BuildPanel stay on the Problems tab when a build action produces diagnostics
+- [x] Verify the real Tauri IDE highlights the failing source line after a failed build
+- **Status:** complete
+
 ## Key Questions
 1. Which editor currently wastes the most available panel area or forces tiny pixel editing?
 2. Where is map-to-CHR binding surfaced, and does opening a map automatically load/show the right CHR resource?
@@ -129,6 +137,7 @@ Phase 14: Open Primary Source On Project Load
 | Any IDE run entry point must surface the Preview panel | Running a ROM from Build health should be as visible as the top-level Run and MCP run paths; a successful run that leaves Preview closed breaks feedback continuity |
 | New creative resources should default to an available path | Repeated source/CHR/map/song creation should not begin from a path that immediately fails or overwrites user intent; numbered stems should advance predictably |
 | Project load should land on editable source when one exists | A template or MCP-created game project should be immediately writable; an empty source editor while `src/main.s` exists adds needless friction to the creative loop |
+| Build failures should bring the user directly to the broken source line | The write/build/fix loop is core to making the IDE feel usable for game creation; diagnostics should be actionable without a manual hunt |
 
 ## Errors Encountered
 | Error | Attempt | Resolution |

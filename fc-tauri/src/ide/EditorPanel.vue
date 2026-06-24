@@ -62,10 +62,11 @@ watch(
     view.focus();
   }
 );
-// If the active tab's content is replaced externally (e.g. it was just opened),
-// keep the editor in sync only when it differs from what we last loaded.
+// If the active tab's content is replaced externally (e.g. IDE MCP writes the
+// file), keep the editor in sync. Edits made by this CodeMirror view already
+// match the document text, so they do not cause a reload loop.
 watch(
-  () => store.tabs.length,
+  () => store.activeTab?.content,
   () => {
     if (store.activeTab && view && store.activeTab.content !== view.state.doc.toString()) loadActive();
   }
