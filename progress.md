@@ -28,6 +28,18 @@
   - Replaced visible CHR tutorial hints with state readouts, keeping keyboard/tool details in button titles instead of the main work surface.
   - Runtime verified the CHR panel in Tauri/Dockview using a temporary IDE MCP-created demo project at `/tmp/fc-chr-verify`.
   - Verified the sheet drawer can be hidden and the zoom stage remains full-width.
+- **Committed:** `10a5461 feat(tauri): expand chr editor workspace`
+
+### Phase 5: Music Editor Comfort
+- **Status:** complete
+- Actions taken:
+  - Re-read `TrackerPanel.vue`, tracker store actions, and `ide.ts` tracker APIs before changing layout.
+  - Identified that the piano-roll metrics already adapt to `rollArea`, while the persistent instrument/effect inspector side column was the main source of cramped editing width.
+  - Converted the instrument/effect inspector into a toggleable overlay drawer.
+  - Added a tracker context bar with song path, current view, active cell, transport state, pattern size, and roll hover state.
+  - Made both Pattern and piano-roll surfaces fill the available body area with stable bordered work surfaces.
+  - Removed visible tutorial-style text from empty/roll status areas and replaced it with state readouts.
+  - Runtime verified Pattern and roll geometry in a Tauri/Dockview session using `/tmp/fc-tracker-verify`.
 - Initial observations:
   - The three target editors already contain some ResizeObserver-based adaptive logic in script, so the likely bottleneck is template/CSS panel layout and workflow integration.
   - Map/CHR binding is represented by `chrChoices` and `boundChrForActiveMap`, but the continuity of the interaction still needs inspection.
@@ -48,6 +60,9 @@
 | Tauri IDE MCP `ide_new_project` for `/tmp/fc-chr-verify` | PASS |
 | Tauri DOM/store CHR geometry inspection | PASS; CHR panel about 780x607, zoom stage about 752x421, sheet drawer overlay about 260x489 |
 | CHR sheet drawer toggle DOM inspection | PASS; drawer removed and zoom stage remained full-width |
+| Tauri IDE MCP `ide_new_project` for `/tmp/fc-tracker-verify` | PASS |
+| Tauri DOM/store tracker Pattern geometry inspection | PASS; Pattern grid about 756x467, inspector overlay about 236x455 |
+| Tauri DOM/store tracker roll geometry inspection | PASS; roll wrapper about 756x467, roll area about 754x433 with inspector hidden |
 
 ## Error Log
 | Timestamp | Error | Attempt | Resolution |

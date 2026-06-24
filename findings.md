@@ -44,6 +44,12 @@
 - The tile sheet was fixed to 16 columns, which wastes width in large panels and becomes cramped in narrow panels.
 - The current CHR data path is local to `store.chr.pixels` and `store.saveChr()` writes the same project `.chr` format, so layout/selection changes can remain frontend-only.
 
+## Music Editor Findings
+- `fc-tauri/src/ide/TrackerPanel.vue` already had undo/redo, keyboard note entry, tracker save/preview/export, effect editing, and a ResizeObserver-driven piano roll.
+- The main layout problem was that the instrument/effect inspector permanently occupied a right column, reducing both Pattern and piano-roll editing width.
+- The roll view already computed cell metrics from `rollArea`, so turning the inspector into an overlay lets the existing metric code scale to the full parent area.
+- Tracker data remains `store.song.data`; `saveTracker()`, `playSong()`, and `exportTracker()` keep using the same backend APIs, so this pass only changes editor layout and context display.
+
 ## Files To Inspect Next
 - `fc-tauri/src/ide/MapEditorPanel.vue` template/style sections
 - `fc-tauri/src/ide/ChrEditorPanel.vue` template/style sections
@@ -62,3 +68,6 @@
 - In Dockview, the CHR panel measured about 780x607, the CHR body about 780x529, and the zoom stage about 752x421. The selected tile canvas rendered 416x416 from available height, not a tiny native 8x8 surface.
 - The CHR sheet drawer measured about 260x489 as an overlay; hiding it removed `.chr .right` while the zoom stage stayed at full body width.
 - The adaptive sheet overview chose 12 columns at 18px tiles in that panel size, confirming the fixed 16-column layout is gone.
+- Music runtime verification used a temporary demo project at `/tmp/fc-tracker-verify` and a new in-memory `music/test.song.json` opened in the visible studio shell.
+- Pattern mode measured about 780x607 for the tracker panel, 780x491 for the body, and 756x467 for the Pattern grid. The inspector measured about 236x455 as an overlay.
+- Roll mode with the inspector hidden measured about 756x467 for the roll wrapper and 754x433 for the roll area, confirming the piano-roll surface fills the parent body.
