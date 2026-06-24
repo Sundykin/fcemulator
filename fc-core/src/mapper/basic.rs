@@ -35,7 +35,7 @@ pub use irq::{
     FfeMapper, FfeMode, Mapper117, Mapper142, Mapper18, Mapper40, Mapper42, Mapper50, Mapper65,
     Mapper67, Mapper73,
 };
-pub use jy::{Mapper35, Mapper91};
+pub use jy::{JyAsic, JyAsicVariant, Mapper35, Mapper91};
 pub use konami::Vrc1;
 pub use latch::{
     Bandai74161, Caltron41, ColorDreams46, Cprom, IremTamS1, JalecoJf11_14, JalecoJf13, JalecoJf16,

@@ -52,6 +52,7 @@ macro_rules! dispatch {
             Mapper::TaitoX1017($m) => $body,
             Mapper::Vrc1($m) => $body,
             Mapper::Mapper83($m) => $body,
+            Mapper::JyAsic($m) => $body,
             Mapper::Mapper91($m) => $body,
             Mapper::Mapper92($m) => $body,
             Mapper::Mapper96($m) => $body,

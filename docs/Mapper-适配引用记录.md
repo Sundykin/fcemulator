@@ -36,9 +36,10 @@
 - `fc-core/src/mapper/basic/latch/sunsoft.rs:1-159`
   - 新增 Mapper 68 / Sunsoft-4。
   - 覆盖 16KB PRG、四个 2KB CHR、mirroring 控制，以及 nametable 到 CHR-ROM/CHR-RAM 1KB page 的映射。
-- `fc-core/src/mapper/basic/jy.rs:1-234`
-  - 新增 Mapper 35 / JY Company single-cart board 与 Mapper 91 / JY Company。
-  - 覆盖 Mapper 35 的 8KB PRG、1KB CHR、A12 IRQ、mirroring register，以及 Mapper 91 的 2KB CHR、8KB PRG、submapper 1 outer bank/mirroring latch 和 FCEUX/FCEUmm 风格 HBlank IRQ。
+- `fc-core/src/mapper/basic/jy.rs:1-624`
+  - 新增 Mapper 35 / JY Company single-cart board、Mapper 90 / 209 / 211 JY ASIC 与 Mapper 91 / JY Company。
+  - 覆盖 Mapper 35 的 8KB PRG、1KB CHR、A12 IRQ、mirroring register，Mapper 90/209/211 的 JY ASIC PRG/CHR/nametable/ALU/IRQ register model、低地址 PRG-ROM window、209/211 CHR latch、211 forced nametable control，以及 Mapper 91 的 2KB CHR、8KB PRG、submapper 1 outer bank/mirroring latch 和 FCEUX/FCEUmm 风格 HBlank IRQ。
+  - JY ASIC 的 IRQ source 3（任意 CPU write clock）需要后续新增全局 CPU write notification hook；当前第一版覆盖 CPU-clock、HBlank 近似和 PPU-read/address-change source。
 - `fc-core/src/mapper/basic/namco.rs:1-356`
   - 新增 Mapper 95 / Namco 108 Rev. B、Mapper 154 / Namco 108 单屏变体与 Mapper 206 / Namco 108 子集。
   - 覆盖 Namco108 风格高区寄存器、固定 PRG/CHR mode、CHR register bit5 到 per-nametable CIRAM A10 映射、Mapper 154 的 command bit6 单屏 mirroring，以及 Mapper 206 的无 IRQ PRG8/CHR2+1 bank mask。
@@ -197,6 +198,10 @@
 | 81 | `latch/discrete.rs:153-198; mapper.rs:228-242,300,450,627,903,1070,1234,1454-1466` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/81.c` | 24-31 | Mapper 81 / NTDEC N715062：写入地址 latch 的 bit2-3 选择低 16KB PRG bank，高 16KB 固定末 bank，写入数据 bit0-1 选择 CHR8，固定垂直 mirroring |
 | 82 | `taito.rs` | `/Users/sunmeng/workspace/fc/fceux/src/boards/82.cpp` | 37-63, 66-96 | Taito X1-017 PRG/CHR swap/mirroring |
 | 82 | `taito.rs` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/82_552.c` | 38-71, 92-107 | mapper 82 与 552 PRG bit 译码差异 cross-check；当前只落地 mapper 82 |
+| 90/209/211 | `basic/jy.rs:52-492; basic.rs:19; mapper.rs:271-352; dispatch.rs:54; factory.rs:99,220,222; tests.rs:91,252,445,2238-2301` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/jyasic.c` | 79-189, 191-253, 255-380, 393-512 | JY ASIC 共用实现：PRG/CHR/nametable sync、ALU/DIP read、register decode、CPU/HBlank/PPU IRQ source、mapper 90/209/211 init 差异 |
+| 90/209/211 | `basic/jy.rs:52-492; basic.rs:19; mapper.rs:271-352; dispatch.rs:54; factory.rs:99,220,222; tests.rs:91,252,445,2238-2301` | `/Users/sunmeng/workspace/fc/fceux/src/boards/90.cpp` | 25-27, 74-183, 185-242, 244-379, 381-418, 438-507 | Mapper 90/209/211 差异说明、PRG/CHR/NT/ALU register 行为、IRQ clocking、209 CHR latch、211 forced nametable control |
+| 90/209/211 | `basic/jy.rs:52-492; basic.rs:19; mapper.rs:271-352; dispatch.rs:54; factory.rs:99,220,222; tests.rs:91,252,445,2238-2301` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/JyCompany/JyCompany.h` | 11-54, 64-108, 167-271, 274-367, 369-452 | JY ASIC 状态字段、PRG bit reverse、CHR block/mirror、advanced nametable control、ALU/read/write、CPU clock/PPU hook IRQ counter |
+| 209 | `basic/jy.rs:52-492; factory.rs:220` | `/Users/sunmeng/workspace/fc/nestopia/source/core/board/NstBoard.cpp` | 3081-3085 | Nestopia mapper 209 归类为 `JYCOMPANY_TYPE_B` cross-check |
 | 91 | `jy.rs:1-133` | `/Users/sunmeng/workspace/fc/fceux/src/boards/91.cpp` | 35-48, 51-57, 67-74, 80-83 | JY PRG/CHR low-register decode、HBlank IRQ hook |
 | 91 | `jy.rs:1-133` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/91.c` | 48-61, 63-87, 97-104, 110-118 | submapper 1 outer bank/mirroring latch 与 HBlank IRQ |
 | 91 | `jy.rs:1-133` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/JyCompany/Mapper91.h` | 5-18, 25-42 | Mapper 91 PRG/CHR register decode cross-check；Mesen2 用 MMC3 IRQ 复用 |
@@ -488,6 +493,7 @@
 - `Mapper218` 对应 FCEUX `src/boards/datalatch.cpp:462-493`、FCEUmm `src/boards/218.c:23-34` 与 Mesen2 `Core/NES/Mappers/Homebrew/MagicFloor218.h:4-31`；本项目用 mapper-owned 2KB pattern RAM 表达 `$0000-$1FFF` pattern table 到 NTARAM page A/B 的 1KB 页映射，PRG32 固定 0。Four-screen header 的 bit0 细分目前由 `Mirroring::FourScreen -> SingleScreenLow` 近似，后续若扩 factory/header bit 透传可精修到 FCEUX `mirrorAs2Bits` 语义。
 - `TaitoTc0190::new_48()` / `hblank_clock()` 对应 FCEUX/FCEUmm `33.cpp`/`33.c:66-97,110-115`；普通 TC0190 bank writes 复用同文件 `52-63`。
 - `Rambo1::new_158()` / `set_mapper158_nametable()` / mapper-owned nametable read/write 对应 FCEUmm `tengen.c:198-220` 与 Mesen2 `Rambo1_158.h:5-37`；RAMBO-1 基础 PRG/CHR/IRQ 仍对应 Mesen2 `Rambo1.h:96-177`。
+- `JyAsic` / `JyAsicVariant::{Mapper90,Mapper209,Mapper211}` 对应 FCEUmm `jyasic.c:79-380,393-512`、FCEUX `90.cpp:25-27,74-418,438-507` 与 Mesen2 `JyCompany.h:11-452`；当前实现覆盖 PRG/CHR/NT/ALU/CPU-clock IRQ/HBlank 近似/PPU-read IRQ/CHR latch，CPU-write IRQ source 留待 MapperOps 全局 CPU write hook。
 - `Mapper29::write_register()` / `prg_index()` / `chr_index()` 对应 FCEUX `datalatch.cpp:248-256`、FCEUmm `datalatch.c:186-194` 与 Mesen2 `SealieComputing.h:8-31`；当前第一版按 FCEUX/Mesen2 的高区 register 窗口实现，并在 iNES CHR-RAM 默认容量中补 32KB。
 - `Mapper51::write_low_register()` / `low_prg_index()` / `write_register()` 对应 FCEUX/FCEUmm `51.cpp`/`51.c:31-72`；本项目用现有 low-register + low-PRG-ROM hook 表达 `$6000-$7FFF` 既是 mode 写窗口又是 PRG-ROM 读窗口的行为。
 - `Mapper128::write_register()` / `prg_index()` 对应 FCEUmm `src/boards/128.c:24-38,40-55`；本项目保存 outer address latch 与 data latch，表达低 16KB inner bank、高 16KB fixed `outer|7`、固定 CHR8 0 和 outer bit1 mirroring。
@@ -511,7 +517,7 @@
 - 同批替换 `fc-core/src/mapper/basic/txc.rs` 里 TXC chip/helper 与 Mapper132/136/147/172/173 新增段，并同步检查 `MapperOps::read_expansion_with_open_bus` / `peek_expansion_with_open_bus` 是否仍有使用者。
 - 同批替换 `fc-core/src/mapper/basic/discrete.rs` 里 Mapper 181 / 185 / 186 / 188 / 193 / 218 的新增段，以及 `fc-core/src/mapper/mmc3.rs` 里 Mapper182 / Mapper187 / Mapper189 / Mapper191 / Mapper196 / Mapper197 / Mapper198 / Mapper208 / Mapper215 / Mapper224 / Mapper238 / Mapper245 / Mapper254 的 `Mmc3OuterBank` / `Mmc3ChrLayout` 分支、构造、低区写、扩展区读写、低区读、reset 和测试段。
 - 同批替换 `fc-core/src/mapper/basic/irq.rs` 里 FFE Mapper6/17 新增段。
-- 同批替换 `fc-core/src/mapper/basic/konami.rs` 的 VRC1 段、`fc-core/src/mapper/basic/jy.rs` 的 Mapper35/91 段、`fc-core/src/mapper/basic/sl12.rs` 的 Mapper116 段、`fc-core/src/mapper/basic/waixing.rs` 的 Mapper178 / Mapper253 段、`fc-core/src/mapper/vrc4.rs` 的 VRC2/VRC4 段、`fc-core/src/mapper/rambo1.rs` 的 Mapper64/158 段，`fc-core/src/mapper/basic/taito.rs` 的 Mapper48 段，以及 `fc-core/src/mapper/mmc3.rs` 的 Mapper37/44/45/47/52/76/119 变体段。
+- 同批替换 `fc-core/src/mapper/basic/konami.rs` 的 VRC1 段、`fc-core/src/mapper/basic/jy.rs` 的 Mapper35/90/91/209/211 段、`fc-core/src/mapper/basic/sl12.rs` 的 Mapper116 段、`fc-core/src/mapper/basic/waixing.rs` 的 Mapper178 / Mapper253 段、`fc-core/src/mapper/vrc4.rs` 的 VRC2/VRC4 段、`fc-core/src/mapper/rambo1.rs` 的 Mapper64/158 段，`fc-core/src/mapper/basic/taito.rs` 的 Mapper48 段，以及 `fc-core/src/mapper/mmc3.rs` 的 Mapper37/44/45/47/52/76/119 变体段。
 - 同批替换 `fc-core/src/mapper/basic/special.rs` 里 Mapper111 / Mapper168 / Mapper171 的新增段，并同步检查 `MapperOps::has_chr_read` / `chr_read` / `chr_write` / `cpu_clock` / `nametable_chr_index` 是否仍有使用者。
 - 若替换 Mapper99，请同步检查 `MapperOps::write_controller_strobe`、`Cartridge::cpu_write_controller_strobe` 与 `Bus::write($4016)` 是否仍有使用者。
 - 再处理 `fc-core/src/mapper.rs` 里 Mapper 43/60/75/76/83/91/99/106/168/183/212/222/235 的导出、枚举、构造和 dispatch 分支。

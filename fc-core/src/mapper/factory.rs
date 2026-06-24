@@ -96,6 +96,7 @@ impl Mapper {
             87 => Mapper::JalecoJfxx(JalecoJfxx::new(false, mirroring)),
             88 => Mapper::Namco118(Namco118::new(prg_16k, mirroring)),
             89 => Mapper::Sunsoft89(Sunsoft89::new(prg_16k)),
+            90 => Mapper::JyAsic(JyAsic::new(prg_16k, chr_8k, JyAsicVariant::Mapper90)),
             91 => Mapper::Mapper91(Mapper91::new(prg_16k, chr_8k, submapper, mirroring)),
             92 => Mapper::Mapper92(Mapper92::new(mirroring)),
             96 => Mapper::Mapper96(Mapper96::new()),
@@ -216,7 +217,9 @@ impl Mapper {
             206 => Mapper::Namco108Mapper206(Namco108Mapper206::new(prg_16k, mirroring)),
             207 => Mapper::TaitoX1005(TaitoX1005::new_207(prg_16k)),
             208 => Mapper::Mmc3(Mmc3::new_208(prg_16k, chr_8k, mirroring, submapper)),
+            209 => Mapper::JyAsic(JyAsic::new(prg_16k, chr_8k, JyAsicVariant::Mapper209)),
             210 => Mapper::Namco163(Namco163::new_210(prg_16k, chr_8k, mirroring, submapper)),
+            211 => Mapper::JyAsic(JyAsic::new(prg_16k, chr_8k, JyAsicVariant::Mapper211)),
             212 => Mapper::Mapper212(Mapper212::new()),
             215 => Mapper::Mmc3(Mmc3::new_215(prg_16k, chr_8k, mirroring)),
             216 => Mapper::AddrLatch16k(AddrLatch16k::new_with_mirroring(

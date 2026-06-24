@@ -81,6 +81,7 @@ fn watches_ppu_bus_matches_notify_a12_overrides() {
         (85, false),   // VRC7
         (87, false),   // Jaleco JF-xx
         (88, false),   // Namco 118
+        (90, true),    // JY ASIC watches PPU bus for PPU-read IRQ / CHR latch
         (91, false),   // Mapper 91 IRQ is HBlank-clocked
         (92, false),   // Mapper 92
         (96, true),    // Mapper 96 PPU nametable latch
@@ -166,7 +167,9 @@ fn watches_ppu_bus_matches_notify_a12_overrides() {
         (206, false),  // Namco 108 mapper 206
         (207, false),  // Taito X1-005 mapper 207
         (208, true),   // Mapper 208 MMC3 A12 IRQ
+        (209, true),   // JY ASIC watches PPU bus for PPU-read IRQ / CHR latch
         (210, false),  // Namcot 175/340
+        (211, true),   // JY ASIC watches PPU bus for PPU-read IRQ / CHR latch
         (212, false),  // Mapper 212
         (213, false),  // Mapper 213
         (214, false),  // Mapper 214
@@ -291,6 +294,7 @@ fn clocks_cpu_matches_cpu_clock_overrides() {
         (85, true),    // VRC7 IRQ + expansion audio clock per CPU cycle
         (87, false),   // Jaleco JF-xx
         (88, false),   // Namco 118
+        (90, true),    // JY ASIC can clock IRQs from CPU cycles
         (91, false),   // Mapper 91 IRQ is HBlank-clocked
         (92, false),   // Mapper 92
         (96, false),   // Mapper 96 PPU nametable latch has no CPU clock
@@ -378,7 +382,9 @@ fn clocks_cpu_matches_cpu_clock_overrides() {
         (206, false),  // Namco 108 mapper 206
         (207, false),  // Taito X1-005 mapper 207
         (208, false),  // Mapper 208 uses PPU A12 edges
+        (209, true),   // JY ASIC can clock IRQs from CPU cycles
         (210, false),  // Namcot 175/340
+        (211, true),   // JY ASIC can clock IRQs from CPU cycles
         (212, false),  // Mapper 212
         (213, false),  // Mapper 213
         (214, false),  // Mapper 214
@@ -500,6 +506,7 @@ fn clocks_hblank_matches_hblank_clock_overrides() {
         (87, false),
         (88, false),
         (89, false),
+        (90, true),
         (91, true),
         (92, false),
         (93, false),
@@ -589,7 +596,9 @@ fn clocks_hblank_matches_hblank_clock_overrides() {
         (206, false),
         (207, false),
         (208, false),
+        (209, true),
         (210, false),
+        (211, true),
         (212, false),
         (213, false),
         (214, false),
@@ -2224,6 +2233,70 @@ fn mapper35_switches_jy_banks_and_a12_irq() {
     m35.notify_a12(0x0000, 25);
     m35.notify_a12(0x1000, 36);
     assert!(!m35.irq());
+}
+
+#[test]
+fn jy_asic_mappers_switch_prg_chr_alu_nametable_and_irq() {
+    let mut m90 = Mapper::new(90, 64, 128, Mirroring::Vertical, 0).expect("mapper 90");
+    assert!(m90.watches_ppu_bus());
+    assert!(m90.clocks_cpu());
+    assert!(m90.clocks_hblank());
+    assert_eq!(m90.prg_index(0x8004), 0x3C * 0x2000 + 4);
+    assert_eq!(m90.prg_index(0xE004), 0x3F * 0x2000 + 4);
+
+    m90.write_register(0x8000, 3);
+    m90.write_register(0x8001, 4);
+    m90.write_register(0x8002, 5);
+    m90.write_register(0x8003, 6);
+    m90.write_register(0xD000, 0x82);
+    assert_eq!(m90.prg_index(0x8004), 3 * 0x2000 + 4);
+    assert_eq!(m90.prg_index(0xA004), 4 * 0x2000 + 4);
+    assert_eq!(m90.prg_index(0xC004), 5 * 0x2000 + 4);
+    assert_eq!(m90.prg_index(0xE004), 0x3F * 0x2000 + 4);
+    assert_eq!(m90.low_prg_index(0x6004), Some(6 * 0x2000 + 4));
+
+    m90.write_register(0x9000, 2);
+    m90.write_register(0xD000, 0x80);
+    assert_eq!(m90.chr_index(0x0004), 2 * 0x2000 + 4);
+    m90.write_register(0xD000, 0x98);
+    m90.write_register(0x9007, 9);
+    assert_eq!(m90.chr_index(0x1C04), 9 * 0x0400 + 4);
+
+    m90.write_expansion(0x5800, 9);
+    m90.write_expansion(0x5801, 7);
+    m90.write_expansion(0x5802, 5);
+    assert_eq!(m90.read_expansion_with_open_bus(0x5800, 0xAA), Some(63));
+    assert_eq!(m90.read_expansion_with_open_bus(0x5801, 0xAA), Some(0));
+    assert_eq!(m90.read_expansion_with_open_bus(0x5802, 0xAA), Some(5));
+    assert_eq!(m90.read_expansion_with_open_bus(0x5000, 0xAA), Some(0x2A));
+
+    m90.write_register(0xC001, 0x40);
+    m90.write_register(0xC004, 0xFF);
+    m90.write_register(0xC005, 0xFF);
+    m90.write_register(0xC003, 0);
+    m90.cpu_clock();
+    assert!(m90.irq());
+
+    let mut m209 = Mapper::new(209, 64, 128, Mirroring::Vertical, 0).expect("mapper 209");
+    m209.write_register(0x9000, 1);
+    m209.write_register(0x9002, 2);
+    m209.write_register(0x9004, 3);
+    m209.write_register(0x9006, 4);
+    m209.write_register(0xD000, 0x08);
+    assert_eq!(m209.chr_index(0x0004), 1 * 0x1000 + 4);
+    m209.notify_a12(0x0FE8, 1);
+    assert_eq!(m209.chr_index(0x0004), 2 * 0x1000 + 4);
+    m209.notify_a12(0x1FE8, 2);
+    assert_eq!(m209.chr_index(0x1004), 4 * 0x1000 + 4);
+
+    let mut m211 = Mapper::new(211, 64, 128, Mirroring::Horizontal, 0).expect("mapper 211");
+    assert!(m211.has_nametable_chr_mapping());
+    m211.write_register(0xB000, 0x80);
+    m211.write_register(0xD002, 0x00);
+    assert_eq!(m211.nametable_chr_index(0x2004), Some(0x80 * 0x0400 + 4));
+    m211.write_register(0xD000, 0x40);
+    m211.write_register(0xB001, 0x03);
+    assert_eq!(m211.nametable_chr_index(0x2404), Some(3 * 0x0400 + 4));
 }
 
 #[test]
