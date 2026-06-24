@@ -16,6 +16,14 @@ type PMode = "player" | "studio"; // a "real" mode the user can resume into
 // NOT scenes — they are drawer overlays over the game page, tracked by `panel`.
 export type View = "main" | "library" | "settings";
 export type SessionPanel = "saves" | "cheats" | "debug";
+type LiveMcpState = {
+  online: boolean;
+  socket: string;
+  error: string;
+  lastReason: string;
+  lastChanged: string[];
+  lastAt: number;
+};
 
 // Remember the last real mode so the launcher can highlight / quick-enter it.
 const LAST_MODE_KEY = "fc:lastMode";
@@ -91,6 +99,14 @@ export const useEmuStore = defineStore("emu", {
     paletteList: [] as string[], // built-in palette names (fetched at startup)
     fps: 0,
     status: "还没有打开游戏",
+    liveMcp: {
+      online: false,
+      socket: "",
+      error: "",
+      lastReason: "",
+      lastChanged: [],
+      lastAt: 0,
+    } as LiveMcpState,
     held: new Set<string>(),
     pad: 0, // virtual-gamepad bits (OR'd with keyboard)
     // Monotonic input sequence, seeded from wall-clock ms. The backend keeps the
@@ -108,6 +124,12 @@ export const useEmuStore = defineStore("emu", {
     // The game is "active" only on the game page with a ROM loaded. Game
     // controls (transport + saves/cheats/debug + record) show only when active.
     gameActive: (s) => s.mode === "player" && s.view === "main" && s.rom !== null,
+    liveMcpTitle: (s) => {
+      if (s.liveMcp.error) return `Live MCP 错误：${s.liveMcp.error}`;
+      if (!s.liveMcp.online) return "Live MCP 未连接";
+      const reason = s.liveMcp.lastReason ? ` · ${s.liveMcp.lastReason}` : "";
+      return `Live MCP 已连接${reason}`;
+    },
   },
   actions: {
     // The game is shown (and runs) only in player mode on the game page. Session
@@ -213,6 +235,19 @@ export const useEmuStore = defineStore("emu", {
     setRemoveSpriteLimit(enabled: boolean) {
       this.display.removeSpriteLimit = enabled;
       emu.setRemoveSpriteLimit(enabled);
+    },
+    setLiveMcpStatus(payload: { ok?: boolean; socket?: string; error?: string }) {
+      this.liveMcp.online = !!payload.ok;
+      this.liveMcp.socket = payload.socket || this.liveMcp.socket;
+      this.liveMcp.error = payload.ok ? "" : payload.error || "连接失败";
+      this.liveMcp.lastAt = Date.now();
+    },
+    noteLiveMcpUpdate(reason = "emu-mcp", changed: string[] = []) {
+      this.liveMcp.online = true;
+      this.liveMcp.error = "";
+      this.liveMcp.lastReason = reason;
+      this.liveMcp.lastChanged = changed;
+      this.liveMcp.lastAt = Date.now();
     },
     // Fetch the built-in palette list and apply the persisted choice on startup.
     // The core keeps the palette across ROM swaps, so applying once is enough.

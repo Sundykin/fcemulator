@@ -30,6 +30,7 @@ useHaltWatch();
 
 let ideMcpUiUnlisten: UnlistenFn | null = null;
 let emuMcpUiUnlisten: UnlistenFn | null = null;
+let emuMcpStatusUnlisten: UnlistenFn | null = null;
 
 // Esc closes an open session drawer.
 function onEsc(e: KeyboardEvent) {
@@ -54,6 +55,15 @@ onMounted(async () => {
       }
     },
   );
+  emuMcpStatusUnlisten = await listen<{ ok?: boolean; socket?: string; error?: string }>(
+    "emu-mcp-status",
+    (e) => {
+      store.setLiveMcpStatus(e.payload || {});
+    },
+  );
+  emuApi.emuMcpStatus()
+    .then((status) => store.setLiveMcpStatus(status))
+    .catch((e) => store.setLiveMcpStatus({ ok: false, error: String(e) }));
   emuMcpUiUnlisten = await listen<{
     reason?: string;
     changed?: string[];
@@ -61,6 +71,7 @@ onMounted(async () => {
   }>("emu-mcp-updated", (e) => {
     const changed = e.payload?.changed || [];
     const extra = e.payload?.extra || {};
+    store.noteLiveMcpUpdate(e.payload?.reason || "emu-mcp", changed);
     if (changed.includes("rom") && extra.rom) {
       store.romPath = extra.romPath || "";
       store.onLoaded(extra.rom);
@@ -95,6 +106,7 @@ onMounted(async () => {
 onUnmounted(() => {
   ideMcpUiUnlisten?.();
   emuMcpUiUnlisten?.();
+  emuMcpStatusUnlisten?.();
   window.removeEventListener("keydown", onEsc);
 });
 </script>

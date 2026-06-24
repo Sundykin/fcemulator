@@ -12,11 +12,13 @@ use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Manager};
 
 pub const SOCKET_PATH: &str = "/tmp/fc-tauri-emu-mcp.sock";
 const PROTOCOL_VERSION: &str = "2024-11-05";
+static MCP_ONLINE: AtomicBool = AtomicBool::new(false);
 
 struct Tool {
     name: &'static str,
@@ -140,6 +142,7 @@ pub fn start(app: AppHandle) {
         let listener = match UnixListener::bind(&socket) {
             Ok(listener) => listener,
             Err(e) => {
+                MCP_ONLINE.store(false, Ordering::Release);
                 let _ = app.emit(
                     "emu-mcp-status",
                     json!({"ok": false, "error": e.to_string()}),
@@ -147,6 +150,7 @@ pub fn start(app: AppHandle) {
                 return;
             }
         };
+        MCP_ONLINE.store(true, Ordering::Release);
         let _ = app.emit("emu-mcp-status", json!({"ok": true, "socket": SOCKET_PATH}));
         for stream in listener.incoming() {
             match stream {
@@ -160,6 +164,16 @@ pub fn start(app: AppHandle) {
             }
         }
     });
+}
+
+#[tauri::command]
+pub fn emu_mcp_status() -> Value {
+    let ok = MCP_ONLINE.load(Ordering::Acquire);
+    if ok {
+        json!({"ok": true, "socket": SOCKET_PATH})
+    } else {
+        json!({"ok": false, "socket": SOCKET_PATH, "error": "live emulator MCP socket is not bound"})
+    }
 }
 
 fn handle_client(app: AppHandle, slots: Arc<Mutex<SaveSlots>>, stream: UnixStream) {

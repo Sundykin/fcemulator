@@ -26,6 +26,7 @@ const P: Record<string, string> = {
   clock: '<circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 16 14"/>',
   gamepad:
     '<line x1="8" y1="11" x2="12" y2="11"/><line x1="10" y1="9" x2="10" y2="13"/><circle cx="16" cy="10.5" r="1" fill="currentColor" stroke="none"/><circle cx="18" cy="13" r="1" fill="currentColor" stroke="none"/><path d="M7.5 7h9a4 4 0 0 1 3.9 3.1l1 4.3A2.5 2.5 0 0 1 16.9 17l-1.4-1.6a2 2 0 0 0-1.5-.7h-4a2 2 0 0 0-1.5.7L7.1 17a2.5 2.5 0 0 1-4.5-2.6l1-4.3A4 4 0 0 1 7.5 7z"/>',
+  plug: '<path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M6 8h12v4a6 6 0 0 1-12 0z"/>',
   volume: '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a8 8 0 0 1 0 14"/>',
   mute: '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="22" y1="9" x2="16" y2="15"/><line x1="16" y1="9" x2="22" y2="15"/>',
   star: '<polygon points="12 2 15 9 22 9.3 16.5 13.8 18.5 21 12 16.8 5.5 21 7.5 13.8 2 9.3 9 9"/>',

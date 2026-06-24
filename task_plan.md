@@ -1,214 +1,68 @@
-# Task Plan: NES Hardware Accuracy Pass
+# Task Plan: Creative IDE Engine Maturity
 
 ## Goal
-Improve emulator precision for APU, PPU, and related NES hardware by using the repository's accuracy test ROMs to identify and fix high-value issues without breaking timing invariants.
+Evolve the fc-tauri studio into a mature NES game-development IDE engine. The target experience is continuous project/resource/map/music workflows, comfortable editing controls, and editors that fill their available workspace instead of using tiny native-pixel canvases.
 
 ## Current Phase
-Phase 17: Mapper compatibility gap closure
+Phase 1: UX inventory and first resizing/workflow pass
 
 ## Phases
 
-### Phase 1: Inventory & Baseline
-- [x] Inventory available test ROMs and key hardware modules
-- [x] Identify existing CLI test commands and expected protocols
-- [x] Document findings in findings.md
+### Phase 1: UX Inventory And Workspace Sizing
+- [x] Confirm worktree and branch state
+- [x] Inspect existing IDE layout and editor components
+- [x] Confirm live emulator MCP is hosted inside the Tauri process and drives the visible `EmuState`
+- [x] Identify the highest-value small implementation slice for this turn
+- [x] Implement adaptive workspace behavior for at least one painful editor surface
 - **Status:** complete
 
-### Phase 2: Baseline Test Run
-- [x] Run Rust unit tests and build the CLI
-- [x] Run representative CPU/PPU/APU/mapper ROM suites
-- [x] Record pass/fail output in progress.md
-- **Status:** complete
+### Phase 2: Project And Resource Flow
+- [ ] Make project creation/opening/resource discovery feel continuous
+- [ ] Make map-to-CHR binding explicit, visible, and recoverable in the map workflow
+- [ ] Make build/run/preview feedback always visible when relevant
+- **Status:** pending
 
-### Phase 3: Failure Analysis
-- [x] Group failures by likely hardware area
-- [x] Inspect relevant core code paths
-- [x] Choose low-risk accuracy fixes with strong test coverage
-- **Status:** complete
+### Phase 3: Map Editor Comfort
+- [ ] Ensure map canvas uses the full parent work area with fit/fill behavior
+- [ ] Improve pan/zoom, selection, palette placement, and layer feedback
+- [ ] Verify editing still writes the same map output format
+- **Status:** pending
 
-### Phase 4: Implementation
-- [x] Apply targeted core changes
-- [x] Keep fc-core IO-free and preserve bus tick ordering
-- [x] Avoid per-game hacks
-- **Status:** complete
+### Phase 4: CHR Resource Editor Comfort
+- [ ] Make the zoom editor and sheet browser responsive to available space
+- [ ] Improve tile selection, palette editing, and drawing ergonomics
+- [ ] Verify CHR encoding output is unchanged
+- **Status:** pending
 
-### Phase 5: Verification & Handoff
-- [x] Re-run targeted ROMs and broad regression checks
-- [x] Update findings and progress
-- [x] Summarize changes, tests, and remaining precision gaps
-- **Status:** complete
+### Phase 5: Music Editor Comfort
+- [ ] Make pattern and piano-roll views use full panel height/width
+- [ ] Improve navigation, preview, undo, and effect editing ergonomics
+- [ ] Verify tracker save/render/export still work
+- **Status:** pending
 
-### Phase 6: PPU Open-Bus Decay
-- [x] Reproduce `ppu_open_bus` failure
-- [x] Implement PPU decay-register timing and per-register refresh masks
-- [x] Verify target ROM and timing regressions
-- **Status:** complete
-
-### Phase 7: APU Reset State
-- [x] Add `$6000=$81` reset handling to the CLI test runner
-- [x] Model APU reset/power frame-counter state
-- [x] Verify `apu_reset` and broad timing regressions
-- **Status:** complete
-
-### Phase 8: CPU Reset Semantics
-- [x] Reproduce `cpu_reset/registers` failure
-- [x] Separate CPU power-on state from soft-reset behavior
-- [x] Verify reset ROMs and broad regressions
-- **Status:** complete
-
-### Phase 9: High-risk CPU IRQ/DMA timing
-- [x] Replace step-boundary IRQ/NMI simplification with explicit instruction poll points
-- [x] Preserve MMC3 software PPUADDR A12 behavior while improving CPU interrupt tests
-- [x] Verify `cpu_interrupts_v2`, `mmc3_test`, APU, PPU, and CPU timing suites
-- **Status:** complete
-
-### Phase 10: PAL APU frame sequencer timing
-- [x] Reproduce PAL APU frame timing failure
-- [x] Replace NTSC-only frame sequencer event constants with region-selected timing
-- [x] Verify PAL APU screen/scorer ROMs plus NTSC APU and broad timing regressions
-- **Status:** complete
-
-### Phase 11: PAL 2A07 DMC/noise timing and DMC read-conflict behavior
-- [x] Identify remaining NTSC-only APU timer tables after PAL frame timing fix
-- [x] Add region-selected PAL 2A07 DMC rate and noise period tables
-- [x] Model PAL 2A07 as not having the NTSC DMC extra-read conflict
-- [x] Verify with unit tests, targeted ROMs, PAL screenshots, and broad regressions
-- **Status:** complete
-
-### Phase 12: PAL/Dendy CPU-to-PPU clock ratio
-- [x] Identify fixed NTSC 3:1 PPU stepping in `Bus::tick`
-- [x] Replace fixed dot stepping with region-selected exact rational stepping
-- [x] Verify PAL APU screenshots and broad NTSC timing regressions
-- **Status:** complete
-
-### Phase 13: MMC5 mapper support
-- [x] Inventory local MMC5 test ROMs and required registers
-- [x] Add mapper/bus/PPU interfaces for MMC5 expansion area and nametable behavior
-- [x] Implement practical MMC5 subset: PRG/CHR banks, ExRAM, fill mode, multiplication, scanline IRQ
-- [x] Verify `mmc5test`, `mmc5test_v2`, `exram`, plus mapper/PPU/APU/CPU regressions
-- **Status:** complete
-
-### Phase 14: Mapper module organization
-- [x] Inspect current mapper file size and external API references
-- [x] Split mapper implementations into focused submodules while preserving `crate::mapper` API
-- [x] Verify build/tests and mapper ROM regressions
-- **Status:** complete
-
-### Phase 15: Enhanced sprite display planning
-- [x] Research NES hardware sprite limit and emulator enhancement precedent
-- [x] Inspect current PPU sprite evaluation/rendering structure
-- [x] Draft implementation plan that preserves hardware-accurate default behavior
-- **Status:** complete
-
-### Phase 16: Chinese RPG mapper compatibility and accuracy
-- [x] Reproduce `10302_吞食天地2.nes` gray-screen failure and identify whether it is PRG banking, CHR-RAM, IRQ, or reset/header behavior
-- [x] Reproduce `10306_第二次超级机器人大战.nes` dialogue-text failure beyond the title/menu screen
-- [x] Implement clean mapper/board behavior without ROM-name hacks
-- [x] Verify both ROMs visually plus mapper/core regression suites
-- **Status:** in_progress
-
-### Phase 17: Mapper compatibility gap closure
-- [x] Compare current mapper support against FCEUX, FCEUmm, Mesen2, and Nestopia
-- [x] Write a prioritized mapper gap checklist
-- [x] Implement first low-risk common mapper batch: 72, 79, 80, 82
-- [x] Record reference source locations for the new mapper batch
-- [x] Add mapper architecture hooks and next batch: VRC1 mapper 75, MMC3-derived mapper 76, JY mapper 91 with cached HBlank IRQ clocking
-- [x] Team-mode parallel mapper pass: Worker A VRC/Konami, Worker B MMC3-derived, Worker C mapper 253/unlicensed, PM integrates and validates
-- [x] Add mapper 116 / Someri Team SL12 composite VRC2/MMC3/MMC1 board
-- [x] Add mapper 45 / BMC-Hero as an MMC3 outer-bank serial-register variant
-- [x] Add mapper 64 / Tengen RAMBO-1 with CPU/PPU IRQ modes
-- [x] Add mapper 119 / TQROM with MMC3 CHR-ROM/CHR-RAM bank selection
-- [x] Add mapper 95 / Namco 108 Rev. B with CHR-register-controlled nametable pages
-- [x] Add mapper 118 / TxSROM with MMC3 IRQ plus CHR bit7 nametable pages
-- [x] Add mapper 206 / Namco 108 subset and mapper 207 / Taito X1-005 alternate mirroring
-- [x] Add low-risk mapper batch 192 / 195 / 228 / 232 / 255
-- [x] Add mapper 68 / Sunsoft-4 with nametable-to-CHR architecture hook
-- [x] Add low-risk mapper batch 122 / 133 / 149
-- [x] Add low-risk mapper batch 144 / 146 / 148
-- [x] Refactor MMC3 write helpers and add first-pass MMC3 protocol variants 49/114/115/121
-- [x] Continue low-risk latch batch 154/155/108 after current MMC3 variant verification
-- [x] Add low-risk mapper batch 156 / 166 / 167
-- [x] Add mechanical mapper batch 185 / 189 / 193
-- [x] Add MMC3 mechanical mapper batch 191 / 245
-- [x] Add MMC3 protocol variant mapper 196
-- [x] Add MMC3 protected WRAM mapper 254
-- [x] Add MMC3 protection/PRG32 mapper batch 187 / 208
-- [x] Add IRQ/variant mapper batch 48 / 158
-- [x] Add mechanical mapper batch 188 / 197 / 198
-- [x] Add architecture-reuse mapper batch 35 / 221
-- [x] Add PPU-bus latch mapper 96
-- [x] Add MMC3 expansion-register mapper 12
-- [x] Add latch/NSF paging mapper batch 8 / 31
-- [x] Add Action 53 mapper 28
-- [x] Add Sealie Computing mapper 29
-- [x] Add 11-in-1 Ball Games mapper 51
-- [x] Add latch/special mapper batch 81 / 104
-- [x] Add special mapper batch 175 / 177
-- [x] Add MMC3 address-line protocol mapper 250
-- [x] Add MMC3 outer-block mapper 205
-- [x] Add MMC3 security mapper 249
-- **Status:** in_progress
-
-### Phase 18: Mapper board compatibility layer
-- [x] Design a reference-emulator-style board layer for fast mapper translation
-- [x] Add initial reusable bank mapping helpers for PRG/CHR page index translation
-- [x] Extend bank mapping helpers for mixed ROM/RAM windows
-- [x] Add CPU address handler helpers for expansion, low, and high mapper ranges
-- [ ] Extract reusable IRQ units: MMC3 A12, CPU counter, HBlank, VRC/RAMBO-style counters
-- [ ] Standardize reset/power hooks, mapper register reads, side effects, and open-bus paths
-- [ ] Route expansion audio boards through a shared mapper audio interface
-- [ ] Convert the next mapper batch through the new layer before expanding the long tail
+### Phase 6: Integrated IDE Verification
+- [x] Run type checks and Tauri backend checks
+- [x] Build frontend production bundle
+- [x] Use the Tauri UI/MCP to verify actual editor geometry and workflow behavior
+- [ ] Commit coherent increments
 - **Status:** in_progress
 
 ## Key Questions
-1. Which repository test ROMs currently fail deterministically?
-2. Are failures concentrated in APU frame/DMC timing, PPU NMI/scroll/sprite timing, mapper IRQs, or CPU/bus behavior?
-3. Which fix can improve accuracy without destabilizing the lock-step CPU/PPU/APU clock invariant?
+1. Which editor currently wastes the most available panel area or forces tiny pixel editing?
+2. Where is map-to-CHR binding surfaced, and does opening a map automatically load/show the right CHR resource?
+3. Which layout constraints in `IdeView.vue` or panel CSS make editors cramped inside Dockview?
+4. Can we improve ergonomics without changing project file formats or generated ROM semantics?
 
 ## Decisions Made
 | Decision | Rationale |
 |----------|-----------|
-| Use test ROM failures to prioritize fixes | Accuracy work needs observable regressions and confirmations, not speculative timing edits |
-| Prefer small core changes with targeted ROM verification | NES timing is tightly coupled; low-blast-radius fixes are safer |
-| Leave remaining MMC3/DMC DMA/PPU edge failures for a follow-up pass | Current pass already fixed CPU/APU/NMI issues with clear ROM wins; the rest needs deeper PPU/DMA/mapper timing work |
-| Do not use global IRQ delay or mapper-side IRQ delay as the next fix | Prior experiments moved the MMC3 scanline failure but broke software PPUADDR A12 tests; the fix needs CPU poll-point accuracy |
-| Keep Dendy on the existing NTSC APU frame-sequencer timing until a Dendy-specific test target exists | This pass is backed by PAL APU ROMs; changing Dendy at the same time would add an untested variable |
-| Keep Dendy on NTSC DMC/noise tables and NTSC-style DMC read conflict | No Dendy-specific local test target was found; the new evidence is specifically PAL 2A07 behavior |
-| Use PAL/Dendy 16:5 CPU-to-PPU ratio in `Bus::tick` | The project spec requires PAL 5:16 CPU/PPU timing; a Bus phase accumulator preserves per-cycle CPU/APU/DMA semantics while eliminating PAL PPU drift |
-| Implement MMC5 in scoped layers instead of a monolith | Local tests need `$5000..$5FFF`, ExRAM, PRG/CHR banking, fill mode, and simple IRQ/multiply; audio and split-screen can remain future work until test evidence demands it |
-| Keep MMC5 audio and split-screen out of the initial MMC5 patch | Local ROM evidence exercised ExRAM/CHR/nametable/multiply/IRQ status; audio and split-screen need dedicated ROM evidence before adding more timing surface |
-| Split mapper implementations by chip/family behind the existing `Mapper` enum | `mapper.rs` has grown to ~1300 lines; keeping the public facade stable while moving implementations to submodules makes future mapper additions localized |
-| Treat sprite flicker reduction as an optional video enhancement, not a core accuracy change | NES hardware selects only the first 8 sprites per scanline and games/tests can rely on this; enhanced display must default off and avoid changing CPU-visible PPU status/timing |
-| Prioritize mapper gaps by reference-project overlap before numeric order | FCEUmm/FCEUX include a huge NES 2.0 long tail; implementing common <=255 and Mesen2-covered gaps gives better compatibility per change |
-| Add HBlank mapper clocking as a cached capability instead of a direct per-dot dispatch | Mapper 91 and similar FCEUX `GameHBIRQHook` boards need scanline-synchronous IRQs, but ordinary mappers should keep the PPU dot hot path gated by a cached bool |
-| Fold MMC3-derived mapper 76 into `Mmc3` variant layout instead of a standalone clone | Reusing MMC3 PRG/IRQ behavior keeps future MMC3 variants from copying timing-sensitive logic |
-| Run mapper team mode through disjoint ownership and PM integration | VRC/Konami, MMC3-derived, and Waixing/253 touched separable modules; PM-side docs/tests keep parallel changes from landing as unreviewed WIP |
-| Model Mapper 45 as an MMC3 outer-bank variant | References agree its PRG/CHR wrapping and low-register serial latch sit above normal MMC3 IRQ/register behavior, so reusing the existing MMC3 core keeps A12 timing centralized |
-| Implement Mapper 64 as an independent RAMBO-1 ASIC | It has MMC3-like PRG/CHR banking, but its register set and selectable CPU/A12 IRQ source differ enough that a standalone module is cleaner and can later host mapper 158 |
-| Add a nametable-to-CHR mapper hook for Mapper 68 | Sunsoft-4 maps nametable fetches to CHR backing memory, so `MapperOps::nametable_chr_index` lets mappers return a CHR byte index while `Cartridge` still owns CHR-ROM/RAM access |
-| Generalize MMC3 CHR-RAM windows for mapper 119 | TQROM needs a bank range mapped to 8KB CHR-RAM; this also prepares later MMC3_ChrRam variants while preserving mapper 74/194 behavior |
-| Implement Mapper 95 with a small Namco108 variant instead of overloading Namco118 | Mapper 95 masks CHR registers differently and uses CHR register high bits for nametable pages, while mapper 88 keeps fixed header mirroring |
-| Implement Mapper 118 as an MMC3 nametable-layout variant | TxSROM keeps normal MMC3 PRG and A12 IRQ behavior, but disables ordinary A000 mirroring and routes CHR bank bit7 into per-nametable CIRAM A10 |
-| Land mapper 206/207 before deeper architecture work | Both boards reuse already-local Namco108/Taito X1-005 shapes and do not require new CPU/PPU/Cartridge hooks, so they are a clean stable batch before 68 and MMC3 protocol variants |
-| Split mapper expansion into low-risk batches and architecture batches | 192/195/228/232/255 fit existing hooks, while 68 needs nametable-to-CHR access and 114/115/121 should follow MMC3 helper refactoring |
-| Use team-mode research to choose the next mapper batch | Low-risk latch candidates start with 149/122/133; MMC3 candidates should start with helper refactoring then 49; external-device boards such as 99/111/157/188/209/211 should wait for dedicated peripheral hooks |
-| Build a board compatibility layer before pushing the long tail | Reference mapper code is short because mature emulators hide handler registration, bank setup, IRQ units, reset hooks, and side-effect reads in their board framework; reproducing that layer should make future mapper work mostly mechanical |
-| Start CPU handler work as private `Cartridge` helpers | The existing `MapperOps` methods already cover expansion, low, and high ranges; centralizing priority/order first reduces later mapper glue without widening the public trait too early |
+| Continue in `/Users/sunmeng/workspace/fc-creative-mode` on `codex/creative-mode-simple-game` | User explicitly requested worktree continuation and current branch contains creative IDE work |
+| Treat editor usable-area adaptation as a first-class requirement | User called out tiny raw-size editing as a systemic problem across map/resource/music editors |
+| Prefer frontend/layout improvements first, preserving backend formats | The pain is mostly interaction and workspace sizing; backend map/CHR/tracker formats already exist and should stay stable |
+| Keep emulator MCP embedded in Tauri and surface it in the player UI | User specifically wants MCP to operate the visible Tauri emulator, not a hidden core; UI status makes that connection observable |
 
 ## Errors Encountered
 | Error | Attempt | Resolution |
 |-------|---------|------------|
-| Mapper91 unit test expected fixed banks 62/63 | First mapper91 test assumed FCEUX `~1/~0` fixed PRG banks for all paths | Corrected the test to match the implemented FCEUmm submapper-aware sync path: fixed `0x0E/0x0F` plus outer bank |
-| Cargo rejected multiple test filters | Tried to run three mapper capability tests as separate positional filters in one command | Reran `cargo test -p fc-core mapper::tests -- --nocapture`, which covers all mapper facade/capability tests |
-| Duplicate `tests` module in `basic/core.rs` | Added ColorDreams tests next to an existing BF9096 test module | Moved ColorDreams tests into the existing module and reran targeted mapper tests |
-| Cargo rejected multiple test filters | Tried to run `mapper::bank`, `mapper::basic::core::tests`, and `mapper::basic::latch::sachen::tests` in one command | Split into three `cargo test` invocations; all passed |
-| New `Mmc3A12Irq` unit tests failed | First assertions expected IRQ on the reload edge instead of the next valid A12 clock, and zero-reload suppression setup never passed through counter 1 | Corrected tests to follow MMC3 reload/decrement edge order; migrated MMC3 tests remained green |
-| Cargo rejected multiple test filters | Tried to run mapper191 and mapper245 tests as two positional filters in one command | Reran `cargo test -p fc-core mapper::mmc3::tests -- --nocapture`, which covers both new tests |
-| Mapper191 test failed to resolve `ChrAccess` | Used `super::ChrAccess` inside the `mmc3.rs` test module | Imported `crate::mapper::ChrAccess` in the test module and reran MMC3 tests |
-| Mapper196 test expected ordinary `$8004/$8005` pair | First assertion used an address pair that remaps to MMC3 command writes differently than intended | Corrected the test to use `$8000/$8002`, which exercises mapper196's address-line remap into normal select/data writes |
-| Mapper254 compile failed for non-exhaustive `Mmc3OuterBank` match | Added a new outer-bank variant but missed the plain PRG wrapper arm | Added `Mapper254` to `outer_prg_bank()` as pass-through MMC3 PRG behavior |
-| Mapper208 initial PRG bank decoded incorrectly | First constructor used compressed latch value `3` while the implementation decoded FCEUmm-style raw register bits | Switched the default latch to raw `0x11`, which decodes to PRG32 bank 3 and matches the reference power state |
-
-## Notes
-- Preserve the invariant: CPU memory accesses tick the bus before the access; each CPU cycle advances PPU by 3 dots and APU by 1 cycle.
-- Do not revert unrelated fc-tauri IDE changes already present in the working tree.
+| Existing planning files described old hardware-accuracy objective | Initial session catchup found tracked `task_plan.md/findings.md/progress.md` with mapper/accuracy content | Replaced planning memory with current Creative IDE maturity objective |
+| Initial runtime ROM path used the worktree root | `emu_load_rom` failed for `/Users/sunmeng/workspace/fc-creative-mode/roms/SuperMarioBro.nes` because this worktree has no `roms/` directory | Retried with `/Users/sunmeng/workspace/fc/roms/SuperMarioBro.nes`; live MCP loaded the ROM into the visible player |

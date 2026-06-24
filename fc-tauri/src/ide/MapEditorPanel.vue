@@ -21,6 +21,7 @@ const brushSize = ref(1);
 const resizeW = ref(32);
 const resizeH = ref(30);
 const showGrid = ref(true);
+const resourcePanelOpen = ref(true);
 const hover = ref<{ x: number; y: number } | null>(null);
 const selection = ref<MapRect | null>(null);
 const tileClipboard = ref<{ w: number; h: number; tiles: number[] } | null>(null);
@@ -62,6 +63,18 @@ const displayScaleLabel = computed(() =>
     ? `适配 ${effectiveCellPx.value}px/格`
     : `${zoom.value}x`
 );
+const canvasSize = computed(() => {
+  const m = map.value;
+  const size = effectiveCellPx.value;
+  return m ? { w: m.w * size, h: m.h * size } : { w: 0, h: 0 };
+});
+const mapFitsViewport = computed(
+  () =>
+    !!map.value &&
+    canvasSize.value.w <= mapViewport.value.w &&
+    canvasSize.value.h <= mapViewport.value.h,
+);
+const boundChrLabel = computed(() => boundChrPath.value || "未绑定 CHR");
 
 const canvas = ref<HTMLCanvasElement | null>(null);
 const mapWrap = ref<HTMLElement | null>(null);
@@ -681,6 +694,15 @@ function pickTile(ev: MouseEvent) {
   }
 }
 
+function toggleResourcePanel() {
+  resourcePanelOpen.value = !resourcePanelOpen.value;
+  nextTick(() => {
+    syncMapViewport();
+    draw();
+    drawTilePalette();
+  });
+}
+
 async function onChrChange(e: Event) {
   const path = (e.target as HTMLSelectElement).value;
   if (!path) return;
@@ -950,14 +972,28 @@ onBeforeUnmount(() => {
         <button class="iconbtn" title="重做" :disabled="!hasRedo" @click="redo">
           <Icon name="redo" :size="15" />
         </button>
+        <button
+          class="iconbtn"
+          :class="{ on: resourcePanelOpen }"
+          title="图块资源"
+          @click="toggleResourcePanel"
+        >
+          <Icon name="library" :size="15" />
+        </button>
         <button class="t" title="清空当前层" @click="clearLayer">清层</button>
         <div class="grow" />
         <span class="meta">{{ brushLabel }} · {{ map.w }}×{{ map.h }}</span>
         <span v-if="store.mapDirty" class="dirty">●未保存</span>
         <button class="t save" @click="store.saveMap()">保存</button>
       </div>
+      <div class="contextbar">
+        <span class="crumb"><Icon name="map" :size="14" />{{ store.map?.path }}</span>
+        <span class="crumb bindstate" :class="{ missing: !boundChrPath }"><Icon name="library" :size="14" />{{ boundChrLabel }}</span>
+        <span v-if="selection" class="crumb">选区 {{ selectionLabel(selection) }}</span>
+        <span v-if="hover" class="crumb">坐标 {{ hover.x }}, {{ hover.y }}</span>
+      </div>
       <div class="body">
-        <div ref="mapWrap" class="mapwrap" :class="{ panning: isPanning, panready: isSpaceDown }">
+        <div ref="mapWrap" class="mapwrap" :class="{ panning: isPanning, panready: isSpaceDown, centered: mapFitsViewport }">
           <canvas
             ref="canvas"
             class="mapcv"
@@ -969,16 +1005,15 @@ onBeforeUnmount(() => {
             @contextmenu.prevent
           />
         </div>
-        <div class="side">
+        <div v-if="resourcePanelOpen" class="side">
           <div class="sidetitle">图块</div>
           <div v-if="!chr" class="resource-empty">选择或打开一个 .chr</div>
           <div v-else class="tilebox">
             <canvas ref="tilePalette" class="tpcv" @click="pickTile" />
           </div>
           <div class="meta">选中图块 {{ selTile }}</div>
-          <div class="meta" v-if="selection">选区 {{ selectionLabel(selection) }}</div>
+          <div class="meta">绑定 {{ boundChrLabel }}</div>
           <div class="meta" v-if="tileClipboard">剪贴板 {{ tileClipboard.w }}×{{ tileClipboard.h }}</div>
-          <div class="meta" v-if="hover">坐标 {{ hover.x }}, {{ hover.y }}</div>
           <div class="tip">{{ toolName }} · {{ brushLabel }}</div>
         </div>
       </div>
@@ -1008,20 +1043,26 @@ onBeforeUnmount(() => {
 .grow { flex: 1; min-width: 12px; }
 .iconbtn { width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--border); background: var(--surface); color: var(--text-dim); border-radius: var(--radius-sm); cursor: pointer; flex: 0 0 auto; }
 .iconbtn:hover { color: var(--text); border-color: var(--border-strong); }
+.iconbtn.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
 .iconbtn:disabled { opacity: 0.4; cursor: default; }
 .attrsel { font-size: 12px; color: var(--text-dim); display: flex; align-items: center; gap: 4px; }
 .ab { width: 24px; height: 24px; border: 1px solid var(--border); background: var(--surface); color: var(--text-dim); border-radius: 5px; cursor: pointer; }
 .ab.on { border-color: var(--accent); color: var(--accent); }
 .dirty { color: var(--accent); font-size: 12px; white-space: nowrap; }
-.body { flex: 1; display: flex; gap: 12px; padding: 12px; min-height: 0; overflow: hidden; }
-.mapwrap { flex: 1; overflow: auto; border: 1px solid var(--border); border-radius: 6px; background: #05070d; }
+.contextbar { min-height: 32px; padding: 6px 12px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border); background: rgba(5, 7, 13, 0.28); overflow: hidden; }
+.crumb { min-width: 0; max-width: 36%; height: 20px; padding: 0 8px; display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--border); border-radius: 5px; color: var(--text-dim); font-size: 11.5px; font-family: var(--font-mono, monospace); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.crumb.bindstate { color: var(--text); border-color: rgba(124, 92, 255, 0.36); background: rgba(124, 92, 255, 0.1); }
+.crumb.missing { color: var(--warning, #fbbf24); border-color: rgba(251, 191, 36, 0.38); background: rgba(251, 191, 36, 0.09); }
+.body { flex: 1; position: relative; padding: 12px; min-height: 0; overflow: hidden; }
+.mapwrap { width: 100%; height: 100%; overflow: auto; border: 1px solid var(--border); border-radius: 6px; background: #05070d; }
+.mapwrap.centered { display: flex; align-items: center; justify-content: center; }
 .mapwrap.panning, .mapwrap.panready { cursor: grab; }
 .mapwrap.panning { cursor: grabbing; }
 .mapcv { image-rendering: pixelated; cursor: crosshair; display: block; }
 .mapwrap.panning .mapcv, .mapwrap.panready .mapcv { cursor: grab; }
-.side { width: 268px; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+.side { position: absolute; top: 18px; right: 18px; bottom: 18px; width: clamp(224px, 28%, 336px); display: flex; flex-direction: column; gap: 8px; min-height: 0; padding: 10px; border: 1px solid var(--border); border-radius: 7px; background: rgba(10, 15, 28, 0.94); box-shadow: 0 16px 44px rgba(0, 0, 0, 0.35); backdrop-filter: blur(10px); }
 .sidetitle { font-size: 12px; color: var(--text-dim); }
-.tilebox { overflow: auto; border: 1px solid var(--border); border-radius: 6px; background: #05070d; max-height: 55%; }
+.tilebox { flex: 1; min-height: 0; overflow: auto; border: 1px solid var(--border); border-radius: 6px; background: #05070d; }
 .tpcv { image-rendering: pixelated; cursor: pointer; display: block; }
 .resource-empty { min-height: 96px; border: 1px dashed var(--border); border-radius: 6px; display: flex; align-items: center; justify-content: center; color: var(--text-mute); font-size: 12px; }
 .meta { font-size: 12px; color: var(--text-dim); font-family: var(--font-mono, monospace); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

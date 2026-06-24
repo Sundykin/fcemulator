@@ -55,6 +55,14 @@ const store = useEmuStore();
     </template>
 
     <div class="right">
+      <span
+        class="mcpstat"
+        :class="{ on: store.liveMcp.online && !store.liveMcp.error, error: !!store.liveMcp.error }"
+        :title="store.liveMcpTitle"
+      >
+        <Icon name="plug" :size="13" />
+        <b>MCP</b>
+      </span>
       <span class="stat">Mapper <b>{{ store.rom ? store.rom.mapper : 0 }}</b></span>
       <span class="stat">FPS: <b class="fps">{{ store.fps }}</b></span>
     </div>
@@ -147,5 +155,31 @@ const store = useEmuStore();
 }
 .stat b.fps {
   color: var(--green);
+}
+.mcpstat {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  color: var(--text-mute);
+  background: rgba(255, 255, 255, 0.02);
+}
+.mcpstat b {
+  font-size: 11px;
+  font-weight: 600;
+  color: currentColor;
+}
+.mcpstat.on {
+  color: var(--green);
+  border-color: rgba(57, 217, 138, 0.42);
+  background: rgba(57, 217, 138, 0.08);
+}
+.mcpstat.error {
+  color: var(--danger);
+  border-color: rgba(255, 92, 115, 0.42);
+  background: rgba(255, 92, 115, 0.08);
 }
 </style>

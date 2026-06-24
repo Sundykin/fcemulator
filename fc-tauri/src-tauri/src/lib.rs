@@ -57,6 +57,7 @@ pub fn run() {
             emu::set_volume,
             emu::set_remove_sprite_limit,
             emu::runtime_stats,
+            emu_mcp::emu_mcp_status,
             emu::list_palettes,
             emu::set_palette,
             emu::palette_preview,
