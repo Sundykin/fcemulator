@@ -36,6 +36,7 @@ Tauri IDE 启动时会同时启动一个语义级 MCP socket:`/tmp/fc-tauri-ide-
 - `ide_read_chr` / `ide_write_chr` 写 CHR 像素资源。
 - `ide_read_map` / `ide_write_map` / `ide_bind_map_chr` 写地图和资源绑定。
 - `ide_read_song` / `ide_write_song` 写 tracker 乐曲资源。
+- `ide_open_resource` 打开并聚焦源码/CHR/地图/音乐编辑器,让智能体写完资源后直接把真实 IDE 切到对应上下文。
 - `ide_build` / `ide_run` 调用 IDE 构建链并把产物加载进当前预览。
 - `ide_press_buttons` / `ide_read_memory` 对当前预览 ROM 做运行验证。
 

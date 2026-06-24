@@ -89,6 +89,11 @@ const TOOLS: &[Tool] = &[
         schema: r#"{"type":"object","properties":{"path":{"type":"string"},"song":{"type":"object"}},"required":["path","song"]}"#,
     },
     Tool {
+        name: "ide_open_resource",
+        description: "Ask the visible Tauri IDE to open and focus a project resource editor. kind: auto|source|chr|map|music.",
+        schema: r#"{"type":"object","properties":{"path":{"type":"string"},"kind":{"type":"string","enum":["auto","source","chr","map","music"],"default":"auto"}},"required":["path"]}"#,
+    },
+    Tool {
         name: "ide_build",
         description: "Build the active live IDE project through ca65/ld65 and push the result into the Build panel.",
         schema: r#"{"type":"object","properties":{}}"#,
@@ -222,6 +227,7 @@ fn call_tool(app: &AppHandle, name: &str, args: &Value) -> Value {
         "ide_bind_map_chr" => with_result(|| bind_map_chr(app, args)),
         "ide_read_song" => with_result(|| read_song(app, args)),
         "ide_write_song" => with_result(|| write_song(app, args)),
+        "ide_open_resource" => with_result(|| open_resource(app, args)),
         "ide_build" => with_result(|| build_project(app)),
         "ide_run" => with_result(|| run_project(app, args)),
         "ide_press_buttons" => with_result(|| press_buttons(app, args)),
@@ -275,6 +281,29 @@ fn arg_str<'a>(args: &'a Value, key: &str) -> Result<&'a str, String> {
 
 fn arg_u64(args: &Value, key: &str, default: u64) -> u64 {
     args.get(key).and_then(|v| v.as_u64()).unwrap_or(default)
+}
+
+fn infer_resource_kind(path: &str, manifest: &project::ProjectManifest, requested: Option<&str>) -> Result<&'static str, String> {
+    match requested.unwrap_or("auto") {
+        "auto" => {
+            if manifest.sources.iter().any(|p| p == path) || (path.starts_with("src/") && (path.ends_with(".s") || path.ends_with(".asm"))) {
+                Ok("source")
+            } else if manifest.chr.iter().any(|p| p == path) || path.ends_with(".chr") {
+                Ok("chr")
+            } else if manifest.maps.iter().any(|p| p == path) || path.starts_with("map/") && path.ends_with(".bin") {
+                Ok("map")
+            } else if manifest.music.iter().any(|p| p == path) || path.ends_with(".song.json") {
+                Ok("music")
+            } else {
+                Ok("source")
+            }
+        }
+        "source" => Ok("source"),
+        "chr" => Ok("chr"),
+        "map" => Ok("map"),
+        "music" => Ok("music"),
+        other => Err(format!("未知资源类型 {other}")),
+    }
 }
 
 fn emit_refresh(app: &AppHandle, reason: &str, changed: &[&str], extra: Value) {
@@ -490,6 +519,25 @@ fn write_song(app: &AppHandle, args: &Value) -> Result<Value, String> {
         "patterns": song.patterns.len(),
         "order": song.order.len(),
     }))
+}
+
+fn open_resource(app: &AppHandle, args: &Value) -> Result<Value, String> {
+    let root = active_root(app)?;
+    let path = arg_str(args, "path")?;
+    let resolved = resolve(&root, path)?;
+    if !resolved.is_file() {
+        return Err(format!("资源不存在: {path}"));
+    }
+    let manifest = project::load_manifest(&root)?;
+    let requested = args.get("kind").and_then(|v| v.as_str());
+    let kind = infer_resource_kind(path, &manifest, requested)?;
+    emit_refresh(
+        app,
+        "resource-open",
+        &["project", "resource"],
+        json!({"root": root.to_string_lossy(), "path": path, "kind": kind}),
+    );
+    Ok(json!({"path": path, "kind": kind}))
 }
 
 fn build_project(app: &AppHandle) -> Result<Value, String> {

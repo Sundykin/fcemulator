@@ -137,6 +137,15 @@
 - Runtime verification created `/tmp/fc-preview-focus3-XA5W0W`, ran the demo through the real Tauri IdeView `doRun()`, and observed Preview as the active Dockview panel, `.stage.focused`, hint text `试玩中`, and a visible 438 x 328.5 canvas.
 - Keyboard verification dispatched `ArrowRight` to the focused stage and saw `held=["ArrowRight"]` plus `lastSentInput=128`, then keyup cleared `held` and returned `lastSentInput=0`.
 
+## IDE MCP Visible Resource Focus Findings
+- Before this slice, IDE MCP could mutate project files/resources and run builds, but it had no semantic tool for asking the visible IDE to open the source/CHR/map/music editor that corresponds to an agent-authored resource.
+- `ide_open_resource` now emits an IPC refresh event with `reason=resource-open`, `changed=["project","resource"]`, and the target resource path/kind. The Rust MCP validates that the path is project-relative and exists before notifying the UI.
+- The project store handles `resource-open` through existing editor actions (`openFile`, `openChr`, `openMap`, `openTracker`), so resource focus follows the same Dockview and active-resource state path as user file-tree clicks.
+- `AppShell.vue` now switches the visible Tauri shell to studio mode for IDE MCP project/resource/source/CHR/map/music updates. This keeps the in-process MCP as the programming-agent interface and avoids relying on the `fc-tauri` DOM bridge for normal creative operations.
+- Runtime verification from launcher used only `target/debug/fc ide-mcp` plus the live Tauri bridge for inspection: `ide_new_project`, `ide_write_song`, and rapid `ide_open_resource` calls for source/CHR/map/music switched the shell to studio, mounted editor/tree/CHR/map/tracker panels, and left the final active panel on tracker with active resource `music/open_check.song.json`.
+- The first rapid-open verification exposed an async race: map loading completed after the music event and stole active focus. Queueing `syncFromIdeMcp()` fixed it; the repeat run ended on the requested music resource.
+- A follow-up MCP `ide_build`/`ide_run` succeeded, opened Preview, focused the preview stage, and live `fc emu-mcp` reported the same running mapper 0 ROM with advancing CPU/PPU state.
+
 ## Files To Inspect Next
 - `fc-tauri/src/ide/MapEditorPanel.vue` template/style sections
 - `fc-tauri/src/ide/ChrEditorPanel.vue` template/style sections

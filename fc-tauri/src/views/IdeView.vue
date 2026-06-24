@@ -206,6 +206,13 @@ function showPanel(id: DockPanelId) {
   if (panel) panel.api.setActive();
 }
 
+function focusCurrentCreativePanel() {
+  if (store.activeResource.kind === "chr" && store.chr) showPanel("chr");
+  else if (store.activeResource.kind === "map" && store.map) showPanel("map");
+  else if (store.activeResource.kind === "music" && store.song) showPanel("tracker");
+  else showPanel("editor");
+}
+
 // Toolbar toggle: open the panel if missing, otherwise hide it. The editor is
 // the permanent stage and is never toggled away. "Fixed" only removes the tab's
 // own × — the toolbar is the open/close mechanism for tool panels.
@@ -239,6 +246,11 @@ function onReady(event: DockviewReadyEvent) {
   // Sizing during onReady runs before dockview's first layout pass, so re-apply
   // the explorer width once the layout has settled.
   reassertExplorerWidth();
+  if (store.chr) addPanel(panelSpecs.chr, false);
+  if (store.map) addPanel(panelSpecs.map, false);
+  if (store.song) addPanel(panelSpecs.tracker, false);
+  if (store.focusPreview && emu.rom) addPanel(panelSpecs.preview, false);
+  focusCurrentCreativePanel();
 }
 
 // Bring the editor forward whenever a source file is opened (tree click,

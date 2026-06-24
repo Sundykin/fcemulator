@@ -4,7 +4,7 @@
 Evolve the fc-tauri studio into a mature NES game-development IDE engine. The target experience is continuous project/resource/map/music workflows, comfortable editing controls, and editors that fill their available workspace instead of using tiny native-pixel canvases.
 
 ## Current Phase
-Phase 16: Run Focuses Playable Preview
+Phase 17: IDE MCP Opens Visible Creative Resources
 
 ## Phases
 
@@ -122,6 +122,13 @@ Phase 16: Run Focuses Playable Preview
 - [x] Verify the real Tauri preview stage becomes active and receives controller keys immediately after Run
 - **Status:** complete
 
+### Phase 17: IDE MCP Opens Visible Creative Resources
+- [x] Audit whether IDE MCP can drive the visible editor context without DOM scripting
+- [x] Add a semantic `ide_open_resource` tool for source, CHR, map, and music resources
+- [x] Route MCP resource-open events through Pinia editor actions so Dockview focuses the right panel
+- [x] Verify the real Tauri IDE switches to studio and opens MCP-requested source/CHR/map/music panels
+- **Status:** complete
+
 ## Key Questions
 1. Which editor currently wastes the most available panel area or forces tiny pixel editing?
 2. Where is map-to-CHR binding surfaced, and does opening a map automatically load/show the right CHR resource?
@@ -146,6 +153,7 @@ Phase 16: Run Focuses Playable Preview
 | Project load should land on editable source when one exists | A template or MCP-created game project should be immediately writable; an empty source editor while `src/main.s` exists adds needless friction to the creative loop |
 | Build failures should bring the user directly to the broken source line | The write/build/fix loop is core to making the IDE feel usable for game creation; diagnostics should be actionable without a manual hunt |
 | Running should immediately enter playable preview input | A game IDE should let the user press Run and test controls immediately, without first clicking the preview canvas |
+| IDE MCP should be able to focus the visible creative context | A programming agent should not need the DOM bridge just to show the source/resource it is writing; the in-process MCP should notify the Tauri UI through IPC |
 
 ## Errors Encountered
 | Error | Attempt | Resolution |
@@ -155,3 +163,4 @@ Phase 16: Run Focuses Playable Preview
 | MCP `ide_run` loaded the ROM but Preview stayed unmounted | Phase 9 E2E project showed `window.__emu.rom=game.nes` but no preview canvas because `changed: ["preview"]` did not focus Dockview | Added `focusPreview` state and `IdeView.vue` watcher to open the Preview panel after MCP preview updates |
 | File-tree runtime check initially found no `.tree` DOM | IDE MCP project creation updates project state but leaves the app on the launcher unless a preview run switches to studio | Switched the real Tauri shell to studio with `window.__emu.setMode("studio")` before validating file-tree UI |
 | Tauri runtime initially reported `map/level12.bin` after the patch | The live Vite/HMR instance still had the old `nextAvailablePath()` implementation loaded | Reloaded the Tauri webview, reopened the MCP-created project, and verified the new runtime function returned `map/level2.bin` |
+| Rapid `ide_open_resource` calls ended on the wrong active panel | Source/CHR/map/music opens were emitted in order, but async frontend handlers completed out of order and map focus overwrote the final music request | Serialized IDE MCP frontend sync through a promise queue and re-verified the last resource request wins |

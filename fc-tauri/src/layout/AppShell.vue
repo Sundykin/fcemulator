@@ -47,8 +47,12 @@ onMounted(async () => {
   ideMcpUiUnlisten = await listen<{ reason?: string; changed?: string[]; extra?: { rom?: emuApi.RomInfo; romPath?: string } }>(
     "ide-mcp-updated",
     (e) => {
+      const changed = e.payload?.changed || [];
       const extra = e.payload?.extra;
-      if (e.payload?.changed?.includes("preview") && extra?.rom) {
+      if (changed.some((item) => item === "project" || item === "resource" || item === "source" || item === "chr" || item === "map" || item === "music")) {
+        store.setMode("studio");
+      }
+      if (changed.includes("preview") && extra?.rom) {
         store.romPath = extra.romPath || "";
         store.onLoaded(extra.rom, true);
         store.setMode("studio");

@@ -8,6 +8,7 @@ import * as emu from "../emu";
 // build-updated event listener handle (module-level; non-reactive).
 let buildUnlisten: UnlistenFn | null = null;
 let ideMcpUnlisten: UnlistenFn | null = null;
+let ideMcpSyncQueue: Promise<void> = Promise.resolve();
 
 // Web Audio for tracker preview (module-level; non-reactive).
 let audioCtx: AudioContext | null = null;
@@ -206,6 +207,27 @@ export const useProjectStore = defineStore("project", {
     requestPreviewFocus() {
       this.focusPreview++;
     },
+    resourceKindFor(path: string, requested = "auto"): Exclude<ResourceKind, ""> {
+      if (requested === "source" || requested === "chr" || requested === "map" || requested === "music") return requested;
+      if (this.manifest?.sources.includes(path) || (path.startsWith("src/") && /\.(s|asm)$/i.test(path))) return "source";
+      if (this.manifest?.chr.includes(path) || path.endsWith(".chr")) return "chr";
+      if (this.manifest?.maps.includes(path) || (path.startsWith("map/") && path.endsWith(".bin"))) return "map";
+      if (this.manifest?.music.includes(path) || path.endsWith(".song.json")) return "music";
+      return "source";
+    },
+    async openResource(path: string, kind = "auto") {
+      const resolvedKind = this.resourceKindFor(path, kind);
+      if (resolvedKind === "chr") {
+        await this.openChr(path);
+      } else if (resolvedKind === "map") {
+        await this.openMap(path);
+      } else if (resolvedKind === "music") {
+        await this.openTracker(path);
+      } else {
+        await this.openFile(path, path.split("/").pop() || path);
+      }
+      this.status = `已打开 ${path}`;
+    },
     async openPrimarySource() {
       const path = this.manifest?.sources[0];
       if (!path) return false;
@@ -247,7 +269,7 @@ export const useProjectStore = defineStore("project", {
     async syncFromIdeMcp(
       reason = "ide-mcp",
       root?: string,
-      extra?: { path?: string; map?: string; chr?: string; result?: ide.BuildResult },
+      extra?: { path?: string; map?: string; chr?: string; kind?: string; result?: ide.BuildResult },
       changed: string[] = [],
     ) {
       try {
@@ -261,6 +283,9 @@ export const useProjectStore = defineStore("project", {
         await this.refreshTree();
         if (reason === "project-new" || reason === "project-open") {
           await this.openPrimarySource();
+        }
+        if (reason === "resource-open" && extra?.path) {
+          await this.openResource(extra.path, extra.kind);
         }
         if (extra?.path && changed.includes("source")) {
           const tab = this.tabs.find((t) => t.path === extra.path);
@@ -286,22 +311,26 @@ export const useProjectStore = defineStore("project", {
     },
     async listenIdeMcp() {
       if (ideMcpUnlisten) return;
-      ideMcpUnlisten = await listen<{ reason?: string; changed?: string[]; extra?: unknown }>("ide-mcp-updated", async (e) => {
+      ideMcpUnlisten = await listen<{ reason?: string; changed?: string[]; extra?: unknown }>("ide-mcp-updated", (e) => {
         const reason = e.payload?.reason || "ide-mcp";
         const changed = e.payload?.changed || [];
-        const extra = e.payload?.extra as { root?: string; romPath?: string; path?: string; map?: string; chr?: string; result?: ide.BuildResult } | undefined;
-        await this.syncFromIdeMcp(reason, extra?.root, extra, changed);
-        if (changed.includes("build")) {
-          try {
-            const result = extra?.result;
-            if (result) {
-              this.build = result;
-              if (result.success) this.sourceMap = result.source_map;
+        const extra = e.payload?.extra as { root?: string; romPath?: string; path?: string; map?: string; chr?: string; kind?: string; result?: ide.BuildResult } | undefined;
+        ideMcpSyncQueue = ideMcpSyncQueue
+          .catch(() => {})
+          .then(async () => {
+            await this.syncFromIdeMcp(reason, extra?.root, extra, changed);
+            if (changed.includes("build")) {
+              try {
+                const result = extra?.result;
+                if (result) {
+                  this.build = result;
+                  if (result.success) this.sourceMap = result.source_map;
+                }
+              } catch {
+                /* refreshTree/projectGet already handled the project state */
+              }
             }
-          } catch {
-            /* refreshTree/projectGet already handled the project state */
-          }
-        }
+          });
       });
     },
     async saveManifest() {

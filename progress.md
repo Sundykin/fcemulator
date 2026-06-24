@@ -172,6 +172,20 @@
   - Added short delayed focus retries to survive Dockview layout/focus churn after a panel is created.
   - Runtime verified real Tauri top-level Run opens Preview, focuses the stage, changes the hint to `试玩中`, and accepts `ArrowRight` as controller input immediately.
 
+### Phase 17: IDE MCP Opens Visible Creative Resources
+- **Status:** complete
+- Actions taken:
+  - Audited IDE MCP and found it can write/read/build/run creative resources, but cannot directly ask the visible IDE to open the authored resource without using the Tauri DOM bridge.
+  - Added `ide_open_resource` to the embedded Tauri IDE MCP with `kind=auto|source|chr|map|music`.
+  - The Rust tool validates project-relative paths, infers resource kind from manifest/path when `kind=auto`, and emits a Tauri IPC update event.
+  - Added project-store `openResource()` handling that reuses existing source/CHR/map/tracker open actions, preserving active-resource state and Dockview panel focus behavior.
+  - Updated AppShell so IDE MCP project/resource updates switch the real Tauri shell into studio mode.
+  - Added Dockview onReady restoration so a resource-open event that arrives before studio Dockview mounts still opens the current source/CHR/map/music context.
+  - Fixed rapid resource-open ordering by serializing IDE MCP frontend sync events through a promise queue.
+  - Updated M1/M2 docs to list `ide_open_resource` as the non-DOM way for an agent to focus the creative editor it is working on.
+  - Runtime verified from launcher: IDE MCP created a demo project, wrote a tracker song, opened source/CHR/map/music resources in sequence, and the real Tauri IDE ended in studio mode with tracker active and all creative panels mounted.
+  - Runtime verified follow-up `ide_build`/`ide_run`: `build/game.nes` loaded into visible Preview, Preview stage was focused, and live emulator MCP read the same running ROM state.
+
 ## Test Results
 | Test | Result |
 |------|--------|
@@ -250,6 +264,14 @@
 | `npm --prefix fc-tauri run build` after preview-focus change | PASS, with existing Vite large chunk warning |
 | `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml` after preview-focus change | PASS |
 | `git diff --check` after preview-focus change | PASS |
+| `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml` after IDE MCP open-resource change | PASS |
+| `npm --prefix fc-tauri run build` after IDE MCP open-resource change | PASS, with existing Vite large chunk warning |
+| `git diff --check` after IDE MCP open-resource change | PASS |
+| live `fc-ide` `tools/list` includes `ide_open_resource` | PASS |
+| live `fc-ide` `ide_open_resource` source/CHR/map/music from launcher | PASS; real Tauri switched to studio, mounted editor/tree/CHR/map/tracker, and ended active on tracker/music |
+| rapid `ide_open_resource` ordering | PASS after queue fix; final music request won instead of a slower map open stealing focus |
+| live `fc-ide` build/run after resource-open | PASS; built `build/game.nes`, loaded it into visible Preview, and focused the preview stage |
+| live `fc emu-mcp` state after resource-open build/run | PASS; reported mapper 0 `game.nes`, running worker/audio runtime, and advancing CPU/PPU counters |
 | `fc-tauri/node_modules/.bin/vue-tsc --noEmit` | NOT RUN; local project has no `vue-tsc` binary |
 | `cd fc-tauri && npx vue-tsc --noEmit` | BLOCKED by restricted network; `npx` attempted `registry.npmmirror.com/vue-tsc` and failed DNS |
 
