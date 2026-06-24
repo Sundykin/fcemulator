@@ -96,6 +96,12 @@
 - Runtime Tauri verification showed the file tree summary and active row follow this sequence exactly: `src/main.s` → `map/room.bin` → `chr/sprites.chr` → `music/active_check.song.json` → source tab reactivated.
 - Rename/delete verification showed `music/active_check.song.json` became `music/renamed_active.song.json` in both manifest and active-resource UI, then deleting it cleared the summary back to `未选中资源`.
 
+## Build-Time Autosave Findings
+- `project.build_()` previously auto-saved dirty source editor tabs only. Dirty CHR/map/song state could remain in memory while the build pipeline read stale files from disk.
+- Build now enters a save phase before invoking `ide.buildRun()`: it saves dirty source tabs, CHR, map, and tracker song resources, then starts the actual build.
+- Runtime verification edited CHR pixels, map tile/collision, and tracker song data in memory, left them dirty, then called `build_()` directly. Before build: CHR/map/song were dirty; after build: all dirty flags were false and `build/game.nes` succeeded.
+- IDE MCP readback after the build proved persistence: CHR first pixels were `[1, 2, 0, 0]`, map tile 0 was `7`, map collision 0 was `1`, song name was `Autosave Theme Built`, and the first tracker cell had note `33` volume `15`.
+
 ## Files To Inspect Next
 - `fc-tauri/src/ide/MapEditorPanel.vue` template/style sections
 - `fc-tauri/src/ide/ChrEditorPanel.vue` template/style sections

@@ -453,11 +453,25 @@ export const useProjectStore = defineStore("project", {
     // ---- build ----
     async build_() {
       if (!this.hasProject || this.building) return;
-      // auto-save dirty buffers before building
-      for (const t of this.tabs) if (t.content !== t.saved) await this.saveTab(t.path);
       this.building = true;
-      this.status = "构建中…";
+      let phase = "构建";
       try {
+        const dirtyBeforeBuild = [
+          this.dirty ? "源码" : "",
+          this.chrDirty ? "CHR" : "",
+          this.mapDirty ? "地图" : "",
+          this.songDirty ? "音乐" : "",
+        ].filter(Boolean);
+        if (dirtyBeforeBuild.length) {
+          phase = "构建前保存";
+          this.status = `保存 ${dirtyBeforeBuild.join("、")}…`;
+          for (const t of this.tabs) if (t.content !== t.saved) await this.saveTab(t.path);
+          if (this.chrDirty) await this.saveChr();
+          if (this.mapDirty) await this.saveMap();
+          if (this.songDirty) await this.saveTracker();
+        }
+        phase = "构建";
+        this.status = "构建中…";
         this.build = await ide.buildRun();
         if (this.build.success) this.sourceMap = this.build.source_map;
         await this.refreshTree(); // build/ output appears
@@ -465,7 +479,7 @@ export const useProjectStore = defineStore("project", {
           ? `构建成功 → ${this.build.output}`
           : `构建失败（${this.errorCount} 错误）`;
       } catch (e) {
-        this.status = "构建失败：" + e;
+        this.status = `${phase}失败：${e}`;
       } finally {
         this.building = false;
       }

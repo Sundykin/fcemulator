@@ -115,6 +115,16 @@
   - Verified active summary/highlight followed source → map → CHR → song → source-tab operations.
   - Verified renaming the active song updates the summary/highlight and deleting it clears active-resource state.
 
+### Phase 11: Build-Time Autosave For Creative Resources
+- **Status:** complete
+- Actions taken:
+  - Audited `project.build_()` and found it only auto-saved dirty source tabs before invoking the build pipeline.
+  - Moved the build store into `building=true` before autosave to prevent duplicate build triggers while saving.
+  - Added a build pre-save phase that persists dirty source tabs, CHR, map, and tracker song resources.
+  - Kept phase-specific status text so failures can distinguish build-time save failures from actual assembler/linker failures.
+  - Runtime verified through the real Tauri app: made CHR/map/song dirty in memory, called `build_()` directly, and confirmed the build succeeded with all dirty flags cleared.
+  - Read the saved project back through `target/debug/fc ide-mcp` to prove the edited CHR pixels, map tile/collision, and tracker song cell were written to disk before build.
+
 ## Test Results
 | Test | Result |
 |------|--------|
@@ -169,6 +179,8 @@
 | live `fc emu-mcp` `emu_capture_screen` after IDE MCP run | PASS; captured a 256x240 PNG with 3376 bytes, 6 unique colors, and 6968 nonblack pixels |
 | active resource store/UI source-map-CHR-song sequence | PASS; real Tauri file tree summary and active row followed `src/main.s` → `map/room.bin` → `chr/sprites.chr` → `music/active_check.song.json` → `src/main.s` |
 | active resource rename/delete behavior | PASS; renaming active song updated summary/highlight and manifest.music; deleting it cleared summary to `未选中资源` and removed active row |
+| build autosaves dirty creative resources | PASS; direct `build_()` with dirty CHR/map/song cleared all dirty flags and produced `build/game.nes` successfully |
+| build autosave IDE MCP readback | PASS; saved CHR pixels `[1,2,0,0]`, map tile 0 `7`, collision 0 `1`, song `Autosave Theme Built`, first note `33` |
 | `fc-tauri/node_modules/.bin/vue-tsc --noEmit` | NOT RUN; local project has no `vue-tsc` binary |
 | `cd fc-tauri && npx vue-tsc --noEmit` | BLOCKED by restricted network; `npx` attempted `registry.npmmirror.com/vue-tsc` and failed DNS |
 

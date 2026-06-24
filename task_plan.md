@@ -4,7 +4,7 @@
 Evolve the fc-tauri studio into a mature NES game-development IDE engine. The target experience is continuous project/resource/map/music workflows, comfortable editing controls, and editors that fill their available workspace instead of using tiny native-pixel canvases.
 
 ## Current Phase
-Phase 10: Reliable Active Resource Tracking
+Phase 11: Build-Time Autosave For Creative Resources
 
 ## Phases
 
@@ -79,6 +79,13 @@ Phase 10: Reliable Active Resource Tracking
 - [x] Verify the real Tauri file tree summary and active row follow actual resource operations
 - **Status:** complete
 
+### Phase 11: Build-Time Autosave For Creative Resources
+- [x] Audit whether Build saves all dirty creative resources, not just source tabs
+- [x] Save dirty source, CHR, map, and tracker song resources before invoking the build pipeline
+- [x] Keep build status/error reporting clear when autosave fails before build starts
+- [x] Verify dirty CHR/map/song changes are persisted by direct Build and included in a successful ROM build
+- **Status:** complete
+
 ## Key Questions
 1. Which editor currently wastes the most available panel area or forces tiny pixel editing?
 2. Where is map-to-CHR binding surfaced, and does opening a map automatically load/show the right CHR resource?
@@ -97,6 +104,7 @@ Phase 10: Reliable Active Resource Tracking
 | Auto-register MCP-written assembly files by location (`src/` → sources, `music/` → music) | A creative agent should be able to create modules through MCP and have them participate in the next build without manually editing `project.toml` |
 | Treat MCP `preview` updates as a UI focus signal | `ide_run` already loads the ROM into the Tauri emulator; the visible IDE must also mount the Preview panel so agent-authored games are observable without DOM/manual panel toggles |
 | Make the project store authoritative for the active creative resource | The file tree previously inferred "current resource" from unrelated per-panel counters; an IDE should show the resource the user actually opened or switched to |
+| Build must autosave every first-class creative resource | A user should be able to edit CHR/map/music and press Build/Run without remembering a separate Save step for non-source resources; otherwise ROM output can silently use stale assets |
 
 ## Errors Encountered
 | Error | Attempt | Resolution |
