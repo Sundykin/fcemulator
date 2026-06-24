@@ -152,6 +152,9 @@
 | 51 | `multicart.rs:182-254; mapper.rs:228-240,253-286,371-423,580-612,873-876,1038-1041,1195-1198,1410-1439` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/51.c` | 23-83 | FCEUmm mapper 51 cross-check；同源 PRG8/PRG16/mirroring/register window 行为 |
 | 52 | `mmc3.rs:15-21,128-136,240-274,400-414,598-616` | `/Users/sunmeng/workspace/fc/fceux/src/boards/mmc3.cpp` | 652-693 | Mapper 52 one-shot low latch、outer PRG/CHR mask |
 | 52 | `mmc3.rs:15-21,128-136,240-274,400-414,598-616` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/mmc3.c` | 710-769 | Mapper 52 submapper 14/CHR-RAM alternate path 记录；当前只实现基础路径 |
+| 53 | `multicart.rs` | `/Users/sunmeng/workspace/fc/fceux/src/boards/supervision.cpp` | 31-70,73-86 | BMC SuperVision 16-in-1：`cmd0/cmd1` 状态、`$6000-$7FFF` 低区写锁存、低区 PRG8 ROM window、高区 32KB/16KB 模式、mirroring 与 reset |
+| 53 | `multicart.rs` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/supervision.c` | 31-59,62-75 | FCEUmm mapper 53 cross-check；同源 iNES SuperVision16in1 PRG/CHR/mirroring 逻辑 |
+| 53 | `multicart.rs` | `/Users/sunmeng/workspace/fc/nestopia/source/core/board/NstBoardBmcSuperVision16in1.cpp` | 41-60,96-128 | Nestopia BMC SuperVision16in1 cross-check；EPROM-first CRC 分支记录为后续精修，当前第一版按 FCEUX/FCEUmm iNES 53 路径 |
 | 43 | `unlicensed.rs:5-121` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Unlicensed/Mapper43.h` | 16-20, 22-33, 49-82 | PRG/CHR page size、$5000/$6000 映射、寄存器地址译码、4096 CPU-cycle IRQ |
 | 43 | `unlicensed.rs:5-121` | `/Users/sunmeng/workspace/fc/fceux/src/boards/43.cpp` | 38-58, 72-78 | `transo` LUT、swap bank、IRQ counter cross-check |
 | 59 | `multicart.rs` | `/Users/sunmeng/workspace/fc/fceux/src/boards/addrlatch.cpp` | 164-179 | address latch PRG32/CHR/mirroring、bit8 read gate 参考 |

@@ -37,6 +37,7 @@ macro_rules! dispatch {
             Mapper::Mapper43($m) => $body,
             Mapper::Mapper50($m) => $body,
             Mapper::Mapper51($m) => $body,
+            Mapper::Mapper53($m) => $body,
             Mapper::Mapper57($m) => $body,
             Mapper::Mapper60($m) => $body,
             Mapper::Mapper63($m) => $body,

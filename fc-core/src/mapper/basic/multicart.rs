@@ -180,6 +180,91 @@ impl MapperOps for Action53 {
 }
 
 // ============================================================================
+// Mapper 53 — BMC SuperVision 16-in-1
+//
+// References:
+// - FCEUX `src/boards/supervision.cpp`
+// - FCEUmm `src/boards/supervision.c`
+// - Nestopia `source/core/board/NstBoardBmcSuperVision16in1.cpp`
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Mapper53 {
+    cmd0: u8,
+    cmd1: u8,
+}
+
+impl Mapper53 {
+    pub(in crate::mapper) fn new() -> Self {
+        Mapper53 { cmd0: 0, cmd1: 0 }
+    }
+
+    fn low_prg8_bank(&self) -> usize {
+        ((((self.cmd0 & 0x0F) as usize) << 4) | 0x0F) + 4
+    }
+
+    fn high_prg16_bank(&self, addr: u16) -> usize {
+        if self.cmd0 & 0x10 != 0 {
+            let outer = ((self.cmd0 & 0x0F) as usize) << 3;
+            let inner = if addr < 0xC000 {
+                (self.cmd1 & 0x07) as usize
+            } else {
+                0x07
+            };
+            (outer | inner) + 2
+        } else {
+            usize::from(addr >= 0xC000)
+        }
+    }
+}
+
+impl MapperOps for Mapper53 {
+    fn prg_index(&self, addr: u16) -> usize {
+        self.high_prg16_bank(addr) * 0x4000 + (addr as usize & 0x3FFF)
+    }
+
+    fn chr_index(&self, addr: u16) -> usize {
+        (addr & 0x1FFF) as usize
+    }
+
+    fn write_register(&mut self, _addr: u16, value: u8) {
+        self.cmd1 = value;
+    }
+
+    fn write_low_register(&mut self, _addr: u16, value: u8) -> bool {
+        if self.cmd0 & 0x10 == 0 {
+            self.cmd0 = value;
+        }
+        true
+    }
+
+    fn low_prg_index(&self, addr: u16) -> Option<usize> {
+        Some(self.low_prg8_bank() * 0x2000 + (addr as usize & 0x1FFF))
+    }
+
+    fn low_prg_ram_read_enabled(&self, _addr: u16) -> bool {
+        false
+    }
+
+    fn low_prg_ram_write_enabled(&self, _addr: u16) -> bool {
+        false
+    }
+
+    fn mirroring(&self) -> Mirroring {
+        if self.cmd0 & 0x20 != 0 {
+            Mirroring::Horizontal
+        } else {
+            Mirroring::Vertical
+        }
+    }
+
+    fn reset(&mut self, _soft: bool) {
+        self.cmd0 = 0;
+        self.cmd1 = 0;
+    }
+}
+
+// ============================================================================
 // Mapper 51 — 11-in-1 Ball Games
 //
 // References:
