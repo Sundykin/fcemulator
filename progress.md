@@ -134,6 +134,16 @@
   - Runtime verified the real Tauri Build panel: after closing Preview, clicking health `运行` mounted Preview, made it active, and displayed a visible emulator canvas.
   - Verified live `fc emu-mcp` reported the same Tauri emulator running the generated mapper 0 ROM.
 
+### Phase 13: Collision-Free Resource Defaults
+- **Status:** complete
+- Actions taken:
+  - Audited `FileTreePanel.vue` new-resource prompt defaults and found repeated create flows could start from paths already present in the project tree.
+  - Added tree-path lookup and next-available path generation for source, CHR, map, and song defaults.
+  - Preserved compound suffixes such as `.song.json` while incrementing the filename stem.
+  - Fixed trailing-number behavior so `map/level1.bin` advances to `map/level2.bin` rather than `map/level12.bin`.
+  - Runtime verified against the real Tauri IDE, using IDE MCP to create/open `/tmp/fc-default-names-NNyfNv` and add colliding resources.
+  - Verified the live FileTreePanel component and prompts returned `src/new_module2.s`, `chr/sprites3.chr`, `map/level2.bin`, and `music/theme2.song.json`.
+
 ## Test Results
 | Test | Result |
 |------|--------|
@@ -192,6 +202,10 @@
 | build autosave IDE MCP readback | PASS; saved CHR pixels `[1,2,0,0]`, map tile 0 `7`, collision 0 `1`, song `Autosave Theme Built`, first note `33` |
 | BuildPanel health run opens Preview | PASS; with Preview closed, health `运行` opened Preview as active panel, showed one visible canvas, loaded `game.nes`, and loop chips read `已/成/跑` |
 | live emulator state after BuildPanel health run | PASS; `fc emu-mcp` reported mapper 0, running worker, advancing PPU frame, and live memory bytes |
+| FileTreePanel collision-free resource defaults | PASS; real Tauri component suggested `src/new_module2.s`, `chr/sprites3.chr`, `map/level2.bin`, and `music/theme2.song.json` after IDE MCP-created collisions |
+| `npm --prefix fc-tauri run build` after resource-default change | PASS, with existing Vite large chunk warning |
+| `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml` after resource-default change | PASS |
+| `git diff --check` after resource-default change | PASS |
 | `fc-tauri/node_modules/.bin/vue-tsc --noEmit` | NOT RUN; local project has no `vue-tsc` binary |
 | `cd fc-tauri && npx vue-tsc --noEmit` | BLOCKED by restricted network; `npx` attempted `registry.npmmirror.com/vue-tsc` and failed DNS |
 
@@ -206,3 +220,4 @@
 | 2026-06-24 | `npx vue-tsc --noEmit` attempted network access | Current environment blocks DNS to `registry.npmmirror.com`; `vue-tsc` is not installed in local `.bin` | Used production `npm --prefix fc-tauri run build` plus live Tauri MCP runtime verification for this slice |
 | 2026-06-24 | MCP `ide_run` did not mount Preview panel | E2E simple-game run loaded `game.nes` into `window.__emu`, but the DOM had no preview canvas because Dockview panel `preview` was closed | Added `focusPreview` state and an `IdeView.vue` watcher to open Preview when MCP emits `changed: ["preview"]` |
 | 2026-06-24 | File-tree UI selectors were empty during active-resource verification | IDE MCP project creation left the app on the launcher, where Dockview/tree panels are not mounted | Switched the Tauri shell to `studio` via the app store, then reran UI verification against the mounted file tree |
+| 2026-06-24 | Tauri runtime still returned `map/level12.bin` after patch | The running Vite/HMR instance had not picked up the new `nextAvailablePath()` function | Reloaded the Tauri webview, reopened the MCP-created project through IDE MCP, and verified the component returned `map/level2.bin` |

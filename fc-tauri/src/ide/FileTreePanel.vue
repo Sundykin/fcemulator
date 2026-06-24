@@ -169,6 +169,29 @@ function parentDir(node: FileNode | null): string {
   return i >= 0 ? node.path.slice(0, i) : "";
 }
 
+function treeHasPath(path: string): boolean {
+  const walk = (node: FileNode): boolean => node.path === path || node.children.some(walk);
+  return !!store.tree && walk(store.tree);
+}
+
+function nextAvailablePath(path: string): string {
+  if (!treeHasPath(path)) return path;
+  const slash = path.lastIndexOf("/");
+  const dir = slash >= 0 ? path.slice(0, slash + 1) : "";
+  const file = slash >= 0 ? path.slice(slash + 1) : path;
+  const dot = file.indexOf(".") >= 0 ? file.indexOf(".") : file.length;
+  const stem = file.slice(0, dot);
+  const suffix = file.slice(dot);
+  const numbered = stem.match(/^(.*?)(\d+)$/);
+  const base = numbered ? numbered[1] : stem;
+  const start = numbered ? Number(numbered[2]) + 1 : 2;
+  for (let i = start; i < start + 1000; i++) {
+    const candidate = `${dir}${base}${i}${suffix}`;
+    if (!treeHasPath(candidate)) return candidate;
+  }
+  return path;
+}
+
 async function onMenu(key: string) {
   menuShow.value = false;
   const node = ctxNode.value;
@@ -239,12 +262,12 @@ async function onPromptOk(value: string) {
 function defaultNameFor(key: string, node: FileNode | null, fallback: string): string {
   const dir = parentDir(node);
   const name = fallback.split("/").pop() || fallback;
-  if (!dir) return fallback;
-  if (key === "new-source" && dir.startsWith("src")) return `${dir}/${name}`;
-  if (key === "new-chr" && dir.startsWith("chr")) return `${dir}/${name}`;
-  if (key === "new-map" && dir.startsWith("map")) return `${dir}/${name}`;
-  if (key === "new-song" && dir.startsWith("music")) return `${dir}/${name}`;
-  return fallback;
+  let path = fallback;
+  if (key === "new-source" && dir.startsWith("src")) path = `${dir}/${name}`;
+  else if (key === "new-chr" && dir.startsWith("chr")) path = `${dir}/${name}`;
+  else if (key === "new-map" && dir.startsWith("map")) path = `${dir}/${name}`;
+  else if (key === "new-song" && dir.startsWith("music")) path = `${dir}/${name}`;
+  return nextAvailablePath(path);
 }
 
 function iconFor(node: FileNode): string {

@@ -108,6 +108,14 @@
 - Runtime verification closed Preview, opened Build health, clicked the `运行` action, and observed Preview mount as the active Dockview panel with one visible canvas.
 - The same run updated the loop chips to `已 / 成 / 跑`, loaded `game.nes`, and live `fc emu-mcp` reported mapper 0, running worker state, and advancing PPU frame count.
 
+## Collision-Free Resource Default Findings
+- `FileTreePanel.vue` previously reused fixed new-resource defaults such as `chr/sprites.chr`, `map/level1.bin`, and `music/theme.song.json` even when those resources already existed in the project tree.
+- New-resource prompts now query the live file tree before opening and suggest the next available path for source, CHR, map, and song resources.
+- The path incrementer preserves compound suffixes by splitting at the first dot, so `music/theme.song.json` becomes `music/theme2.song.json`.
+- Trailing numeric stems are incremented naturally, so `map/level1.bin` becomes `map/level2.bin` instead of `map/level12.bin`; non-numbered stems still append `2`, e.g. `chr/sprites.chr` -> `chr/sprites2.chr`.
+- Runtime verification used `target/debug/fc ide-mcp` to create/open `/tmp/fc-default-names-NNyfNv`, then write existing `src/new_module.s`, `chr/sprites2.chr`, `map/level1.bin`, and `music/theme.song.json`.
+- After reloading the Tauri webview to pick up the updated component code, the live FileTreePanel component reported collision-free defaults: `src/new_module2.s`, `chr/sprites3.chr`, `map/level2.bin`, and `music/theme2.song.json`.
+
 ## Files To Inspect Next
 - `fc-tauri/src/ide/MapEditorPanel.vue` template/style sections
 - `fc-tauri/src/ide/ChrEditorPanel.vue` template/style sections

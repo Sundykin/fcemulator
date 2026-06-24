@@ -4,7 +4,7 @@
 Evolve the fc-tauri studio into a mature NES game-development IDE engine. The target experience is continuous project/resource/map/music workflows, comfortable editing controls, and editors that fill their available workspace instead of using tiny native-pixel canvases.
 
 ## Current Phase
-Phase 12: Build Panel Run Opens Visible Preview
+Phase 13: Collision-Free Resource Defaults
 
 ## Phases
 
@@ -93,6 +93,13 @@ Phase 12: Build Panel Run Opens Visible Preview
 - [x] Verify the real Tauri Build panel health run opens Preview with a visible emulator canvas
 - **Status:** complete
 
+### Phase 13: Collision-Free Resource Defaults
+- [x] Audit file-tree new-resource defaults for collisions with existing project files
+- [x] Suggest the next available source, CHR, map, and song path when the default already exists
+- [x] Increment trailing numeric stems naturally (`level1.bin` -> `level2.bin`) while preserving compound suffixes (`theme.song.json` -> `theme2.song.json`)
+- [x] Verify the real Tauri file tree prompts show collision-free defaults after IDE MCP-created resources
+- **Status:** complete
+
 ## Key Questions
 1. Which editor currently wastes the most available panel area or forces tiny pixel editing?
 2. Where is map-to-CHR binding surfaced, and does opening a map automatically load/show the right CHR resource?
@@ -113,6 +120,7 @@ Phase 12: Build Panel Run Opens Visible Preview
 | Make the project store authoritative for the active creative resource | The file tree previously inferred "current resource" from unrelated per-panel counters; an IDE should show the resource the user actually opened or switched to |
 | Build must autosave every first-class creative resource | A user should be able to edit CHR/map/music and press Build/Run without remembering a separate Save step for non-source resources; otherwise ROM output can silently use stale assets |
 | Any IDE run entry point must surface the Preview panel | Running a ROM from Build health should be as visible as the top-level Run and MCP run paths; a successful run that leaves Preview closed breaks feedback continuity |
+| New creative resources should default to an available path | Repeated source/CHR/map/song creation should not begin from a path that immediately fails or overwrites user intent; numbered stems should advance predictably |
 
 ## Errors Encountered
 | Error | Attempt | Resolution |
@@ -121,3 +129,4 @@ Phase 12: Build Panel Run Opens Visible Preview
 | Initial runtime ROM path used the worktree root | `emu_load_rom` failed for `/Users/sunmeng/workspace/fc-creative-mode/roms/SuperMarioBro.nes` because this worktree has no `roms/` directory | Retried with `/Users/sunmeng/workspace/fc/roms/SuperMarioBro.nes`; live MCP loaded the ROM into the visible player |
 | MCP `ide_run` loaded the ROM but Preview stayed unmounted | Phase 9 E2E project showed `window.__emu.rom=game.nes` but no preview canvas because `changed: ["preview"]` did not focus Dockview | Added `focusPreview` state and `IdeView.vue` watcher to open the Preview panel after MCP preview updates |
 | File-tree runtime check initially found no `.tree` DOM | IDE MCP project creation updates project state but leaves the app on the launcher unless a preview run switches to studio | Switched the real Tauri shell to studio with `window.__emu.setMode("studio")` before validating file-tree UI |
+| Tauri runtime initially reported `map/level12.bin` after the patch | The live Vite/HMR instance still had the old `nextAvailablePath()` implementation loaded | Reloaded the Tauri webview, reopened the MCP-created project, and verified the new runtime function returned `map/level2.bin` |
