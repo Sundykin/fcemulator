@@ -67,6 +67,7 @@ impl Mapper {
             51 => Mapper::Mapper51(Mapper51::new()),
             52 => Mapper::Mmc3(Mmc3::new_52(prg_16k, chr_8k, mirroring)),
             53 => Mapper::Mapper53(Mapper53::new()),
+            56 => Mapper::Mapper142(Mapper142::new_56(prg_16k, chr_8k, mirroring)),
             57 => Mapper::Mapper57(Mapper57::new()),
             58 => Mapper::AddrLatch16k(AddrLatch16k::new(AddrLatchVariant::Mapper58)),
             59 => Mapper::AddrLatch16k(AddrLatch16k::new(AddrLatchVariant::Mapper59)),

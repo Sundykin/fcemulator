@@ -155,6 +155,8 @@
 | 53 | `multicart.rs` | `/Users/sunmeng/workspace/fc/fceux/src/boards/supervision.cpp` | 31-70,73-86 | BMC SuperVision 16-in-1：`cmd0/cmd1` 状态、`$6000-$7FFF` 低区写锁存、低区 PRG8 ROM window、高区 32KB/16KB 模式、mirroring 与 reset |
 | 53 | `multicart.rs` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/supervision.c` | 31-59,62-75 | FCEUmm mapper 53 cross-check；同源 iNES SuperVision16in1 PRG/CHR/mirroring 逻辑 |
 | 53 | `multicart.rs` | `/Users/sunmeng/workspace/fc/nestopia/source/core/board/NstBoardBmcSuperVision16in1.cpp` | 41-60,96-128 | Nestopia BMC SuperVision16in1 cross-check；EPROM-first CRC 分支记录为后续精修，当前第一版按 FCEUX/FCEUmm iNES 53 路径 |
+| 56/142 | `basic/irq.rs` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Kaiser/Kaiser202.h` | 17-30,43-55,57-115 | Kaiser202/KS202 与 KS7032 共享模型：8KB PRG、1KB CHR、CPU-cycle IRQ、selected register、Mapper56 `$F000/$F800/$FC00` PRG high-bit/mirroring/CHR writes 与 low PRG-ROM/WRAM 切换 |
+| 56/142 | `basic/irq.rs` | `/Users/sunmeng/workspace/fc/nestopia/source/core/board/NstBoardKaiser.cpp` | 42-70,423-510,512-523 | Nestopia Kaiser KS202 cross-check；IRQ latch/control、`ctrl` selected register、`$F000` 地址子译码、mirroring 和 CHR1K bank 行为 |
 | 43 | `unlicensed.rs:5-121` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Unlicensed/Mapper43.h` | 16-20, 22-33, 49-82 | PRG/CHR page size、$5000/$6000 映射、寄存器地址译码、4096 CPU-cycle IRQ |
 | 43 | `unlicensed.rs:5-121` | `/Users/sunmeng/workspace/fc/fceux/src/boards/43.cpp` | 38-58, 72-78 | `transo` LUT、swap bank、IRQ counter cross-check |
 | 59 | `multicart.rs` | `/Users/sunmeng/workspace/fc/fceux/src/boards/addrlatch.cpp` | 164-179 | address latch PRG32/CHR/mirroring、bit8 read gate 参考 |

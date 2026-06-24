@@ -50,6 +50,7 @@ fn watches_ppu_bus_matches_notify_a12_overrides() {
         (25, false),   // VRC4 IRQ is CPU-clocked, not PPU-bus-clocked
         (52, true),    // Mapper 52 MMC3 A12 IRQ
         (53, false),   // BMC SuperVision 16-in-1
+        (56, false),   // Kaiser KS202 IRQ is CPU-clocked
         (66, false),   // GxROM
         (67, false),   // Sunsoft-3
         (68, false),   // Sunsoft-4 nametable CHR mapping does not need A12 notify
@@ -267,6 +268,7 @@ fn clocks_cpu_matches_cpu_clock_overrides() {
         (25, true),    // VRC4 IRQ counter clocks per CPU cycle
         (52, false),   // Mapper 52 uses PPU A12 edges
         (53, false),   // BMC SuperVision 16-in-1
+        (56, true),    // Kaiser KS202 IRQ counter clocks per CPU cycle
         (66, false),   // GxROM
         (67, true),    // Sunsoft-3 IRQ counter clocks per CPU cycle
         (68, false),   // Sunsoft-4 has no CPU-cycle IRQ hook
@@ -485,6 +487,7 @@ fn clocks_hblank_matches_hblank_clock_overrides() {
         (51, false),
         (52, false),
         (53, false),
+        (56, false),
         (57, false),
         (58, false),
         (59, false),
@@ -1487,6 +1490,49 @@ fn mapper53_supervision_switches_low_and_high_prg_windows() {
     assert_eq!(m.low_prg_index(0x6004), Some((0x0F + 4) * 0x2000 + 4));
     assert_eq!(m.prg_index(0xC004), 1 * 0x4000 + 4);
     assert_eq!(m.mirroring(), Mirroring::Vertical);
+}
+
+#[test]
+fn mapper56_kaiser202_extends_mapper142_with_chr_and_mirroring_writes() {
+    let mut m = Mapper::new(56, 16, 16, Mirroring::Vertical, 0).expect("mapper 56");
+
+    assert_eq!(m.prg_index(0xE004), 31 * 0x2000 + 4);
+    assert_eq!(m.low_prg_index(0x6004), None);
+    assert!(m.low_prg_ram_read_enabled(0x6000));
+    assert!(m.low_prg_ram_write_enabled(0x6000));
+
+    m.write_register(0xE000, 0x01);
+    m.write_register(0xF000, 0x13);
+    assert_eq!(m.prg_index(0x8004), 0x13 * 0x2000 + 4);
+
+    m.write_register(0xF001, 0x2F);
+    assert_eq!(m.prg_index(0x8004), 0x1F * 0x2000 + 4);
+
+    m.write_register(0xE000, 0x05);
+    m.write_register(0xF000, 0x04);
+    assert_eq!(m.low_prg_index(0x6004), Some(4));
+    assert!(!m.low_prg_ram_read_enabled(0x6000));
+    assert!(!m.low_prg_ram_write_enabled(0x6000));
+
+    m.write_register(0xF800, 0x00);
+    assert_eq!(m.mirroring(), Mirroring::Horizontal);
+    m.write_register(0xF800, 0x01);
+    assert_eq!(m.mirroring(), Mirroring::Vertical);
+
+    m.write_register(0xFC03, 0x12);
+    assert_eq!(m.chr_index(0x0C04), 0x12 * 0x0400 + 4);
+
+    m.write_register(0x8000, 0x0D);
+    m.write_register(0x9000, 0x0F);
+    m.write_register(0xA000, 0x0F);
+    m.write_register(0xB000, 0x0F);
+    m.write_register(0xC000, 0x02);
+    m.cpu_clock();
+    assert!(!m.irq());
+    m.cpu_clock();
+    assert!(m.irq());
+    m.write_register(0xD000, 0);
+    assert!(!m.irq());
 }
 
 #[test]

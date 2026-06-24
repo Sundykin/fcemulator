@@ -890,37 +890,68 @@ impl MapperOps for Mapper73 {
 }
 
 // ============================================================================
-// Mapper 142 — Kaiser KS7032
+// Mapper 56/142 — Kaiser KS202 / KS7032
 // ============================================================================
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Mapper142Variant {
+    Ks202,
+    Ks7032,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Mapper142 {
     prg_8k_total: usize,
+    chr_1k_total: usize,
     prg: [u8; 4],
+    chr: [u8; 8],
     mirroring: Mirroring,
     selected_reg: u8,
+    use_rom: bool,
     irq_reload: u16,
     irq_counter: u16,
     irq_enabled: bool,
     irq_pending: bool,
+    variant: Mapper142Variant,
 }
 
 impl Mapper142 {
     pub(in crate::mapper) fn new(prg_16k: usize, mirroring: Mirroring) -> Self {
+        Self::new_with_variant(prg_16k, 0, mirroring, Mapper142Variant::Ks7032)
+    }
+
+    pub(in crate::mapper) fn new_56(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
+        Self::new_with_variant(prg_16k, chr_8k, mirroring, Mapper142Variant::Ks202)
+    }
+
+    fn new_with_variant(
+        prg_16k: usize,
+        chr_8k: usize,
+        mirroring: Mirroring,
+        variant: Mapper142Variant,
+    ) -> Self {
         Mapper142 {
             prg_8k_total: (prg_16k * 2).max(4),
+            chr_1k_total: (chr_8k * 8).max(8),
             prg: [0; 4],
+            chr: [0; 8],
             mirroring,
             selected_reg: 0xFF,
+            use_rom: variant == Mapper142Variant::Ks7032,
             irq_reload: 0,
             irq_counter: 0,
             irq_enabled: false,
             irq_pending: false,
+            variant,
         }
     }
 
     fn prg8_index(&self, bank: u8, addr: u16) -> usize {
         (bank as usize % self.prg_8k_total) * 0x2000 + (addr as usize & 0x1FFF)
+    }
+
+    fn is_ks202(&self) -> bool {
+        self.variant == Mapper142Variant::Ks202
     }
 }
 
@@ -936,11 +967,23 @@ impl MapperOps for Mapper142 {
     }
 
     fn chr_index(&self, addr: u16) -> usize {
-        (addr & 0x1FFF) as usize
+        if !self.is_ks202() {
+            return (addr & 0x1FFF) as usize;
+        }
+        let slot = ((addr >> 10) & 0x07) as usize;
+        (self.chr[slot] as usize % self.chr_1k_total) * 0x0400 + (addr as usize & 0x03FF)
     }
 
     fn low_prg_index(&self, addr: u16) -> Option<usize> {
-        Some(self.prg8_index(self.prg[3], addr))
+        self.use_rom.then(|| self.prg8_index(self.prg[3], addr))
+    }
+
+    fn low_prg_ram_read_enabled(&self, _addr: u16) -> bool {
+        !self.use_rom
+    }
+
+    fn low_prg_ram_write_enabled(&self, _addr: u16) -> bool {
+        !self.use_rom
     }
 
     fn write_register(&mut self, addr: u16, value: u8) {
@@ -966,13 +1009,25 @@ impl MapperOps for Mapper142 {
                         self.prg[bank] = (self.prg[bank] & 0x10) | (value & 0x0F);
                     }
                     3 => self.prg[3] = value,
+                    4 if self.is_ks202() => self.use_rom = value & 0x04 != 0,
                     _ => {}
                 }
-                if addr & 0xFC00 == 0xF000 {
-                    let bank = (addr & 0x03) as usize;
-                    if bank < 3 {
-                        self.prg[bank] = (self.prg[bank] & 0x0F) | (value & 0x10);
+                match addr & 0xFC00 {
+                    0xF000 => {
+                        let bank = (addr & 0x03) as usize;
+                        if bank < 3 {
+                            self.prg[bank] = (self.prg[bank] & 0x0F) | (value & 0x10);
+                        }
                     }
+                    0xF800 if self.is_ks202() => {
+                        self.mirroring = if value & 0x01 != 0 {
+                            Mirroring::Vertical
+                        } else {
+                            Mirroring::Horizontal
+                        };
+                    }
+                    0xFC00 if self.is_ks202() => self.chr[(addr & 0x07) as usize] = value,
+                    _ => {}
                 }
             }
             _ => {}
