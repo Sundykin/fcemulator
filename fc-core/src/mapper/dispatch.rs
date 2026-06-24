@@ -75,6 +75,7 @@ macro_rules! dispatch {
             Mapper::Sachen74Ls374N($m) => $body,
             Mapper::Mapper142($m) => $body,
             Mapper::Mapper156($m) => $body,
+            Mapper::NanjingMapper($m) => $body,
             Mapper::Subor166($m) => $body,
             Mapper::Mapper168($m) => $body,
             Mapper::Mapper170($m) => $body,
