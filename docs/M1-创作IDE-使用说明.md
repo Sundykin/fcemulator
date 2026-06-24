@@ -32,6 +32,7 @@ Tauri IDE 启动时会同时启动一个语义级 MCP socket:`/tmp/fc-tauri-ide-
 `.mcp.json` 中的 `fc-ide` 服务器,通过 `ide_*` 工具直接操作**同一个** Tauri 后端工程状态:
 
 - `ide_new_project` / `ide_open_project` 新建或打开当前 IDE 工程。
+- `ide_get_state` 查询 live IDE 工程雷达:资源分类/缺失、map↔CHR 绑定、构建产物新旧状态、最近诊断和源码映射摘要。
 - `ide_read_file` / `ide_write_file` 写源码;写入 `src/*.s` / `.asm` 会自动登记进 `sources`。
 - `ide_read_chr` / `ide_write_chr` 写 CHR 像素资源。
 - `ide_read_map` / `ide_write_map` / `ide_bind_map_chr` 写地图和资源绑定。
@@ -40,7 +41,9 @@ Tauri IDE 启动时会同时启动一个语义级 MCP socket:`/tmp/fc-tauri-ide-
 - `ide_build` / `ide_run` 调用 IDE 构建链并把产物加载进当前预览。
 - `ide_press_buttons` / `ide_read_memory` 对当前预览 ROM 做运行验证。
 
-这些工具执行后会通过 Tauri event 通知前端刷新文件树、工程清单、构建面板和预览状态。也就是说,
+这些工具执行后会通过 Tauri event 通知前端刷新文件树、工程清单、构建面板和预览状态。智能体开始工作、
+修复构建错误或决定能否运行旧 ROM 前,应先读 `ide_get_state`:其中 `build.output_status=current` 才表示
+磁盘 ROM 对应最近一次成功构建;`stale_after_failed_build` 表示旧 ROM 仍在但当前代码构建失败。也就是说,
 `fc-ide` 不是一个不可见的离线核心;它是 live IDE 的编程接口。`fc-tauri` MCP 仍保留为 DOM/窗口调试桥,
 主要用于验证 UI 是否刷新正确。
 

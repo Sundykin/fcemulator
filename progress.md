@@ -206,6 +206,18 @@
   - Added bound-map status plus an "打开地图" context-bar button in `ChrEditorPanel.vue`.
   - Runtime verified in the real Tauri app with an IDE MCP-created demo project: map `map/room.bin` showed bound `chr/sprites.chr`, opened CHR, CHR showed `map/room.bin`, and reverse navigation returned to the Map panel.
 
+### Phase 20: IDE MCP Project State Radar
+- **Status:** complete
+- Actions taken:
+  - Audited `fc-tauri/src-tauri/src/ide_mcp.rs`, `project.rs`, `build_pipeline.rs`, and `watch.rs` for agent-visible project state gaps.
+  - Found `ide_get_state` returned raw root/manifest/tree only, and `BuildState` did not remember the latest build result.
+  - Added latest-build-result storage to `BuildState` and wired it into Tauri `build_run`, file-watch rebuild, and IDE MCP `ide_build`.
+  - Expanded `ide_get_state` with semantic `resources`, `build`, and `ready` summaries for programming agents.
+  - Added resource existence checks, map `bound_chr`, CHR `used_by_maps`, missing resources, unbound maps, orphan CHR sheets, build output bytes, source-map count, diagnostics, and log tail.
+  - Added `output_status` / `output_current` so stale ROMs left after failed builds are explicit.
+  - Updated `docs/M1-创作IDE-使用说明.md` to describe `ide_get_state` as the state-query entry point for agents.
+  - Runtime verified through the real Tauri app and `target/debug/fc ide-mcp` with both successful and failing builds.
+
 ## Test Results
 | Test | Result |
 |------|--------|
@@ -296,6 +308,13 @@
 | MCP successful build switches Build panel to Health | PASS; real Tauri Build panel showed Health, status `MCP 构建成功 → build/game.nes`, and source map count 5 |
 | Map editor opens bound CHR | PASS; real Tauri context bar showed enabled `打开 CHR`, and the action focused `chr/sprites.chr` in the CHR panel |
 | CHR editor opens dependent map | PASS; real Tauri CHR context bar showed `地图 map/room.bin`, and the action focused `map/room.bin` in the Map panel |
+| `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml` after IDE MCP state radar | PASS |
+| `npm --prefix fc-tauri run build` after IDE MCP state radar | PASS, with existing Vite large chunk warning |
+| `git diff --check` after IDE MCP state radar | PASS |
+| IDE MCP `ide_get_state` before build | PASS; real Tauri MCP-created demo returned resource counts, all resources existing, `map/room.bin -> chr/sprites.chr`, and `output_exists=false` |
+| IDE MCP `ide_get_state` after successful build | PASS; returned `output_status=current`, `output_current=true`, 40976 output bytes, and 444 source-map entries |
+| IDE MCP `ide_get_state` after failed build with old ROM on disk | PASS; returned `last.success=false`, one `src/main.s:1` diagnostic, `output_exists=true`, and `output_status=stale_after_failed_build` |
+| Tauri store sync after failed IDE MCP build | PASS; real store showed studio mode, active `src/main.s`, Build diagnostics tab requested, and status `MCP 构建失败（1 错误）` |
 | `fc-tauri/node_modules/.bin/vue-tsc --noEmit` | NOT RUN; local project has no `vue-tsc` binary |
 | `cd fc-tauri && npx vue-tsc --noEmit` | BLOCKED by restricted network; `npx` attempted `registry.npmmirror.com/vue-tsc` and failed DNS |
 
@@ -311,3 +330,4 @@
 | 2026-06-24 | MCP `ide_run` did not mount Preview panel | E2E simple-game run loaded `game.nes` into `window.__emu`, but the DOM had no preview canvas because Dockview panel `preview` was closed | Added `focusPreview` state and an `IdeView.vue` watcher to open Preview when MCP emits `changed: ["preview"]` |
 | 2026-06-24 | File-tree UI selectors were empty during active-resource verification | IDE MCP project creation left the app on the launcher, where Dockview/tree panels are not mounted | Switched the Tauri shell to `studio` via the app store, then reran UI verification against the mounted file tree |
 | 2026-06-24 | Tauri runtime still returned `map/level12.bin` after patch | The running Vite/HMR instance had not picked up the new `nextAvailablePath()` function | Reloaded the Tauri webview, reopened the MCP-created project through IDE MCP, and verified the component returned `map/level2.bin` |
+| 2026-06-25 | Looked for non-existent `fc-tauri/src-tauri/src/ide.rs` | Initial state-radar audit used the wrong backend file name | Continued from actual files: `ide_mcp.rs`, `project.rs`, `build_pipeline.rs`, and `watch.rs` |

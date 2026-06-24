@@ -160,6 +160,17 @@
 - The CHR editor context bar now shows the first map using the active CHR, plus a count when there are multiple dependent maps, and includes an "打开地图" action.
 - Runtime verification with `/tmp/fc-map-chr-nav-*` showed the real Tauri Map editor context bar displaying `chr/sprites.chr` and an enabled "打开 CHR" button. Calling the store action opened the CHR panel with `mapsUsingActiveChr=["map/room.bin"]`; calling the reverse action returned to the Map panel with the same binding intact.
 
+## IDE MCP Project State Radar Findings
+- `ide_get_state` already existed, but it only returned raw `root`, `manifest`, `tree`, and socket data. A programming agent still had to infer resource classes, map↔CHR relationships, missing files, build freshness, and diagnostics itself or ask the Tauri DOM bridge.
+- `BuildState` previously held only the cancel flag and build mutex, so the backend had no authoritative "last build result" for `ide_get_state` to report.
+- `BuildState` now stores the latest `BuildResult` from direct Tauri builds, file-watch rebuilds, and IDE MCP builds. This keeps build summary state consistent across human and agent entry points.
+- `ide_get_state` now adds a semantic `resources` section with counts, per-resource existence, map `bound_chr`, CHR `used_by_maps`, missing resources, unbound maps, and orphan CHR sheets.
+- `ide_get_state` now adds a `build` section with last build success, diagnostics, log tail, step/source-map counts, output bytes, and `output_status`.
+- `output_status` distinguishes `current`, `existing_unverified`, `stale_after_failed_build`, and missing cases. This matters because a failed build can leave an older `build/game.nes` on disk; agents should not treat that as a current artifact.
+- Runtime verification used real `npm --prefix fc-tauri run tauri dev` plus `target/debug/fc ide-mcp`. A clean demo project returned 3 resources, `map/room.bin -> chr/sprites.chr`, `output_status=current`, 40976 output bytes, and 444 source-map rows after build.
+- Runtime verification also deliberately wrote `BROKEN_OPCODE_FOR_STATE` into `src/main.s`. The failed build left the old ROM on disk but `ide_get_state` returned `last.success=false`, one `src/main.s:1` diagnostic, and `output_status=stale_after_failed_build`.
+- Real Tauri store inspection through the project MCP showed the same failed build was visible in the UI state: studio mode, active `src/main.s`, Build panel requested diagnostics, and status `MCP 构建失败（1 错误）`.
+
 ## Files To Inspect Next
 - `fc-tauri/src/ide/MapEditorPanel.vue` template/style sections
 - `fc-tauri/src/ide/ChrEditorPanel.vue` template/style sections

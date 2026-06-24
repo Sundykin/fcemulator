@@ -4,7 +4,7 @@
 Evolve the fc-tauri studio into a mature NES game-development IDE engine. The target experience is continuous project/resource/map/music workflows, comfortable editing controls, and editors that fill their available workspace instead of using tiny native-pixel canvases.
 
 ## Current Phase
-Phase 19: Map And CHR Binding Navigation
+Phase 20: IDE MCP Project State Radar
 
 ## Phases
 
@@ -145,6 +145,14 @@ Phase 19: Map And CHR Binding Navigation
 - [x] Verify bidirectional navigation in the real Tauri IDE using an MCP-created project
 - **Status:** complete
 
+### Phase 20: IDE MCP Project State Radar
+- [x] Audit whether an agent can understand the live IDE project without using the Tauri DOM bridge
+- [x] Persist the latest backend build result in shared Tauri state across manual, watch, and MCP build entry points
+- [x] Expand `ide_get_state` with resource counts, existence checks, map↔CHR binding summaries, build output status, diagnostics, and source-map counts
+- [x] Mark existing ROM output as stale after a failed build so agents do not mistake old artifacts for current code
+- [x] Verify success and failure build summaries through the real Tauri app and `target/debug/fc ide-mcp`
+- **Status:** complete
+
 ## Key Questions
 1. Which editor currently wastes the most available panel area or forces tiny pixel editing?
 2. Where is map-to-CHR binding surfaced, and does opening a map automatically load/show the right CHR resource?
@@ -172,6 +180,7 @@ Phase 19: Map And CHR Binding Navigation
 | IDE MCP should be able to focus the visible creative context | A programming agent should not need the DOM bridge just to show the source/resource it is writing; the in-process MCP should notify the Tauri UI through IPC |
 | MCP builds should surface diagnostics in the visible IDE | A programming agent writing code through MCP needs the same build/fix feedback loop as a human pressing Build: visible problems, source jump, and success health state |
 | Map and CHR editors should be navigable from their binding relationship | Binding state is only useful if the user can jump between a map and the CHR sheet that defines its tile palette without hunting through the file tree |
+| `ide_get_state` should be the agent's project radar | Programming agents need one semantic MCP call for resources, bindings, missing files, build diagnostics, source-map counts, and stale/current ROM status instead of scraping the Tauri DOM |
 
 ## Errors Encountered
 | Error | Attempt | Resolution |
@@ -182,3 +191,4 @@ Phase 19: Map And CHR Binding Navigation
 | File-tree runtime check initially found no `.tree` DOM | IDE MCP project creation updates project state but leaves the app on the launcher unless a preview run switches to studio | Switched the real Tauri shell to studio with `window.__emu.setMode("studio")` before validating file-tree UI |
 | Tauri runtime initially reported `map/level12.bin` after the patch | The live Vite/HMR instance still had the old `nextAvailablePath()` implementation loaded | Reloaded the Tauri webview, reopened the MCP-created project, and verified the new runtime function returned `map/level2.bin` |
 | Rapid `ide_open_resource` calls ended on the wrong active panel | Source/CHR/map/music opens were emitted in order, but async frontend handlers completed out of order and map focus overwrote the final music request | Serialized IDE MCP frontend sync through a promise queue and re-verified the last resource request wins |
+| Looked for a non-existent `fc-tauri/src-tauri/src/ide.rs` | Initial audit assumed an IDE backend file name that does not exist | Continued from the actual backend files: `ide_mcp.rs`, `project.rs`, and `build_pipeline.rs` |

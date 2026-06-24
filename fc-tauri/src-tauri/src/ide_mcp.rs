@@ -4,7 +4,7 @@
 //! headless CLI. Tools mutate the same project/build/emulator state as the UI
 //! and emit frontend events so Pinia can refresh after agent-driven changes.
 
-use crate::build_pipeline::{run_build, BuildState};
+use crate::build_pipeline::{run_build, BuildResult, BuildState};
 use crate::chr::{decode_sheet, encode_sheet};
 use crate::emu::EmuState;
 use crate::map::MapData;
@@ -12,6 +12,7 @@ use crate::project::{self, ProjectState};
 use crate::tracker::Song;
 use fc_core::Button;
 use serde_json::{json, Value};
+use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
@@ -317,15 +318,154 @@ fn emit_refresh(app: &AppHandle, reason: &str, changed: &[&str], extra: Value) {
     );
 }
 
+fn rel_exists(root: &Path, rel: &str) -> bool {
+    resolve(root, rel).map(|p| p.is_file()).unwrap_or(false)
+}
+
+fn resource_entries(root: &Path, paths: &[String], kind: &str, bindings: &BTreeMap<String, String>) -> Vec<Value> {
+    paths
+        .iter()
+        .map(|path| {
+            let mut entry = json!({
+                "kind": kind,
+                "path": path,
+                "exists": rel_exists(root, path),
+            });
+            if kind == "map" {
+                entry["bound_chr"] = bindings
+                    .get(path)
+                    .cloned()
+                    .map(Value::String)
+                    .unwrap_or(Value::Null);
+            }
+            if kind == "chr" {
+                let maps: Vec<String> = bindings
+                    .iter()
+                    .filter_map(|(map, chr)| (chr == path).then(|| map.clone()))
+                    .collect();
+                entry["used_by_maps"] = json!(maps);
+            }
+            entry
+        })
+        .collect()
+}
+
+fn resource_summary(root: &Path, manifest: &project::ProjectManifest) -> Value {
+    let mut all = Vec::new();
+    all.extend(resource_entries(root, &manifest.sources, "source", &manifest.map_chr));
+    all.extend(resource_entries(root, &manifest.chr, "chr", &manifest.map_chr));
+    all.extend(resource_entries(root, &manifest.maps, "map", &manifest.map_chr));
+    all.extend(resource_entries(root, &manifest.music, "music", &manifest.map_chr));
+
+    let missing: Vec<Value> = all
+        .iter()
+        .filter(|entry| !entry.get("exists").and_then(|v| v.as_bool()).unwrap_or(false))
+        .cloned()
+        .collect();
+    let unbound_maps: Vec<String> = manifest
+        .maps
+        .iter()
+        .filter(|path| !manifest.map_chr.contains_key(*path))
+        .cloned()
+        .collect();
+    let orphan_chr: Vec<String> = manifest
+        .chr
+        .iter()
+        .filter(|chr| !manifest.map_chr.values().any(|bound| bound == *chr))
+        .cloned()
+        .collect();
+
+    json!({
+        "counts": {
+            "source": manifest.sources.len(),
+            "chr": manifest.chr.len(),
+            "map": manifest.maps.len(),
+            "music": manifest.music.len(),
+            "all": all.len(),
+            "missing": missing.len(),
+            "unbound_maps": unbound_maps.len(),
+        },
+        "sources": resource_entries(root, &manifest.sources, "source", &manifest.map_chr),
+        "chr": resource_entries(root, &manifest.chr, "chr", &manifest.map_chr),
+        "maps": resource_entries(root, &manifest.maps, "map", &manifest.map_chr),
+        "music": resource_entries(root, &manifest.music, "music", &manifest.map_chr),
+        "all": all,
+        "missing": missing,
+        "bindings": {
+            "map_chr": manifest.map_chr,
+            "unbound_maps": unbound_maps,
+            "orphan_chr": orphan_chr,
+        },
+    })
+}
+
+fn build_summary(root: Option<&Path>, manifest: Option<&project::ProjectManifest>, last: Option<BuildResult>) -> Value {
+    let output = last
+        .as_ref()
+        .and_then(|r| r.output.clone())
+        .or_else(|| manifest.map(|m| m.output.clone()));
+    let output_path = root
+        .zip(output.as_ref())
+        .map(|(r, out)| r.join(out))
+        .filter(|p| p.is_file());
+    let output_exists = output_path.is_some();
+    let output_bytes = output_path
+        .as_ref()
+        .and_then(|p| std::fs::metadata(p).ok())
+        .map(|m| m.len());
+    let output_status = match (last.as_ref().map(|r| r.success), output_exists) {
+        (Some(true), true) => "current",
+        (Some(true), false) => "missing_after_success",
+        (Some(false), true) => "stale_after_failed_build",
+        (Some(false), false) => "missing_after_failed_build",
+        (None, true) => "existing_unverified",
+        (None, false) => "missing",
+    };
+
+    json!({
+        "last": last.as_ref().map(|r| {
+            json!({
+                "success": r.success,
+                "output": r.output,
+                "diagnostic_count": r.diagnostics.len(),
+                "diagnostics": r.diagnostics,
+                "step_count": r.steps.len(),
+                "source_map_count": r.source_map.len(),
+                "log_tail": r.log.lines().rev().take(8).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join("\n"),
+            })
+        }),
+        "output": output,
+        "output_exists": output_exists,
+        "output_bytes": output_bytes,
+        "output_status": output_status,
+        "output_current": output_status == "current",
+    })
+}
+
 fn ide_state(app: &AppHandle) -> Result<Value, String> {
     let project = project_state(app);
     let root = project.active_root().ok();
     let manifest = root.as_ref().and_then(|r| project::load_manifest(r).ok());
     let tree = root.as_ref().and_then(|r| project::file_tree(r).ok());
+    let resources = root
+        .as_ref()
+        .zip(manifest.as_ref())
+        .map(|(r, m)| resource_summary(r, m));
+    let build = build_summary(root.as_deref(), manifest.as_ref(), build_state(app).last_result());
+    let ready = json!({
+        "has_project": root.is_some(),
+        "has_sources": manifest.as_ref().is_some_and(|m| !m.sources.is_empty()),
+        "has_chr": manifest.as_ref().is_some_and(|m| !m.chr.is_empty()),
+        "has_maps": manifest.as_ref().is_some_and(|m| !m.maps.is_empty()),
+        "has_build_output": build.get("output_exists").and_then(|v| v.as_bool()).unwrap_or(false),
+    });
     Ok(json!({
         "root": root.map(|r| r.to_string_lossy().to_string()).unwrap_or_default(),
         "manifest": manifest,
         "tree": tree,
+        "resources": resources,
+        "build": build,
+        "ready": ready,
         "socket": SOCKET_PATH,
     }))
 }
@@ -548,6 +688,7 @@ fn build_project(app: &AppHandle) -> Result<Value, String> {
     let lock = build.build_lock();
     let _guard = lock.lock().unwrap();
     let result = run_build(&root, &manifest, build.cancel_flag());
+    build.set_last_result(result.clone());
     let _ = app.emit("build-updated", &result);
     emit_refresh(app, "build", &["build", "tree"], json!({"result": result}));
     Ok(json!({"result": result}))
