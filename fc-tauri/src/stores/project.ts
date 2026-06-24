@@ -206,10 +206,22 @@ export const useProjectStore = defineStore("project", {
     requestPreviewFocus() {
       this.focusPreview++;
     },
+    async openPrimarySource() {
+      const path = this.manifest?.sources[0];
+      if (!path) return false;
+      try {
+        await this.openFile(path, path.split("/").pop() || path);
+        return true;
+      } catch (e) {
+        console.warn("open primary source failed", e);
+        return false;
+      }
+    },
     async newProject(dir: string, name: string, template: ide.TemplateId) {
       this.manifest = normalizeManifest(await ide.projectNew(dir, name, template));
       this.resetWorkspaceState(dir);
       await this.refreshTree();
+      await this.openPrimarySource();
       this.status = `已新建工程 ${name}`;
     },
     async openProject(dir: string) {
@@ -217,6 +229,7 @@ export const useProjectStore = defineStore("project", {
       this.resetWorkspaceState(dir);
       this.mapChrBindings = { ...(this.manifest.map_chr || {}) };
       await this.refreshTree();
+      await this.openPrimarySource();
       this.status = `已打开工程 ${this.manifest.name}`;
     },
     async refreshTree() {
@@ -246,6 +259,9 @@ export const useProjectStore = defineStore("project", {
         else if (!this.root) this.root = "MCP";
         this.mapChrBindings = { ...(this.manifest.map_chr || {}) };
         await this.refreshTree();
+        if (reason === "project-new" || reason === "project-open") {
+          await this.openPrimarySource();
+        }
         if (extra?.path && changed.includes("source")) {
           const tab = this.tabs.find((t) => t.path === extra.path);
           if (tab) {

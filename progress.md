@@ -144,6 +144,15 @@
   - Runtime verified against the real Tauri IDE, using IDE MCP to create/open `/tmp/fc-default-names-NNyfNv` and add colliding resources.
   - Verified the live FileTreePanel component and prompts returned `src/new_module2.s`, `chr/sprites3.chr`, `map/level2.bin`, and `music/theme2.song.json`.
 
+### Phase 14: Open Primary Source On Project Load
+- **Status:** complete
+- Actions taken:
+  - Audited `newProject`, `openProject`, and IDE MCP sync flows and found they reset source tabs without opening the manifest's existing main source.
+  - Added `openPrimarySource()` to the project store.
+  - Called it after UI project creation/open and after IDE MCP `project-new` / `project-open` updates.
+  - Runtime verified the real Tauri IDE after MCP project creation: `src/main.s` opened automatically, CodeMirror contained source text, active resource was `源码 src/main.s`, and the empty editor hint was hidden.
+  - Closed tabs and re-opened the same project through IDE MCP to verify the project-open path also restores `src/main.s`.
+
 ## Test Results
 | Test | Result |
 |------|--------|
@@ -206,6 +215,11 @@
 | `npm --prefix fc-tauri run build` after resource-default change | PASS, with existing Vite large chunk warning |
 | `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml` after resource-default change | PASS |
 | `git diff --check` after resource-default change | PASS |
+| Primary source opens after IDE MCP project-new | PASS; real Tauri store showed tab/active path `src/main.s`, active resource `源码 src/main.s`, and CodeMirror content mounted |
+| Primary source opens after IDE MCP project-open | PASS; after closing tabs, reopening the project restored `src/main.s` as the active editor |
+| `npm --prefix fc-tauri run build` after primary-source change | PASS, with existing Vite large chunk warning |
+| `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml` after primary-source change | PASS |
+| `git diff --check` after primary-source change | PASS |
 | `fc-tauri/node_modules/.bin/vue-tsc --noEmit` | NOT RUN; local project has no `vue-tsc` binary |
 | `cd fc-tauri && npx vue-tsc --noEmit` | BLOCKED by restricted network; `npx` attempted `registry.npmmirror.com/vue-tsc` and failed DNS |
 

@@ -4,7 +4,7 @@
 Evolve the fc-tauri studio into a mature NES game-development IDE engine. The target experience is continuous project/resource/map/music workflows, comfortable editing controls, and editors that fill their available workspace instead of using tiny native-pixel canvases.
 
 ## Current Phase
-Phase 13: Collision-Free Resource Defaults
+Phase 14: Open Primary Source On Project Load
 
 ## Phases
 
@@ -100,6 +100,13 @@ Phase 13: Collision-Free Resource Defaults
 - [x] Verify the real Tauri file tree prompts show collision-free defaults after IDE MCP-created resources
 - **Status:** complete
 
+### Phase 14: Open Primary Source On Project Load
+- [x] Audit the project-new/open path for empty source editor states
+- [x] Add a project-store action that opens the first manifest source as the primary editable file
+- [x] Run that action after UI project creation/open and IDE MCP project-new/project-open sync
+- [x] Verify the real Tauri IDE opens `src/main.s` automatically after MCP project creation/open
+- **Status:** complete
+
 ## Key Questions
 1. Which editor currently wastes the most available panel area or forces tiny pixel editing?
 2. Where is map-to-CHR binding surfaced, and does opening a map automatically load/show the right CHR resource?
@@ -121,6 +128,7 @@ Phase 13: Collision-Free Resource Defaults
 | Build must autosave every first-class creative resource | A user should be able to edit CHR/map/music and press Build/Run without remembering a separate Save step for non-source resources; otherwise ROM output can silently use stale assets |
 | Any IDE run entry point must surface the Preview panel | Running a ROM from Build health should be as visible as the top-level Run and MCP run paths; a successful run that leaves Preview closed breaks feedback continuity |
 | New creative resources should default to an available path | Repeated source/CHR/map/song creation should not begin from a path that immediately fails or overwrites user intent; numbered stems should advance predictably |
+| Project load should land on editable source when one exists | A template or MCP-created game project should be immediately writable; an empty source editor while `src/main.s` exists adds needless friction to the creative loop |
 
 ## Errors Encountered
 | Error | Attempt | Resolution |

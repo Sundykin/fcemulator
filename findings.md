@@ -116,6 +116,12 @@
 - Runtime verification used `target/debug/fc ide-mcp` to create/open `/tmp/fc-default-names-NNyfNv`, then write existing `src/new_module.s`, `chr/sprites2.chr`, `map/level1.bin`, and `music/theme.song.json`.
 - After reloading the Tauri webview to pick up the updated component code, the live FileTreePanel component reported collision-free defaults: `src/new_module2.s`, `chr/sprites3.chr`, `map/level2.bin`, and `music/theme2.song.json`.
 
+## Primary Source Load Findings
+- New/open project flows previously reset all editor tabs and left the source panel empty, even for demo/template projects whose manifest already declares `src/main.s`.
+- The project store now opens the first manifest source after UI `newProject`, UI `openProject`, and IDE MCP `project-new` / `project-open` sync.
+- Runtime verification created `/tmp/fc-primary-source-9XAzdF` through `target/debug/fc ide-mcp`, switched the real Tauri app to studio mode, and found `tabs=[src/main.s]`, `activePath=src/main.s`, active resource `源码 src/main.s`, the CodeMirror editor mounted with source text, and the empty editor hint hidden.
+- Reopening the same project through IDE MCP after closing tabs again restored `src/main.s` as the active editor tab, confirming both project-new and project-open sync paths behave the same.
+
 ## Files To Inspect Next
 - `fc-tauri/src/ide/MapEditorPanel.vue` template/style sections
 - `fc-tauri/src/ide/ChrEditorPanel.vue` template/style sections
