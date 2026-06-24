@@ -3,27 +3,56 @@ use crate::types::Mirroring;
 use serde::{Deserialize, Serialize};
 
 // ============================================================================
-// Mapper 185 — CNROM with copy-protection CHR disable
+// Mapper 181 / 185 — CNROM with copy-protection CHR disable
 // ============================================================================
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+enum CnromProtectVariant {
+    Mapper185,
+    Mapper181,
+}
+
+impl Default for CnromProtectVariant {
+    fn default() -> Self {
+        Self::Mapper185
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Mapper185 {
     prg_16k: usize,
+    #[serde(default)]
+    variant: CnromProtectVariant,
     datareg: u8,
     mirroring: Mirroring,
 }
+
+pub type Mapper181 = Mapper185;
 
 impl Mapper185 {
     pub(in crate::mapper) fn new(prg_16k: usize, mirroring: Mirroring) -> Self {
         Self {
             prg_16k: prg_16k.max(1),
+            variant: CnromProtectVariant::Mapper185,
+            datareg: 0,
+            mirroring,
+        }
+    }
+
+    pub(in crate::mapper) fn new_181(prg_16k: usize, mirroring: Mirroring) -> Self {
+        Self {
+            prg_16k: prg_16k.max(1),
+            variant: CnromProtectVariant::Mapper181,
             datareg: 0,
             mirroring,
         }
     }
 
     fn chr_enabled(&self) -> bool {
-        (self.datareg & 0x03) != 0 && self.datareg != 0x13
+        match self.variant {
+            CnromProtectVariant::Mapper185 => (self.datareg & 0x03) != 0 && self.datareg != 0x13,
+            CnromProtectVariant::Mapper181 => self.datareg & 0x01 == 0,
+        }
     }
 }
 
@@ -275,6 +304,25 @@ mod tests {
         mapper.write_register(0x8000, 0x13);
         assert_eq!(mapper.chr_read(0x1004, ChrAccess::Default), Some(0xFF));
         assert_eq!(mapper.mirroring(), Mirroring::Vertical);
+    }
+
+    #[test]
+    fn mapper181_gates_chr_on_bit0_inverse_of_185_family() {
+        let mut mapper = Mapper181::new_181(4, Mirroring::Horizontal);
+
+        assert_eq!(mapper.prg_index(0x8004), 0x0004);
+        assert_eq!(mapper.prg_index(0xC004), 3 * 0x4000 + 4);
+        assert_eq!(mapper.mirroring(), Mirroring::Horizontal);
+
+        assert_eq!(mapper.chr_read(0x1004, ChrAccess::Default), None);
+        assert!(!mapper.chr_write(0x1004, 0x55));
+
+        mapper.write_register(0x8000, 0x01);
+        assert_eq!(mapper.chr_read(0x1004, ChrAccess::Default), Some(0xFF));
+        assert!(mapper.chr_write(0x1004, 0x55));
+
+        mapper.write_register(0xFFFF, 0x20);
+        assert_eq!(mapper.chr_read(0x1004, ChrAccess::Default), None);
     }
 
     #[test]

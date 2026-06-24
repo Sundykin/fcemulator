@@ -131,6 +131,7 @@ fn watches_ppu_bus_matches_notify_a12_overrides() {
         (174, false),  // Mapper 174
         (175, false),  // Mapper 175
         (177, false),  // Mapper 177
+        (181, false),  // Mapper 181 CNROM protection
         (183, false),  // Mapper 183 IRQ is CPU-clocked, not PPU-bus-clocked
         (188, false),  // Mapper 188
         (230, false),  // Mapper 230
@@ -322,6 +323,7 @@ fn clocks_cpu_matches_cpu_clock_overrides() {
         (174, false),  // Mapper 174
         (175, false),  // Mapper 175
         (177, false),  // Mapper 177
+        (181, false),  // Mapper 181 CNROM protection
         (183, true),   // Mapper 183 IRQ counter clocks per CPU cycle
         (188, false),  // Mapper 188
         (230, false),  // Mapper 230
@@ -519,6 +521,7 @@ fn clocks_hblank_matches_hblank_clock_overrides() {
         (175, false),
         (177, false),
         (180, false),
+        (181, false),
         (183, false),
         (184, false),
         (187, false),
