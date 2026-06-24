@@ -37,6 +37,13 @@ const currentTileLabel = computed(() =>
   tileCount.value ? `图块 ${selTile.value} / ${Math.max(0, tileCount.value - 1)}` : "无图块"
 );
 const sheetDensityLabel = computed(() => `图块表 ${overviewCols.value} 列 · ${overviewTile.value}px`);
+const boundMaps = computed(() => store.mapsUsingActiveChr);
+const boundMapsLabel = computed(() => {
+  if (!sheet.value) return "地图 0";
+  if (!boundMaps.value.length) return "未绑定地图";
+  const first = boundMaps.value[0];
+  return boundMaps.value.length === 1 ? `地图 ${first}` : `地图 ${first} +${boundMaps.value.length - 1}`;
+});
 
 const HISTORY_LIMIT = 50;
 let editBefore: number[] | null = null;
@@ -288,6 +295,14 @@ async function saveChr() {
   await store.saveChr();
 }
 
+async function openBoundMap() {
+  try {
+    await store.openMapUsingActiveChr();
+  } catch (err) {
+    store.status = "打开绑定地图失败：" + err;
+  }
+}
+
 function toggleSheetPanel() {
   sheetPanelOpen.value = !sheetPanelOpen.value;
   nextTick(() => {
@@ -513,6 +528,10 @@ onBeforeUnmount(() => {
       <div class="contextbar">
         <span class="crumb"><Icon name="library" :size="14" />{{ sheetLabel }}</span>
         <span class="crumb"><Icon name="file" :size="14" />{{ tileCount }} 图块</span>
+        <span class="crumb bindstate"><Icon name="map" :size="14" />{{ boundMapsLabel }}</span>
+        <button class="crumb action" :disabled="!boundMaps.length" title="打开使用当前 CHR 的地图" @click="openBoundMap">
+          <Icon name="chevron" :size="13" />打开地图
+        </button>
         <span class="crumb">{{ currentTileLabel }}</span>
         <span class="crumb pixel">{{ pixelStatus }}</span>
       </div>
@@ -581,6 +600,10 @@ onBeforeUnmount(() => {
 .dirty { color: var(--accent); font-size: 12px; }
 .contextbar { min-height: 32px; padding: 6px 12px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border); background: rgba(5, 7, 13, 0.28); overflow: hidden; }
 .crumb { min-width: 0; max-width: 38%; height: 20px; padding: 0 8px; display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--border); border-radius: 5px; color: var(--text-dim); font-size: 11.5px; font-family: var(--font-mono, monospace); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.crumb.action { max-width: none; background: var(--surface); cursor: pointer; font-family: inherit; }
+.crumb.action:hover:not(:disabled) { color: var(--text); border-color: var(--border-strong); }
+.crumb.action:disabled { opacity: 0.45; cursor: not-allowed; }
+.crumb.bindstate { color: var(--text); border-color: rgba(56, 189, 248, 0.36); background: rgba(56, 189, 248, 0.09); }
 .crumb.pixel { max-width: 34%; color: var(--text); border-color: rgba(124, 92, 255, 0.34); background: rgba(124, 92, 255, 0.1); }
 .body { flex: 1; position: relative; padding: 14px; min-height: 0; overflow: hidden; }
 .left { width: 100%; height: 100%; display: flex; flex-direction: column; gap: 12px; min-height: 0; }

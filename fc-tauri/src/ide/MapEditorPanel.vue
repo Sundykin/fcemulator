@@ -813,6 +813,14 @@ async function onChrChange(e: Event) {
   }
 }
 
+async function openBoundChr() {
+  try {
+    await store.openBoundChrForActiveMap();
+  } catch (err) {
+    store.status = "打开绑定 CHR 失败：" + err;
+  }
+}
+
 function clearLayer() {
   const m = map.value;
   if (!m) return;
@@ -1153,6 +1161,9 @@ onBeforeUnmount(() => {
       <div class="contextbar">
         <span class="crumb"><Icon name="map" :size="14" />{{ store.map?.path }}</span>
         <span class="crumb bindstate" :class="{ missing: !boundChrPath }"><Icon name="library" :size="14" />{{ boundChrLabel }}</span>
+        <button class="crumb action" :disabled="!boundChrPath" title="打开当前地图绑定的 CHR" @click="openBoundChr">
+          <Icon name="chevron" :size="13" />打开 CHR
+        </button>
         <span class="crumb layerchip" :class="`layer-${layer}`">{{ brushLabel }}</span>
         <span class="crumb">{{ hoverValueLabel }}</span>
         <span class="crumb">{{ collisionStatsLabel }}</span>
@@ -1220,6 +1231,9 @@ onBeforeUnmount(() => {
 .dirty { color: var(--accent); font-size: 12px; white-space: nowrap; }
 .contextbar { min-height: 32px; padding: 6px 12px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border); background: rgba(5, 7, 13, 0.28); overflow: hidden; }
 .crumb { min-width: 0; max-width: 36%; height: 20px; padding: 0 8px; display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--border); border-radius: 5px; color: var(--text-dim); font-size: 11.5px; font-family: var(--font-mono, monospace); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.crumb.action { max-width: none; background: var(--surface); cursor: pointer; font-family: inherit; }
+.crumb.action:hover:not(:disabled) { color: var(--text); border-color: var(--border-strong); }
+.crumb.action:disabled { opacity: 0.45; cursor: not-allowed; }
 .crumb.bindstate { color: var(--text); border-color: rgba(124, 92, 255, 0.36); background: rgba(124, 92, 255, 0.1); }
 .crumb.missing { color: var(--warning, #fbbf24); border-color: rgba(251, 191, 36, 0.38); background: rgba(251, 191, 36, 0.09); }
 .crumb.layer-tiles { color: #bae6fd; border-color: rgba(56, 189, 248, 0.42); background: rgba(56, 189, 248, 0.1); }

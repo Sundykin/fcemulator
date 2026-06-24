@@ -153,6 +153,13 @@
 - Runtime verification created `/tmp/fc-mcp-build-diag-*`, wrote an invalid `src/main.s`, and invoked `ide_build` through `target/debug/fc ide-mcp`. The real Tauri IDE showed Build at the bottom with the `src/main.s:2` diagnostic row visible while the editor was focused on `BROKEN_OPCODE_FOR_MCP_BUILD`.
 - A follow-up MCP source fix and `ide_build` succeeded; the visible Build panel switched to Health, `build/game.nes` was recorded, and the source map contained 5 line entries.
 
+## Map/CHR Binding Navigation Findings
+- Before this slice, the map editor surfaced the bound CHR path and automatically loaded it for preview, but the user still had to use the file tree to jump into the CHR editor.
+- The project store now exposes `mapsUsingActiveChr`, `openBoundChrForActiveMap()`, and `openMapUsingActiveChr()`, keeping binding navigation on the same open/focus path as normal resource clicks.
+- The Map editor context bar now includes an "打开 CHR" action next to the binding chip. It is disabled when the active map has no CHR binding.
+- The CHR editor context bar now shows the first map using the active CHR, plus a count when there are multiple dependent maps, and includes an "打开地图" action.
+- Runtime verification with `/tmp/fc-map-chr-nav-*` showed the real Tauri Map editor context bar displaying `chr/sprites.chr` and an enabled "打开 CHR" button. Calling the store action opened the CHR panel with `mapsUsingActiveChr=["map/room.bin"]`; calling the reverse action returned to the Map panel with the same binding intact.
+
 ## Files To Inspect Next
 - `fc-tauri/src/ide/MapEditorPanel.vue` template/style sections
 - `fc-tauri/src/ide/ChrEditorPanel.vue` template/style sections

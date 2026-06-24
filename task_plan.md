@@ -4,7 +4,7 @@
 Evolve the fc-tauri studio into a mature NES game-development IDE engine. The target experience is continuous project/resource/map/music workflows, comfortable editing controls, and editors that fill their available workspace instead of using tiny native-pixel canvases.
 
 ## Current Phase
-Phase 18: IDE MCP Build Surfaces Diagnostics
+Phase 19: Map And CHR Binding Navigation
 
 ## Phases
 
@@ -137,6 +137,14 @@ Phase 18: IDE MCP Build Surfaces Diagnostics
 - [x] Verify successful MCP builds switch Build panel to Health and update source-map/build state
 - **Status:** complete
 
+### Phase 19: Map And CHR Binding Navigation
+- [x] Audit current map-to-CHR binding visibility and editor navigation paths
+- [x] Add direct "open bound CHR" navigation from the Map editor context bar
+- [x] Show maps that depend on the active CHR in the CHR editor context bar
+- [x] Add direct "open map" navigation from the CHR editor back to a dependent map
+- [x] Verify bidirectional navigation in the real Tauri IDE using an MCP-created project
+- **Status:** complete
+
 ## Key Questions
 1. Which editor currently wastes the most available panel area or forces tiny pixel editing?
 2. Where is map-to-CHR binding surfaced, and does opening a map automatically load/show the right CHR resource?
@@ -163,6 +171,7 @@ Phase 18: IDE MCP Build Surfaces Diagnostics
 | Running should immediately enter playable preview input | A game IDE should let the user press Run and test controls immediately, without first clicking the preview canvas |
 | IDE MCP should be able to focus the visible creative context | A programming agent should not need the DOM bridge just to show the source/resource it is writing; the in-process MCP should notify the Tauri UI through IPC |
 | MCP builds should surface diagnostics in the visible IDE | A programming agent writing code through MCP needs the same build/fix feedback loop as a human pressing Build: visible problems, source jump, and success health state |
+| Map and CHR editors should be navigable from their binding relationship | Binding state is only useful if the user can jump between a map and the CHR sheet that defines its tile palette without hunting through the file tree |
 
 ## Errors Encountered
 | Error | Attempt | Resolution |

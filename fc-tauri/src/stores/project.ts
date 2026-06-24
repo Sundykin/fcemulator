@@ -169,6 +169,11 @@ export const useProjectStore = defineStore("project", {
     chrChoices: (s) => s.manifest?.chr ?? [],
     boundChrForActiveMap: (s) =>
       s.map ? s.mapChrBindings[s.map.path] || s.manifest?.map_chr?.[s.map.path] || s.chr?.path || s.manifest?.chr[0] || "" : "",
+    mapsUsingActiveChr: (s) => {
+      if (!s.chr) return [];
+      const bindings = { ...(s.manifest?.map_chr || {}), ...s.mapChrBindings };
+      return (s.manifest?.maps ?? []).filter((path) => bindings[path] === s.chr?.path);
+    },
   },
   actions: {
     resetWorkspaceState(dir: string) {
@@ -688,6 +693,28 @@ export const useProjectStore = defineStore("project", {
         this.markActiveResource("map", this.map.path);
       }
       this.status = `地图 ${this.map.path} 使用 CHR ${path}`;
+    },
+    async openBoundChrForActiveMap() {
+      const path = this.boundChrForActiveMap;
+      if (!path) {
+        this.status = "当前地图未绑定 CHR";
+        return false;
+      }
+      await this.openChr(path);
+      return true;
+    },
+    async openMapUsingActiveChr(path?: string) {
+      if (!this.chr) {
+        this.status = "未打开 CHR";
+        return false;
+      }
+      const target = path || this.mapsUsingActiveChr[0] || "";
+      if (!target) {
+        this.status = `没有地图绑定 ${this.chr.path}`;
+        return false;
+      }
+      await this.openMap(target);
+      return true;
     },
     // ---- converters ----
     async importPng() {

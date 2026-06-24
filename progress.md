@@ -197,6 +197,15 @@
   - Runtime verified a failing `ide_build` from launcher/studio: Build panel was visible, Problems tab showed `src/main.s:2`, and the editor jumped to `BROKEN_OPCODE_FOR_MCP_BUILD`.
   - Runtime verified a fixed successful `ide_build`: Build panel switched to Health, status read `MCP 构建成功 → build/game.nes`, and source map entries were updated.
 
+### Phase 19: Map And CHR Binding Navigation
+- **Status:** complete
+- Actions taken:
+  - Audited Map and CHR editor context bars and confirmed binding state was visible, but direct editor-to-editor navigation still required the file tree.
+  - Added `mapsUsingActiveChr`, `openBoundChrForActiveMap()`, and `openMapUsingActiveChr()` to the project store.
+  - Added an "打开 CHR" context-bar button in `MapEditorPanel.vue` that opens the active map's bound CHR.
+  - Added bound-map status plus an "打开地图" context-bar button in `ChrEditorPanel.vue`.
+  - Runtime verified in the real Tauri app with an IDE MCP-created demo project: map `map/room.bin` showed bound `chr/sprites.chr`, opened CHR, CHR showed `map/room.bin`, and reverse navigation returned to the Map panel.
+
 ## Test Results
 | Test | Result |
 |------|--------|
@@ -285,6 +294,8 @@
 | live `fc emu-mcp` state after resource-open build/run | PASS; reported mapper 0 `game.nes`, running worker/audio runtime, and advancing CPU/PPU counters |
 | MCP failed build surfaces visible diagnostics | PASS; real Tauri Build panel displayed `src/main.s:2` and editor active line was `BROKEN_OPCODE_FOR_MCP_BUILD` |
 | MCP successful build switches Build panel to Health | PASS; real Tauri Build panel showed Health, status `MCP 构建成功 → build/game.nes`, and source map count 5 |
+| Map editor opens bound CHR | PASS; real Tauri context bar showed enabled `打开 CHR`, and the action focused `chr/sprites.chr` in the CHR panel |
+| CHR editor opens dependent map | PASS; real Tauri CHR context bar showed `地图 map/room.bin`, and the action focused `map/room.bin` in the Map panel |
 | `fc-tauri/node_modules/.bin/vue-tsc --noEmit` | NOT RUN; local project has no `vue-tsc` binary |
 | `cd fc-tauri && npx vue-tsc --noEmit` | BLOCKED by restricted network; `npx` attempted `registry.npmmirror.com/vue-tsc` and failed DNS |
 
