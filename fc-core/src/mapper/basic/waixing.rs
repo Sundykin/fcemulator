@@ -3,6 +3,162 @@ use crate::types::Mirroring;
 use serde::{Deserialize, Serialize};
 
 // ============================================================================
+// Mapper 178 — Waixing FS305/NJ0430
+//
+// References:
+// - FCEUX `src/boards/178.cpp:85-149`
+// - FCEUmm `src/boards/178.c:88-110,140-196,204-244`
+// - Mesen2 `Core/NES/Mappers/Waixing/Waixing178.h:4-61`
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Mapper178 {
+    prg_16k_total: usize,
+    regs: [u8; 4],
+    wram: Vec<u8>,
+    pcm_enabled: bool,
+    submapper: u8,
+    pad: [u8; 2],
+}
+
+impl Mapper178 {
+    pub(in crate::mapper) fn new(prg_16k: usize, submapper: u8) -> Self {
+        Mapper178 {
+            prg_16k_total: prg_16k.max(2),
+            regs: [0; 4],
+            wram: vec![0; 0x8000],
+            pcm_enabled: false,
+            submapper,
+            pad: [0; 2],
+        }
+    }
+
+    fn switchable_bank(&self) -> usize {
+        ((self.regs[2] as usize) << 3) | (self.regs[1] as usize & 0x07)
+    }
+
+    fn prg_bank(&self, addr: u16) -> usize {
+        let bank = self.switchable_bank();
+        if self.regs[0] & 0x02 != 0 {
+            if addr < 0xC000 {
+                bank
+            } else if self.regs[0] & 0x04 != 0 {
+                ((self.regs[2] as usize) << 3) | 0x06 | (self.regs[1] as usize & 0x01)
+            } else {
+                ((self.regs[2] as usize) << 3) | 0x07
+            }
+        } else if self.regs[0] & 0x04 != 0 {
+            bank
+        } else if addr < 0xC000 {
+            bank & !1
+        } else {
+            (bank & !1) | 1
+        }
+    }
+
+    fn effective_high_addr(&self, addr: u16) -> u16 {
+        if self.submapper == 3 && self.pad[0] & 0x01 != 0 {
+            (addr & !0x0003) | u16::from(self.pad[1] & 0x03)
+        } else {
+            addr
+        }
+    }
+
+    fn low_wram_index(&self, addr: u16) -> usize {
+        ((self.regs[3] as usize & 0x03) * 0x2000) + (addr as usize & 0x1FFF)
+    }
+}
+
+impl MapperOps for Mapper178 {
+    fn prg_index(&self, addr: u16) -> usize {
+        let effective_addr = self.effective_high_addr(addr);
+        let bank = self.prg_bank(addr) % self.prg_16k_total;
+        bank * 0x4000 + (effective_addr as usize & 0x3FFF)
+    }
+
+    fn chr_index(&self, addr: u16) -> usize {
+        (addr & 0x1FFF) as usize
+    }
+
+    fn write_register(&mut self, _addr: u16, _value: u8) {}
+
+    fn write_expansion(&mut self, addr: u16, value: u8) {
+        match addr {
+            0x4800..=0x4FFF => self.regs[(addr & 0x03) as usize] = value,
+            0x5800..=0x5FFF => {
+                if addr == 0x5800 {
+                    self.pcm_enabled = value & 0xF0 != 0;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn read_expansion_with_open_bus(&mut self, addr: u16, open_bus: u8) -> Option<u8> {
+        self.peek_expansion_with_open_bus(addr, open_bus)
+    }
+
+    fn peek_expansion_with_open_bus(&self, addr: u16, open_bus: u8) -> Option<u8> {
+        match addr {
+            0x5000 => Some(0),
+            0x5800 => Some((open_bus & 0xBF) | (u8::from(!self.pcm_enabled) << 6)),
+            _ => None,
+        }
+    }
+
+    fn write_low_register(&mut self, addr: u16, value: u8) -> bool {
+        if !(0x6000..=0x7FFF).contains(&addr) {
+            return false;
+        }
+        if self.submapper == 3 {
+            self.pad[0] = value;
+        } else {
+            let index = self.low_wram_index(addr);
+            self.wram[index] = value;
+        }
+        true
+    }
+
+    fn read_low_register(&mut self, addr: u16) -> Option<u8> {
+        self.peek_low_register(addr)
+    }
+
+    fn peek_low_register(&self, addr: u16) -> Option<u8> {
+        if self.submapper == 3 || !(0x6000..=0x7FFF).contains(&addr) {
+            return None;
+        }
+        Some(self.wram[self.low_wram_index(addr)])
+    }
+
+    fn low_prg_ram_read_enabled(&self, addr: u16) -> bool {
+        !(0x6000..=0x7FFF).contains(&addr)
+    }
+
+    fn low_prg_ram_write_enabled(&self, addr: u16) -> bool {
+        !(0x6000..=0x7FFF).contains(&addr)
+    }
+
+    fn mirroring(&self) -> Mirroring {
+        if self.regs[0] & 0x01 != 0 {
+            Mirroring::Horizontal
+        } else {
+            Mirroring::Vertical
+        }
+    }
+
+    fn reset(&mut self, soft: bool) {
+        self.regs = [0; 4];
+        self.pcm_enabled = false;
+        self.pad[0] = 0;
+        if soft && self.submapper == 3 {
+            self.pad[1] = self.pad[1].wrapping_add(1);
+        } else if !soft {
+            self.pad[1] = 0;
+        }
+    }
+}
+
+// ============================================================================
 // Mapper 253 — Waixing Dragon Ball pirate
 //
 // References:
@@ -185,6 +341,74 @@ impl MapperOps for Mapper253 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mapper178_switches_prg_modes_mirroring_and_banked_wram() {
+        let mut mapper = Mapper178::new(64, 0);
+
+        assert_eq!(mapper.prg_index(0x8004), 0x0004);
+        assert_eq!(mapper.prg_index(0xC004), 0x4000 + 4);
+        assert_eq!(mapper.chr_index(0x1004), 0x1004);
+        assert_eq!(mapper.mirroring(), Mirroring::Vertical);
+        assert!(!mapper.low_prg_ram_read_enabled(0x6000));
+        assert!(!mapper.low_prg_ram_write_enabled(0x6000));
+
+        mapper.write_low_register(0x6004, 0x12);
+        assert_eq!(mapper.read_low_register(0x6004), Some(0x12));
+        mapper.write_expansion(0x4803, 0x01);
+        assert_eq!(mapper.read_low_register(0x6004), Some(0x00));
+        mapper.write_low_register(0x6004, 0x34);
+        assert_eq!(mapper.read_low_register(0x6004), Some(0x34));
+        mapper.write_expansion(0x4803, 0x00);
+        assert_eq!(mapper.read_low_register(0x6004), Some(0x12));
+
+        mapper.write_expansion(0x4801, 0x05);
+        mapper.write_expansion(0x4802, 0x02);
+        assert_eq!(mapper.prg_index(0x8004), 20 * 0x4000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 21 * 0x4000 + 4);
+
+        mapper.write_expansion(0x4800, 0x05);
+        assert_eq!(mapper.prg_index(0x8004), 21 * 0x4000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 21 * 0x4000 + 4);
+        assert_eq!(mapper.mirroring(), Mirroring::Horizontal);
+
+        mapper.write_expansion(0x4800, 0x03);
+        assert_eq!(mapper.prg_index(0x8004), 21 * 0x4000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 23 * 0x4000 + 4);
+
+        mapper.write_expansion(0x4800, 0x07);
+        assert_eq!(mapper.prg_index(0xC004), 23 * 0x4000 + 4);
+
+        mapper.write_expansion(0x5800, 0x10);
+        assert_eq!(
+            mapper.read_expansion_with_open_bus(0x5800, 0xFF),
+            Some(0xBF)
+        );
+        mapper.write_expansion(0x5800, 0x00);
+        assert_eq!(
+            mapper.read_expansion_with_open_bus(0x5800, 0x80),
+            Some(0xC0)
+        );
+        assert_eq!(mapper.read_expansion_with_open_bus(0x5000, 0xFF), Some(0));
+    }
+
+    #[test]
+    fn mapper178_submapper3_uses_pad_value_as_low_prg_address_bits() {
+        let mut mapper = Mapper178::new(8, 3);
+
+        mapper.write_low_register(0x6000, 0x01);
+        assert_eq!(mapper.prg_index(0x8000), 0x0000);
+        mapper.reset(true);
+        mapper.write_low_register(0x6000, 0x01);
+        assert_eq!(mapper.prg_index(0x8000), 0x0001);
+        mapper.reset(true);
+        mapper.write_low_register(0x6000, 0x01);
+        assert_eq!(mapper.prg_index(0x8000), 0x0002);
+
+        mapper.write_low_register(0x7000, 0x00);
+        assert_eq!(mapper.prg_index(0x8000), 0x0000);
+        assert_eq!(mapper.read_low_register(0x6000), None);
+    }
 
     #[test]
     fn mapper253_switches_prg_and_fixed_tail() {

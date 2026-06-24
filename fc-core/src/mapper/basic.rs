@@ -60,4 +60,4 @@ pub use txc::{TxcMapper, TxcVariant};
 pub use unlicensed::{
     Mapper106, Mapper183, Mapper212, Mapper222, Mapper235, Mapper43, Mapper60, Mapper83,
 };
-pub use waixing::Mapper253;
+pub use waixing::{Mapper178, Mapper253};
