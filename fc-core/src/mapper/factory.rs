@@ -174,6 +174,7 @@ impl Mapper {
             159 => Mapper::BandaiFcg(BandaiFcg::new_159(prg_16k, chr_8k)),
             162 => Mapper::NanjingMapper(NanjingMapper::new(prg_16k, NanjingVariant::Mapper162)),
             163 => Mapper::NanjingMapper(NanjingMapper::new(prg_16k, NanjingVariant::Mapper163)),
+            164 => Mapper::NanjingMapper(NanjingMapper::new(prg_16k, NanjingVariant::Mapper164)),
             165 => Mapper::Mmc3(Mmc3::new_165(prg_16k, chr_8k, mirroring)),
             166 => Mapper::Subor166(Subor166::new(SuborVariant::Mapper166)),
             167 => Mapper::Subor166(Subor166::new(SuborVariant::Mapper167)),

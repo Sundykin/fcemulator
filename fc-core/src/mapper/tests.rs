@@ -124,6 +124,7 @@ fn watches_ppu_bus_matches_notify_a12_overrides() {
         (156, false),  // Mapper 156
         (162, false),  // Waixing FS304
         (163, false),  // Nanjing FC-001
+        (164, false),  // Waixing FFV / PEC-9588
         (158, true),   // Mapper 158 RAMBO-1 can use PPU A12 IRQ mode
         (159, false),  // Bandai LZ93D50 with 24C01
         (165, true),   // Mapper 165 MMC3 A12 IRQ and CHR latch
@@ -344,6 +345,7 @@ fn clocks_cpu_matches_cpu_clock_overrides() {
         (156, false),  // Mapper 156
         (162, false),  // Waixing FS304
         (163, false),  // Nanjing FC-001
+        (164, false),  // Waixing FFV / PEC-9588
         (158, true),   // Mapper 158 RAMBO-1 can use CPU-cycle IRQ mode
         (159, true),   // Bandai LZ93D50 IRQ counter clocks per CPU cycle
         (165, false),  // Mapper 165 uses PPU A12/CHR latch
@@ -568,6 +570,7 @@ fn clocks_hblank_matches_hblank_clock_overrides() {
         (156, false),
         (162, true),
         (163, true),
+        (164, false),
         (158, false),
         (159, false),
         (165, false),

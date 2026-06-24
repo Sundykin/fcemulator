@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 pub enum NanjingVariant {
     Mapper162,
     Mapper163,
+    Mapper164,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -62,6 +63,27 @@ impl NanjingMapper {
                     | ((self.regs[0] as usize) & 0x0F)
                     | if self.regs[3] & 0x04 != 0 { 0x00 } else { 0x03 }
             }
+            NanjingVariant::Mapper164 => self.prg_bank_164(0),
+        }
+    }
+
+    fn prg_bank_164(&self, slot: usize) -> usize {
+        let reg0 = self.regs[0];
+        let reg1 = self.regs[1];
+        let outer = ((reg1 as usize) << 5) & 0x20;
+        match reg0 & 0x70 {
+            0x50 => {
+                let bank32 = (outer >> 1) | ((reg0 & 0x0F) as usize);
+                (bank32 << 1) | slot
+            }
+            0x70 => outer | (((reg0 as usize) << 1) & 0x10) | ((reg0 & 0x0F) as usize),
+            _ => {
+                if slot == 0 {
+                    outer | (((reg0 as usize) >> 1) & 0x10) | ((reg0 & 0x0F) as usize)
+                } else {
+                    outer | 0x1F
+                }
+            }
         }
     }
 
@@ -88,10 +110,18 @@ impl NanjingMapper {
 
 impl MapperOps for NanjingMapper {
     fn prg_index(&self, addr: u16) -> usize {
+        if self.variant == NanjingVariant::Mapper164 {
+            let slot = usize::from(addr >= 0xC000);
+            let bank = self.prg_bank_164(slot) % self.prg_16k_total;
+            return bank * 0x4000 + (addr as usize & 0x3FFF);
+        }
         prg_32k(self.prg_bank() % self.prg_32k_total, addr)
     }
 
     fn chr_index(&self, addr: u16) -> usize {
+        if self.variant == NanjingVariant::Mapper164 {
+            return (addr & 0x1FFF) as usize;
+        }
         chr_4k_at(self.chr_bank_4k, addr, addr & 0x1000)
     }
 
@@ -108,6 +138,7 @@ impl MapperOps for NanjingMapper {
         Some(match self.variant {
             NanjingVariant::Mapper162 => 0x00,
             NanjingVariant::Mapper163 => self.read_163(),
+            NanjingVariant::Mapper164 => 0x04,
         })
     }
 
@@ -118,6 +149,10 @@ impl MapperOps for NanjingMapper {
         match self.variant {
             NanjingVariant::Mapper162 => self.regs[((addr >> 8) & 0x03) as usize] = value,
             NanjingVariant::Mapper163 => self.write_163(addr, value),
+            NanjingVariant::Mapper164 => {
+                let index = ((addr >> 8) & 0x01) as usize;
+                self.regs[index] = value;
+            }
         }
     }
 
@@ -126,6 +161,9 @@ impl MapperOps for NanjingMapper {
     }
 
     fn hblank_clock(&mut self, scanline: u16, _dot: u16) {
+        if self.variant == NanjingVariant::Mapper164 {
+            return;
+        }
         self.chr_bank_4k = if self.regs[0] & 0x80 != 0 && scanline < 239 && scanline >= 127 {
             1
         } else {
@@ -134,7 +172,7 @@ impl MapperOps for NanjingMapper {
     }
 
     fn clocks_hblank(&self) -> bool {
-        true
+        self.variant != NanjingVariant::Mapper164
     }
 
     fn reset(&mut self, _soft: bool) {
@@ -186,5 +224,33 @@ mod tests {
         mapper.reset(true);
         assert_eq!(mapper.prg_index(0x8004), 0x03 * 0x8000 + 4);
         assert_eq!(mapper.chr_index(0x0004), 0x0004);
+    }
+
+    #[test]
+    fn mapper164_switches_ffv_prg_modes_without_hblank_split() {
+        let mut mapper = NanjingMapper::new(128, NanjingVariant::Mapper164);
+
+        assert_eq!(mapper.prg_index(0x8004), 0x0004);
+        assert_eq!(mapper.prg_index(0xC004), 0x1F * 0x4000 + 4);
+        assert_eq!(mapper.peek_expansion(0x5400), Some(0x04));
+        assert!(!mapper.clocks_hblank());
+
+        mapper.write_expansion(0x5000, 0x0D);
+        mapper.write_expansion(0x5100, 0x01);
+        assert_eq!(mapper.prg_index(0x8004), 0x2D * 0x4000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 0x3F * 0x4000 + 4);
+
+        mapper.write_expansion(0x5000, 0x55);
+        assert_eq!(mapper.prg_index(0x8004), 0x2A * 0x4000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 0x2B * 0x4000 + 4);
+
+        mapper.write_expansion(0x5000, 0x7E);
+        assert_eq!(mapper.prg_index(0x8004), 0x3E * 0x4000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 0x3E * 0x4000 + 4);
+        assert_eq!(mapper.chr_index(0x1004), 0x1004);
+
+        mapper.reset(true);
+        assert_eq!(mapper.prg_index(0x8004), 0x0004);
+        assert_eq!(mapper.prg_index(0xC004), 0x1F * 0x4000 + 4);
     }
 }
