@@ -213,6 +213,7 @@ impl Mapper {
             207 => Mapper::TaitoX1005(TaitoX1005::new_207(prg_16k)),
             208 => Mapper::Mmc3(Mmc3::new_208(prg_16k, chr_8k, mirroring, submapper)),
             212 => Mapper::Mapper212(Mapper212::new()),
+            215 => Mapper::Mmc3(Mmc3::new_215(prg_16k, chr_8k, mirroring)),
             216 => Mapper::AddrLatch16k(AddrLatch16k::new_with_mirroring(
                 AddrLatchVariant::Mapper216,
                 mirroring,

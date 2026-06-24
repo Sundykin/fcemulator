@@ -37,6 +37,7 @@ enum Mmc3OuterBank {
     Mapper198,
     Mapper205 { block: u8 },
     Mapper208 { regs: [u8; 6], submapper: u8 },
+    Mapper215 { regs: [u8; 3] },
     Mapper224 { outer_bank: u8 },
     Mapper238 { ex_reg: u8 },
     Mapper245,
@@ -389,6 +390,14 @@ impl Mmc3 {
         let mut regs = [0; 6];
         regs[5] = 0x11;
         m.outer_bank = Mmc3OuterBank::Mapper208 { regs, submapper };
+        m
+    }
+
+    /// Mapper 215 — UNL-8237 MMC3 clone with register/address LUT remapping and
+    /// forced PRG modes controlled from `$5000/$5001/$5007`.
+    pub(super) fn new_215(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
+        let mut m = Mmc3::new(prg_16k, chr_8k, mirroring);
+        m.outer_bank = Mmc3OuterBank::Mapper215 { regs: [0, 3, 0] };
         m
     }
 
@@ -777,6 +786,37 @@ impl Mmc3 {
                 };
                 base | region as usize
             }
+            Mmc3OuterBank::Mapper215 { regs } => {
+                let ex0 = regs[0];
+                let ex1 = regs[1];
+                let mut forced_bank = 0;
+                let mask;
+                let mut sbank = 0;
+                if ex0 & 0x40 != 0 {
+                    mask = 0x0F;
+                    sbank = (ex1 & 0x10) as usize;
+                    if ex0 & 0x80 != 0 {
+                        forced_bank =
+                            (((ex1 & 0x03) as usize) << 4) | (ex0 as usize & 0x07) | (sbank >> 1);
+                    }
+                } else {
+                    mask = 0x1F;
+                    if ex0 & 0x80 != 0 {
+                        forced_bank = (((ex1 & 0x03) as usize) << 4) | (ex0 as usize & 0x0F);
+                    }
+                }
+
+                if ex0 & 0x80 != 0 {
+                    let forced_bank = forced_bank << 1;
+                    if ex0 & 0x20 != 0 {
+                        forced_bank | region as usize
+                    } else {
+                        forced_bank | (region as usize & 0x01)
+                    }
+                } else {
+                    (((ex1 & 0x03) as usize) << 5) | (bank & mask) | sbank
+                }
+            }
             Mmc3OuterBank::Mapper224 { outer_bank } => {
                 (((*outer_bank & 1) as usize) << 6) | (bank & 0x3F)
             }
@@ -874,6 +914,15 @@ impl Mmc3 {
                 bank | ((*block as usize) << 7)
             }
             Mmc3OuterBank::Mapper208 { .. } => bank,
+            Mmc3OuterBank::Mapper215 { regs } => {
+                if regs[0] & 0x40 != 0 {
+                    (((regs[1] & 0x0C) as usize) << 6)
+                        | (bank & 0x7F)
+                        | (((regs[1] & 0x20) as usize) << 2)
+                } else {
+                    (((regs[1] & 0x0C) as usize) << 6) | bank
+                }
+            }
             Mmc3OuterBank::Mapper224 { .. } => bank,
             Mmc3OuterBank::Mapper238 { .. } => bank,
             Mmc3OuterBank::Mapper245 => bank & 0x07,
@@ -1091,6 +1140,43 @@ impl Mmc3 {
         self.write_standard_register(remapped, value);
     }
 
+    fn mapper215_write(&mut self, addr: u16, value: u8) {
+        const LUT_REG: [[u8; 8]; 8] = [
+            [0, 1, 2, 3, 4, 5, 6, 7],
+            [0, 2, 6, 1, 7, 3, 4, 5],
+            [0, 5, 4, 1, 7, 2, 6, 3],
+            [0, 6, 3, 7, 5, 2, 4, 1],
+            [0, 2, 5, 3, 6, 1, 7, 4],
+            [0, 1, 2, 3, 4, 5, 6, 7],
+            [0, 1, 2, 3, 4, 5, 6, 7],
+            [0, 1, 2, 3, 4, 5, 6, 7],
+        ];
+        const LUT_ADDR: [[u8; 8]; 8] = [
+            [0, 1, 2, 3, 4, 5, 6, 7],
+            [3, 2, 0, 4, 1, 5, 6, 7],
+            [0, 1, 2, 3, 4, 5, 6, 7],
+            [5, 0, 1, 2, 3, 7, 6, 4],
+            [3, 1, 0, 5, 2, 4, 6, 7],
+            [0, 1, 2, 3, 4, 5, 6, 7],
+            [0, 1, 2, 3, 4, 5, 6, 7],
+            [0, 1, 2, 3, 4, 5, 6, 7],
+        ];
+
+        let mapper215_mode = match &self.outer_bank {
+            Mmc3OuterBank::Mapper215 { regs } => regs[2] as usize,
+            _ => 0,
+        };
+        let lut_value = LUT_ADDR[mapper215_mode][(((addr >> 12) & 0x06) | (addr & 0x01)) as usize];
+        let remapped_addr =
+            (lut_value as u16 & 0x01) | (((lut_value as u16) & 0x06) << 12) | 0x8000;
+        let value = if lut_value == 0 {
+            (value & 0xC0) | LUT_REG[mapper215_mode][(value & 0x07) as usize]
+        } else {
+            value
+        };
+        self.write_standard_register(remapped_addr, value);
+    }
+
     fn mapper115_write_extra(regs: &mut [u8; 3], addr: u16, value: u8) {
         if addr == 0x5080 || (addr & 3) == 2 {
             regs[2] = value;
@@ -1186,6 +1272,8 @@ impl MapperOps for Mmc3 {
             self.mapper121_write(addr, value);
         } else if matches!(self.outer_bank, Mmc3OuterBank::Mapper182 { .. }) {
             self.mapper182_write(addr, value);
+        } else if matches!(self.outer_bank, Mmc3OuterBank::Mapper215 { .. }) {
+            self.mapper215_write(addr, value);
         } else if matches!(self.outer_bank, Mmc3OuterBank::Mapper196 { .. }) {
             self.write_standard_register(Self::mapper196_remap_addr(addr), value);
         } else if matches!(self.outer_bank, Mmc3OuterBank::Mapper250) {
@@ -1467,6 +1555,18 @@ impl MapperOps for Mmc3 {
                 regs[4] = value;
                 return;
             }
+            Mmc3OuterBank::Mapper215 { regs } if addr == 0x5000 => {
+                regs[0] = value;
+                return;
+            }
+            Mmc3OuterBank::Mapper215 { regs } if addr == 0x5001 => {
+                regs[1] = value;
+                return;
+            }
+            Mmc3OuterBank::Mapper215 { regs } if addr == 0x5007 => {
+                regs[2] = value & 0x07;
+                return;
+            }
             Mmc3OuterBank::Mapper208 { regs, .. } if (0x5800..=0x5FFF).contains(&addr) => {
                 regs[(addr & 0x03) as usize] = value ^ MAPPER208_PROTECTION_LUT[regs[4] as usize];
                 return;
@@ -1614,6 +1714,10 @@ impl MapperOps for Mmc3 {
             Mmc3OuterBank::Mapper208 { regs, .. } => {
                 *regs = [0; 6];
                 regs[5] = 0x11;
+            }
+            Mmc3OuterBank::Mapper215 { regs } => {
+                *regs = [0, 3, 0];
+                reset_standard = true;
             }
             Mmc3OuterBank::Mapper224 { outer_bank } => {
                 *outer_bank = 0;
@@ -2024,6 +2128,41 @@ mod tests {
         submapper1.write_expansion(0x4800, 0x30);
         assert_eq!(submapper1.prg_index(0x8004), 0x0C * 0x2000 + 4);
         assert_eq!(submapper1.prg_index(0xE004), 0x0F * 0x2000 + 4);
+    }
+
+    #[test]
+    fn mapper215_remaps_writes_and_forces_prg_modes() {
+        let mut mapper = Mmc3::new_215(256, 256, Mirroring::Vertical);
+
+        assert_eq!(mapper.prg_index(0x8004), 0x60 * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xE004), 0x7F * 0x2000 + 4);
+
+        mapper.write_expansion(0x5000, 0xC6);
+        mapper.write_expansion(0x5001, 0x13);
+        assert_eq!(mapper.prg_index(0x8004), 0x7C * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xA004), 0x7D * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 0x7C * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xE004), 0x7D * 0x2000 + 4);
+
+        mapper.write_expansion(0x5000, 0xE6);
+        assert_eq!(mapper.prg_index(0x8004), 0x7C * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xE004), 0x7F * 0x2000 + 4);
+
+        mapper.write_register(0x8000, 0x00);
+        mapper.write_register(0x8001, 0x95);
+        assert_eq!(mapper.chr_index(0x0004), 0x14 * 0x0400 + 4);
+        mapper.write_expansion(0x5001, 0x2C);
+        assert_eq!(mapper.chr_index(0x0004), 0x394 * 0x0400 + 4);
+
+        mapper.write_expansion(0x5000, 0x00);
+        mapper.write_expansion(0x5001, 0x00);
+        mapper.write_expansion(0x5007, 0x01);
+        mapper.write_register(0xA000, 0x04);
+        mapper.write_register(0xC000, 0x1B);
+        assert_eq!(mapper.prg_index(0xA004), 0x1B * 0x2000 + 4);
+
+        mapper.reset(true);
+        assert_eq!(mapper.prg_index(0xE004), 0x7F * 0x2000 + 4);
     }
 
     #[test]
