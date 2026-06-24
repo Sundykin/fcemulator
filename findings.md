@@ -89,6 +89,13 @@
 - Live `fc emu-mcp` verification read the same visible Tauri emulator state: mapper 0 NROM, running worker/audio runtime, nonzero CPU/PPU counters, and CPU memory changing after preview input.
 - Live `emu_capture_screen` returned a 256x240 PNG with 3376 bytes, 6 unique colors, and 6968 nonblack pixels, confirming the emulator MCP frame path is not a hidden blank core.
 
+## Active Resource Tracking Findings
+- `FileTreePanel.vue` previously inferred the current resource by sorting `focusEditor`, `focusChr`, `focusMap`, and `focusTracker`. Those counters are independent, so equal or stale values can make the resource summary/highlight disagree with the most recent user action.
+- The project store now owns `activeResource` and `resourceFocusSeq`. Actions that actually change creative focus call `markActiveResource()`: source open/tab switch, CHR open/create, map open/create/resize/rebind, and tracker open/create/import.
+- Rename and delete now maintain active-resource consistency: renaming the active resource updates its path/label, and deleting it clears the selection.
+- Runtime Tauri verification showed the file tree summary and active row follow this sequence exactly: `src/main.s` → `map/room.bin` → `chr/sprites.chr` → `music/active_check.song.json` → source tab reactivated.
+- Rename/delete verification showed `music/active_check.song.json` became `music/renamed_active.song.json` in both manifest and active-resource UI, then deleting it cleared the summary back to `未选中资源`.
+
 ## Files To Inspect Next
 - `fc-tauri/src/ide/MapEditorPanel.vue` template/style sections
 - `fc-tauri/src/ide/ChrEditorPanel.vue` template/style sections

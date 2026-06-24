@@ -4,7 +4,7 @@
 Evolve the fc-tauri studio into a mature NES game-development IDE engine. The target experience is continuous project/resource/map/music workflows, comfortable editing controls, and editors that fill their available workspace instead of using tiny native-pixel canvases.
 
 ## Current Phase
-Phase 9: End-To-End MCP Simple Game Verification
+Phase 10: Reliable Active Resource Tracking
 
 ## Phases
 
@@ -72,6 +72,13 @@ Phase 9: End-To-End MCP Simple Game Verification
 - [x] Verify the live emulator MCP reads the same visible Tauri emulator state and captures a nonblank frame
 - **Status:** complete
 
+### Phase 10: Reliable Active Resource Tracking
+- [x] Replace file-tree active-resource guessing based on independent focus counters with explicit store state
+- [x] Mark source, CHR, map, and music resources active when they are opened, created, resized, rebound, or tab-switched
+- [x] Keep active-resource state coherent across rename and delete operations
+- [x] Verify the real Tauri file tree summary and active row follow actual resource operations
+- **Status:** complete
+
 ## Key Questions
 1. Which editor currently wastes the most available panel area or forces tiny pixel editing?
 2. Where is map-to-CHR binding surfaced, and does opening a map automatically load/show the right CHR resource?
@@ -89,6 +96,7 @@ Phase 9: End-To-End MCP Simple Game Verification
 | Treat tracker `.song.json` as a music resource in IDE/MCP state, while build only assembles registered `.s/.asm` music sources | Agents need to author music semantically; the build pipeline already ignores non-assembly music entries, so song resources can be visible without breaking ca65 |
 | Auto-register MCP-written assembly files by location (`src/` → sources, `music/` → music) | A creative agent should be able to create modules through MCP and have them participate in the next build without manually editing `project.toml` |
 | Treat MCP `preview` updates as a UI focus signal | `ide_run` already loads the ROM into the Tauri emulator; the visible IDE must also mount the Preview panel so agent-authored games are observable without DOM/manual panel toggles |
+| Make the project store authoritative for the active creative resource | The file tree previously inferred "current resource" from unrelated per-panel counters; an IDE should show the resource the user actually opened or switched to |
 
 ## Errors Encountered
 | Error | Attempt | Resolution |
@@ -96,3 +104,4 @@ Phase 9: End-To-End MCP Simple Game Verification
 | Existing planning files described old hardware-accuracy objective | Initial session catchup found tracked `task_plan.md/findings.md/progress.md` with mapper/accuracy content | Replaced planning memory with current Creative IDE maturity objective |
 | Initial runtime ROM path used the worktree root | `emu_load_rom` failed for `/Users/sunmeng/workspace/fc-creative-mode/roms/SuperMarioBro.nes` because this worktree has no `roms/` directory | Retried with `/Users/sunmeng/workspace/fc/roms/SuperMarioBro.nes`; live MCP loaded the ROM into the visible player |
 | MCP `ide_run` loaded the ROM but Preview stayed unmounted | Phase 9 E2E project showed `window.__emu.rom=game.nes` but no preview canvas because `changed: ["preview"]` did not focus Dockview | Added `focusPreview` state and `IdeView.vue` watcher to open the Preview panel after MCP preview updates |
+| File-tree runtime check initially found no `.tree` DOM | IDE MCP project creation updates project state but leaves the app on the launcher unless a preview run switches to studio | Switched the real Tauri shell to studio with `window.__emu.setMode("studio")` before validating file-tree UI |

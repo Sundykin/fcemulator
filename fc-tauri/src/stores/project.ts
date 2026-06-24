@@ -104,11 +104,22 @@ export interface EditorTab {
   saved: string; // last-saved content (for dirty check)
 }
 
+type ResourceKind = "" | "source" | "chr" | "map" | "music";
+
+interface ActiveResource {
+  kind: ResourceKind;
+  path: string;
+  label: string;
+  seq: number;
+}
+
 export const useProjectStore = defineStore("project", {
   state: () => ({
     manifest: null as ide.ProjectManifest | null,
     root: "" as string, // display only (dir path)
     tree: null as ide.FileNode | null,
+    resourceFocusSeq: 0,
+    activeResource: { kind: "", path: "", label: "", seq: 0 } as ActiveResource,
     tabs: [] as EditorTab[],
     activePath: "" as string,
     focusEditor: 0, // bumped to ask the IDE to bring the source editor forward
@@ -159,6 +170,8 @@ export const useProjectStore = defineStore("project", {
   actions: {
     resetWorkspaceState(dir: string) {
       this.root = dir;
+      this.resourceFocusSeq = 0;
+      this.activeResource = { kind: "", path: "", label: "", seq: 0 };
       this.tabs = [];
       this.activePath = "";
       this.build = null;
@@ -175,6 +188,20 @@ export const useProjectStore = defineStore("project", {
       this.song = null;
       this.songSaved = "";
       this.trackerPlaying = false;
+    },
+    markActiveResource(kind: Exclude<ResourceKind, "">, path: string) {
+      const labels: Record<Exclude<ResourceKind, "">, string> = {
+        source: "源码",
+        chr: "CHR",
+        map: "地图",
+        music: "乐曲",
+      };
+      this.resourceFocusSeq++;
+      this.activeResource = { kind, path, label: `${labels[kind]} ${path}`, seq: this.resourceFocusSeq };
+    },
+    clearActiveResource(path?: string) {
+      if (path && this.activeResource.path !== path && !this.activeResource.path.startsWith(path + "/")) return;
+      this.activeResource = { kind: "", path: "", label: "", seq: this.resourceFocusSeq };
     },
     async newProject(dir: string, name: string, template: ide.TemplateId) {
       this.manifest = normalizeManifest(await ide.projectNew(dir, name, template));
@@ -271,15 +298,18 @@ export const useProjectStore = defineStore("project", {
       if (existing) {
         this.activePath = path;
         this.focusEditor++;
+        this.markActiveResource("source", path);
         return;
       }
       const content = await ide.projectReadFile(path);
       this.tabs.push({ path, name, content, saved: content });
       this.activePath = path;
       this.focusEditor++;
+      this.markActiveResource("source", path);
     },
     setActive(path: string) {
       this.activePath = path;
+      if (path) this.markActiveResource("source", path);
     },
     updateContent(path: string, content: string) {
       const t = this.tabs.find((x) => x.path === path);
@@ -313,11 +343,14 @@ export const useProjectStore = defineStore("project", {
       this.tabs.splice(i, 1);
       if (this.activePath === path) {
         this.activePath = this.tabs[Math.max(0, i - 1)]?.path ?? "";
+        if (this.activePath) this.markActiveResource("source", this.activePath);
+        else if (this.activeResource.kind === "source") this.clearActiveResource(path);
       }
     },
     closeAllTabs() {
       this.tabs = [];
       this.activePath = "";
+      if (this.activeResource.kind === "source") this.clearActiveResource();
     },
     // sync editor tabs when a file is renamed/deleted in the tree
     onRenamed(from: string, to: string, newName: string) {
@@ -327,9 +360,15 @@ export const useProjectStore = defineStore("project", {
         t.name = newName;
         if (this.activePath === from) this.activePath = to;
       }
+      if (this.activeResource.path === from || this.activeResource.path.startsWith(from + "/")) {
+        const nextPath = replaceResourcePath(this.activeResource.path, from, to);
+        const prefix = this.activeResource.label.split(" ")[0] || "";
+        this.activeResource = { ...this.activeResource, path: nextPath, label: prefix ? `${prefix} ${nextPath}` : nextPath };
+      }
     },
     onDeleted(path: string) {
       this.tabs.filter((t) => t.path === path || t.path.startsWith(path + "/")).forEach((t) => this.closeTab(t.path));
+      this.clearActiveResource(path);
     },
     // ---- file tree ops ----
     async createEntry(relPath: string, isDir: boolean) {
@@ -446,12 +485,14 @@ export const useProjectStore = defineStore("project", {
         await this.persistMapChrBinding(this.map.path, path);
       }
       this.focusChr++;
+      this.markActiveResource("chr", path);
       this.status = `CHR ${path}（${sheet.tiles} 图块）`;
     },
     newChr(path: string, tiles = 256) {
       this.chr = { path, tiles, pixels: new Array(tiles * 64).fill(0) };
       this.chrSaved = "";
       this.focusChr++;
+      this.markActiveResource("chr", path);
     },
     setChrPixel(tile: number, idx: number, color: number) {
       if (!this.chr) return;
@@ -485,6 +526,7 @@ export const useProjectStore = defineStore("project", {
         }
       }
       this.focusMap++;
+      this.markActiveResource("map", path);
       this.status = `地图 ${path}（${data.w}×${data.h}${bindingWarning}）`;
     },
     newMap(path: string, w = 32, h = 30) {
@@ -500,6 +542,7 @@ export const useProjectStore = defineStore("project", {
       };
       this.mapSaved = "";
       this.focusMap++;
+      this.markActiveResource("map", path);
     },
     resizeMap(w: number, h: number) {
       if (!this.map) return;
@@ -530,6 +573,7 @@ export const useProjectStore = defineStore("project", {
       }
       this.map.data = next;
       this.focusMap++;
+      this.markActiveResource("map", this.map.path);
       this.status = `地图尺寸 ${old.w}×${old.h} → ${w}×${h}`;
     },
     async saveMap() {
@@ -554,7 +598,10 @@ export const useProjectStore = defineStore("project", {
       }
       this.mapChrBindings[this.map.path] = path;
       await this.persistMapChrBinding(this.map.path, path);
-      if (focus) this.focusMap++;
+      if (focus) {
+        this.focusMap++;
+        this.markActiveResource("map", this.map.path);
+      }
       this.status = `地图 ${this.map.path} 使用 CHR ${path}`;
     },
     // ---- converters ----
@@ -596,12 +643,14 @@ export const useProjectStore = defineStore("project", {
       this.song = { path, data: blank };
       this.songSaved = "";
       this.focusTracker++;
+      this.markActiveResource("music", path);
     },
     async openTracker(path: string) {
       const data = await ide.trackerLoad(path);
       this.song = { path, data };
       this.songSaved = JSON.stringify(data);
       this.focusTracker++;
+      this.markActiveResource("music", path);
       this.status = `乐曲 ${path}`;
     },
     async importFtm() {
@@ -613,6 +662,7 @@ export const useProjectStore = defineStore("project", {
         this.song = { path: `music/${name}.song.json`, data };
         this.songSaved = "";
         this.focusTracker++;
+        this.markActiveResource("music", this.song.path);
         this.status = `已导入 FTM：${name}（记得保存)`;
       } catch (e) {
         this.status = "FTM 导入失败：" + e;

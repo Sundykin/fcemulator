@@ -45,16 +45,8 @@ const resourceCounts = computed(() => ({
   map: store.manifest?.maps.length ?? 0,
   music: store.manifest?.music.length ?? 0,
 }));
-const activeResource = computed(() => {
-  const candidates: { seq: number; path: string; label: string }[] = [];
-  if (store.activePath) candidates.push({ seq: store.focusEditor, path: store.activePath, label: `源码 ${store.activePath}` });
-  if (store.chr) candidates.push({ seq: store.focusChr, path: store.chr.path, label: `CHR ${store.chr.path}` });
-  if (store.map) candidates.push({ seq: store.focusMap, path: store.map.path, label: `地图 ${store.map.path}` });
-  if (store.song) candidates.push({ seq: store.focusTracker, path: store.song.path, label: `乐曲 ${store.song.path}` });
-  return candidates.sort((a, b) => b.seq - a.seq)[0] ?? null;
-});
 const activeResourceLabel = computed(() => {
-  return activeResource.value?.label ?? "未选中资源";
+  return store.activeResource.label || "未选中资源";
 });
 const kindFilters: { key: typeof kindFilter.value; label: string; count: () => number }[] = [
   { key: "all", label: "全部", count: () => resourceCounts.value.source + resourceCounts.value.chr + resourceCounts.value.map + resourceCounts.value.music },
@@ -303,7 +295,7 @@ function nodeMeta(node: FileNode): string {
 function rowClasses(node: FileNode) {
   const bindings = { ...(store.manifest?.map_chr || {}), ...store.mapChrBindings };
   return {
-    active: node.path === activeResource.value?.path,
+    active: node.path === store.activeResource.path,
     bound: isMapResource(node) && !!bindings[node.path],
     missing: isMapResource(node) && !bindings[node.path],
   };

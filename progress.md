@@ -104,6 +104,17 @@
   - Verified the real Tauri IDE after the fix: Dockview had an active `preview` panel and a visible canvas while staying in studio mode.
   - Verified `target/debug/fc emu-mcp` reads the same live Tauri emulator state and captures a nonblank 256x240 frame.
 
+### Phase 10: Reliable Active Resource Tracking
+- **Status:** complete
+- Actions taken:
+  - Audited file tree active-resource display and found it was inferred from independent focus counters instead of a single authoritative state.
+  - Added `resourceFocusSeq` and `activeResource` to the project store.
+  - Added `markActiveResource()` / `clearActiveResource()` actions and wired them into source tab open/switch, CHR open/create, map open/create/resize/rebind, tracker open/create/import, rename, delete, and tab close flows.
+  - Simplified `FileTreePanel.vue` so the resource summary and active row use `store.activeResource` directly.
+  - Runtime verified the real Tauri file tree in studio mode after an IDE MCP-created project.
+  - Verified active summary/highlight followed source → map → CHR → song → source-tab operations.
+  - Verified renaming the active song updates the summary/highlight and deleting it clears active-resource state.
+
 ## Test Results
 | Test | Result |
 |------|--------|
@@ -156,6 +167,8 @@
 | Tauri Preview auto-focus after MCP run | PASS; `window.__ideDockApi.getPanel("preview")` existed, active panel was `preview`, and the visible canvas measured 1024x960 backing pixels / about 524x393 CSS pixels |
 | live `fc emu-mcp` state after IDE MCP run | PASS; reported mapper 0 ROM, running worker/audio state, active CPU/PPU counters, and matching live memory |
 | live `fc emu-mcp` `emu_capture_screen` after IDE MCP run | PASS; captured a 256x240 PNG with 3376 bytes, 6 unique colors, and 6968 nonblack pixels |
+| active resource store/UI source-map-CHR-song sequence | PASS; real Tauri file tree summary and active row followed `src/main.s` → `map/room.bin` → `chr/sprites.chr` → `music/active_check.song.json` → `src/main.s` |
+| active resource rename/delete behavior | PASS; renaming active song updated summary/highlight and manifest.music; deleting it cleared summary to `未选中资源` and removed active row |
 | `fc-tauri/node_modules/.bin/vue-tsc --noEmit` | NOT RUN; local project has no `vue-tsc` binary |
 | `cd fc-tauri && npx vue-tsc --noEmit` | BLOCKED by restricted network; `npx` attempted `registry.npmmirror.com/vue-tsc` and failed DNS |
 
@@ -169,3 +182,4 @@
 | 2026-06-24 | Long Tauri eval timed out during resource-flow verification | Tried one large expression querying many rows/chips at once | Used short targeted `tauri_eval` calls for store, chips, rows, and binding checks |
 | 2026-06-24 | `npx vue-tsc --noEmit` attempted network access | Current environment blocks DNS to `registry.npmmirror.com`; `vue-tsc` is not installed in local `.bin` | Used production `npm --prefix fc-tauri run build` plus live Tauri MCP runtime verification for this slice |
 | 2026-06-24 | MCP `ide_run` did not mount Preview panel | E2E simple-game run loaded `game.nes` into `window.__emu`, but the DOM had no preview canvas because Dockview panel `preview` was closed | Added `focusPreview` state and an `IdeView.vue` watcher to open Preview when MCP emits `changed: ["preview"]` |
+| 2026-06-24 | File-tree UI selectors were empty during active-resource verification | IDE MCP project creation left the app on the launcher, where Dockview/tree panels are not mounted | Switched the Tauri shell to `studio` via the app store, then reran UI verification against the mounted file tree |
