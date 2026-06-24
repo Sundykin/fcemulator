@@ -4,7 +4,7 @@
 Evolve the fc-tauri studio into a mature NES game-development IDE engine. The target experience is continuous project/resource/map/music workflows, comfortable editing controls, and editors that fill their available workspace instead of using tiny native-pixel canvases.
 
 ## Current Phase
-Phase 2: Project And Resource Flow
+Phase 3: Map Editor Comfort
 
 ## Phases
 
@@ -23,10 +23,10 @@ Phase 2: Project And Resource Flow
 - **Status:** complete
 
 ### Phase 3: Map Editor Comfort
-- [ ] Ensure map canvas uses the full parent work area with fit/fill behavior
-- [ ] Improve pan/zoom, selection, palette placement, and layer feedback
-- [ ] Verify editing still writes the same map output format
-- **Status:** pending
+- [x] Ensure map canvas uses the full parent work area with fit/fill behavior
+- [x] Improve pan/zoom, selection, palette placement, and layer feedback
+- [x] Verify editing still writes the same map output format
+- **Status:** complete
 
 ### Phase 4: CHR Resource Editor Comfort
 - [x] Make the zoom editor and sheet browser responsive to available space
@@ -47,7 +47,8 @@ Phase 2: Project And Resource Flow
 - [x] Commit coherent increments for the live MCP / map editor slice
 - [x] Commit coherent increments for the CHR editor slice
 - [x] Commit coherent increments for the music editor slice
-- [ ] Commit coherent increments for the project/resource flow slice
+- [x] Commit coherent increments for the project/resource flow slice
+- [x] Commit coherent increments for the final map comfort slice
 - **Status:** in_progress
 
 ## Key Questions

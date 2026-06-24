@@ -51,6 +51,14 @@
 - Map context details are surfaced in a narrow context bar: current map path, bound CHR path, selection, and hover coordinate.
 - The tile resource drawer can be toggled from the toolbar, keeping map-to-CHR context visible without permanently reducing canvas layout width.
 
+## Map Editor Comfort Findings
+- `MapEditorPanel.vue` already has brush/rect/fill/picker/select tools, undo/redo, copy/paste selection, wheel zoom, and space/middle-button panning.
+- The current canvas sizing uses `effectiveCellPx = max(manual zoom, fit-to-parent cell size)`, so small maps avoid raw 8px display, but the UI does not expose clear Fit/Fill/Manual view modes.
+- The toolbar is overloaded in one horizontal row: layer, tools, CHR binding, zoom, brush size, dimensions, grid, layer-specific selectors, undo/redo/resources/save all compete for width.
+- The tile palette drawer is already an overlay, but its canvas is fixed at 16 columns x 16px tiles, so it does not adapt to drawer width like the CHR editor sheet browser does.
+- Hover feedback is a generic white single-cell outline. Attribute edits actually affect 2x2 blocks, and collision/attribute layers need stronger layer-specific feedback for confidence.
+- Map save/output path remains `store.saveMap()` -> `ide.mapWrite()` -> Rust `MapData::encode()`, so frontend view-mode changes can preserve the existing map `.bin` format.
+
 ## CHR Editor Findings
 - `fc-tauri/src/ide/ChrEditorPanel.vue` already had a responsive single-tile zoom canvas, undo/redo, palette slots, fill/picker/pencil tools, and a separate tile-sheet overview.
 - The main usability issue was template/CSS layout: the zoom editor and tile sheet were permanent grid columns, so the sheet consumed a large fraction of the dock panel even when the user needed a full drawing surface.
