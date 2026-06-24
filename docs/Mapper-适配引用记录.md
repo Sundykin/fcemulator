@@ -20,9 +20,9 @@
 - `fc-core/src/mapper/basic/taito.rs:1-142,144-373`
   - 新增 Mapper 48 / 80 / 207 / 82。
   - 覆盖 Taito TC0190/Taito X1-005/X1-017 的 PRG/CHR/mirroring 寄存器、Mapper 48 的 HBlank IRQ、Mapper 80 的 256B gated WRAM，以及 Mapper 207 的 CHR register bit7 到 per-nametable CIRAM A10 映射。
-- `fc-core/src/mapper/basic/multicart.rs:1-982`
-  - 新增 Mapper 28 / 51 / 59 / 63 / 201 / 217 / 221 / 228 / 255。
-  - 覆盖 Action 53 多寄存器 PRG/CHR/mirroring 模式、Mapper 51 低区 PRG-ROM window + mode latch、address latch PRG/CHR/mirroring、Mapper 63 越界 PRG open-bus 读、Mapper 221 双地址 latch/UNROM-NROM 模式/open-bus 高区读、Mapper 228 Action Enterprises 地址线 bank + nibble RAM、Mapper 255 BMC 地址 latch。
+- `fc-core/src/mapper/basic/multicart.rs:1-1411`
+  - 新增 Mapper 28 / 51 / 59 / 63 / 128 / 201 / 217 / 221 / 228 / 236 / 237 / 239 / 255。
+  - 覆盖 Action 53 多寄存器 PRG/CHR/mirroring 模式、Mapper 51 低区 PRG-ROM window + mode latch、address latch PRG/CHR/mirroring、Mapper 63 越界 PRG open-bus 读、Mapper 128 outer address latch + inner bank、Mapper 221 双地址 latch/UNROM-NROM 模式/open-bus 高区读、Mapper 228 Action Enterprises 地址线 bank + nibble RAM、Mapper 236/237 reset DIP 与读路径、Mapper 239 地址 latch，以及 Mapper 255 BMC 地址 latch。
 - `fc-core/src/mapper/basic/core.rs:278-359`
   - 新增 Mapper 232 / Codemasters BF9096。
   - 覆盖 BF9096/Quattro 16KB PRG block + page register 和 submapper 1 outer bank bit swap。
@@ -473,6 +473,10 @@
 - `Rambo1::new_158()` / `set_mapper158_nametable()` / mapper-owned nametable read/write 对应 FCEUmm `tengen.c:198-220` 与 Mesen2 `Rambo1_158.h:5-37`；RAMBO-1 基础 PRG/CHR/IRQ 仍对应 Mesen2 `Rambo1.h:96-177`。
 - `Mapper29::write_register()` / `prg_index()` / `chr_index()` 对应 FCEUX `datalatch.cpp:248-256`、FCEUmm `datalatch.c:186-194` 与 Mesen2 `SealieComputing.h:8-31`；当前第一版按 FCEUX/Mesen2 的高区 register 窗口实现，并在 iNES CHR-RAM 默认容量中补 32KB。
 - `Mapper51::write_low_register()` / `low_prg_index()` / `write_register()` 对应 FCEUX/FCEUmm `51.cpp`/`51.c:31-72`；本项目用现有 low-register + low-PRG-ROM hook 表达 `$6000-$7FFF` 既是 mode 写窗口又是 PRG-ROM 读窗口的行为。
+- `Mapper128::write_register()` / `prg_index()` 对应 FCEUmm `src/boards/128.c:24-38,40-55`；本项目保存 outer address latch 与 data latch，表达低 16KB inner bank、高 16KB fixed `outer|7`、固定 CHR8 0 和 outer bit1 mirroring。
+- `Mapper236::write_register()` / `prg_index()` / reset DIP 对应 FCEUmm `src/boards/236.c:33-78,80-110`；本项目按 CHR-ROM/CHR-RAM 两种变体译码 PRG/CHR，soft reset 递增 DIP，并在 mode 1 中把高区 PRG read 地址低 4 位替换为 DIP。
+- `Mapper237::write_register()` / `read_register()` / reset DIP 对应 FCEUmm `src/boards/237.c:42-78,84-95`；本项目保存两个 register、锁定位、DIP 读回和 PRG16/mirroring 译码。
+- `AddrLatchVariant::Mapper239` 对应 FCEUmm `src/boards/239.c:24-37`；本项目复用 AddrLatch16k 架构表达 address latch PRG32/PRG16、CHR8 和 bit4 mirroring。
 - `Mmc3::new_250()` / `mapper250_remap_addr()` 对应 FCEUX `mmc3.cpp:1332-1350`、FCEUmm `mmc3.c:1421-1440` 与 Mesen2 `MMC3_250.h:5-11`；本项目把地址线写协议折回 `write_standard_register()`，继续复用普通 MMC3 PRG/CHR/mirroring 和 A12 IRQ。
 - `Mmc3::new_205()` / `Mmc3OuterBank::Mapper205` 对应 Mesen2 `MMC3_205.h:20-49`、FCEUX `mmc3.cpp:1167-1199` 与 FCEUmm `mmc3.c:1245-1270`；本项目按 single-ROM outer block 语义实现，低区写后通过 `low_register_write_falls_through()` 继续写 PRG-RAM 以覆盖 FCEUX `CartBW` 行为。
 - `Mmc3::new_249()` / `mapper249_permute_large_bank()` 对应 Mesen2 `MMC3_249.h:24-55` 与 FCEUX/FCEUmm `mmc3.cpp`/`mmc3.c:1294-1315,1383-1404`；本项目用 `$5000` expansion write 保存 exReg，并在 PRG/CHR wrapper 层复刻 security permutation。
@@ -480,7 +484,7 @@
 ## 以后替换时的删除边界
 
 - 先替换 `fc-core/src/mapper/basic/unlicensed.rs:1-884`。
-- 同批替换 `fc-core/src/mapper/basic/latch/discrete.rs` 里 Mapper 29 / 36 / 72 / 79 / 92 / 99 / 122 的新增段、`fc-core/src/mapper/basic/latch/sachen.rs` 的新增段、`fc-core/src/mapper/basic/core.rs` 里 ColorDreams/Mapper144 的扩展段、`fc-core/src/mapper/basic/taito.rs` 里 Mapper 80 / 207 / 82 的新增段，以及 `fc-core/src/mapper/basic/multicart.rs` 里 Mapper 51 / 59 / 63 / 201 / 217 / 221 / 228 / 255 的新增段。
+- 同批替换 `fc-core/src/mapper/basic/latch/discrete.rs` 里 Mapper 29 / 36 / 72 / 79 / 92 / 99 / 122 的新增段、`fc-core/src/mapper/basic/latch/sachen.rs` 的新增段、`fc-core/src/mapper/basic/core.rs` 里 ColorDreams/Mapper144 的扩展段、`fc-core/src/mapper/basic/taito.rs` 里 Mapper 80 / 207 / 82 的新增段，以及 `fc-core/src/mapper/basic/multicart.rs` 里 Mapper 51 / 59 / 63 / 128 / 201 / 217 / 221 / 228 / 236 / 237 / 239 / 255 的新增段。
 - 同批替换 `fc-core/src/mapper/basic/latch/sunsoft.rs` 里 Mapper 68 的新增段，并同步检查 `MapperOps::nametable_chr_index` 与 `Cartridge::mapper_has_nametable_chr_mapping` 是否仍有其他使用者。
 - 同批替换 `fc-core/src/mapper/basic/core.rs` 里 Mapper 232 的新增段。
 - 同批替换 `fc-core/src/mapper/basic/bandai.rs` 里 Mapper16 / 153 / 159、Bandai FCG、24C01/24C02 EEPROM 新增段，并同步检查 `MapperOps::read_low_register_with_open_bus` / `peek_low_register_with_open_bus` / `low_prg_ram_read_enabled` / `low_prg_ram_write_enabled` 是否仍有使用者。

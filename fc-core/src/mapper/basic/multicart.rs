@@ -346,6 +346,7 @@ pub enum AddrLatchVariant {
     Mapper227,
     Mapper231,
     Mapper242,
+    Mapper239,
     Mapper213,
     Mapper214,
     Mapper225,
@@ -518,6 +519,22 @@ impl AddrLatch16k {
                 self.prg_pages = [bank * 2, bank * 2 + 1];
                 self.chr_bank = 0;
                 self.mirroring = if addr & 0x02 != 0 {
+                    Mirroring::Horizontal
+                } else {
+                    Mirroring::Vertical
+                };
+                return;
+            }
+            AddrLatchVariant::Mapper239 => {
+                if addr & 0x04 != 0 {
+                    let bank = ((addr >> 1) as usize) & !1;
+                    self.prg_pages = [bank, bank + 1];
+                } else {
+                    let bank = addr as usize;
+                    self.prg_pages = [bank, bank];
+                };
+                self.chr_bank = addr as usize;
+                self.mirroring = if addr & 0x10 != 0 {
                     Mirroring::Horizontal
                 } else {
                     Mirroring::Vertical
@@ -869,6 +886,67 @@ impl MapperOps for Mapper63 {
 }
 
 // ============================================================================
+// Mapper 128 — multicart outer-bank address latch + UNROM-style inner bank
+//
+// References:
+// - FCEUmm `src/boards/128.c`
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Mapper128 {
+    outerbank: u16,
+    innerbank: u8,
+}
+
+impl Mapper128 {
+    pub(in crate::mapper) fn new() -> Self {
+        Mapper128 {
+            outerbank: 0,
+            innerbank: 0,
+        }
+    }
+
+    fn prg16_bank(&self, addr: u16) -> usize {
+        let outer = (self.outerbank >> 2) as usize;
+        if addr < 0xC000 {
+            outer | ((self.innerbank & 0x07) as usize)
+        } else {
+            outer | 0x07
+        }
+    }
+}
+
+impl MapperOps for Mapper128 {
+    fn prg_index(&self, addr: u16) -> usize {
+        self.prg16_bank(addr) * 0x4000 + (addr as usize & 0x3FFF)
+    }
+
+    fn chr_index(&self, addr: u16) -> usize {
+        addr as usize & 0x1FFF
+    }
+
+    fn write_register(&mut self, addr: u16, value: u8) {
+        if self.outerbank < 0xF000 {
+            self.outerbank = addr;
+        }
+        self.innerbank = value;
+    }
+
+    fn mirroring(&self) -> Mirroring {
+        if (self.outerbank >> 1) & 1 != 0 {
+            Mirroring::Vertical
+        } else {
+            Mirroring::Horizontal
+        }
+    }
+
+    fn reset(&mut self, _soft: bool) {
+        self.outerbank = 0;
+        self.innerbank = 0;
+    }
+}
+
+// ============================================================================
 // Mapper 226 — BMC 42-in-1
 // ============================================================================
 
@@ -1092,6 +1170,174 @@ impl MapperOps for Mapper246 {
     }
     fn mirroring(&self) -> Mirroring {
         self.mirroring
+    }
+}
+
+// ============================================================================
+// Mapper 236 — 800-in-1 multicart
+//
+// References:
+// - FCEUmm `src/boards/236.c`
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Mapper236 {
+    regs: [u8; 2],
+    dip: u8,
+    chr_ram_variant: bool,
+}
+
+impl Mapper236 {
+    pub(in crate::mapper) fn new(chr_8k: usize) -> Self {
+        Mapper236 {
+            regs: [0; 2],
+            dip: 0,
+            chr_ram_variant: chr_8k == 0,
+        }
+    }
+
+    fn prg16_bank(&self) -> usize {
+        if self.chr_ram_variant {
+            ((self.regs[0] as usize) << 3) | ((self.regs[1] & 0x07) as usize)
+        } else {
+            (self.regs[1] & 0x0F) as usize
+        }
+    }
+}
+
+impl MapperOps for Mapper236 {
+    fn prg_index(&self, addr: u16) -> usize {
+        let addr = if ((self.regs[1] >> 4) & 0x03) == 1 {
+            (addr & !0x000F) | ((self.dip & 0x0F) as u16)
+        } else {
+            addr
+        };
+        let prg = self.prg16_bank();
+        let bank = match (self.regs[1] >> 4) & 0x03 {
+            0 | 1 => {
+                if addr < 0xC000 {
+                    prg
+                } else {
+                    prg | 0x07
+                }
+            }
+            2 => (prg & !1) | usize::from(addr >= 0xC000),
+            _ => prg,
+        };
+        bank * 0x4000 + (addr as usize & 0x3FFF)
+    }
+
+    fn chr_index(&self, addr: u16) -> usize {
+        let chr = if self.chr_ram_variant {
+            0
+        } else {
+            self.regs[0] & 0x0F
+        } as usize;
+        chr * 0x2000 + (addr as usize & 0x1FFF)
+    }
+
+    fn write_register(&mut self, addr: u16, _value: u8) {
+        self.regs[((addr >> 14) & 1) as usize] = addr as u8;
+    }
+
+    fn mirroring(&self) -> Mirroring {
+        if self.regs[0] & 0x20 != 0 {
+            Mirroring::Vertical
+        } else {
+            Mirroring::Horizontal
+        }
+    }
+
+    fn reset(&mut self, soft: bool) {
+        if soft {
+            self.dip = self.dip.wrapping_add(1);
+        }
+        self.regs = [0; 2];
+    }
+}
+
+// ============================================================================
+// Mapper 237 — Teletubbies/Y2K 420-in-1 multicart
+//
+// References:
+// - FCEUmm `src/boards/237.c`
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Mapper237 {
+    regs: [u8; 2],
+    dipswitch: u8,
+}
+
+impl Mapper237 {
+    pub(in crate::mapper) fn new() -> Self {
+        Mapper237 {
+            regs: [0; 2],
+            dipswitch: 0,
+        }
+    }
+
+    fn prg16_pages(&self) -> [usize; 2] {
+        let bank = (self.regs[1] & 0x07) as usize;
+        let base = ((self.regs[1] & 0x18) | ((self.regs[0] & 0x04) << 3)) as usize;
+        let mode = (self.regs[1] & 0xC0) >> 6;
+        [
+            base | (bank & !((mode & 1) as usize)),
+            base | {
+                if mode & 0x02 != 0 {
+                    bank | ((mode & 0x01) as usize)
+                } else {
+                    0x07
+                }
+            },
+        ]
+    }
+}
+
+impl MapperOps for Mapper237 {
+    fn prg_index(&self, addr: u16) -> usize {
+        let pages = self.prg16_pages();
+        let slot = if addr < 0xC000 { 0 } else { 1 };
+        pages[slot] * 0x4000 + (addr as usize & 0x3FFF)
+    }
+
+    fn chr_index(&self, addr: u16) -> usize {
+        addr as usize & 0x1FFF
+    }
+
+    fn write_register(&mut self, addr: u16, value: u8) {
+        if self.regs[0] & 0x02 == 0 {
+            self.regs[0] = (addr & 0x0F) as u8;
+            self.regs[1] = (self.regs[1] & 0x07) | (value & 0xF8);
+        }
+        self.regs[1] = (self.regs[1] & 0xF8) | (value & 0x07);
+    }
+
+    fn read_register(&mut self, addr: u16, prg_value: u8) -> Option<u8> {
+        self.peek_register(addr, prg_value)
+    }
+
+    fn peek_register(&self, _addr: u16, _prg_value: u8) -> Option<u8> {
+        if self.regs[0] & 0x02 == 0 && self.regs[0] & 0x01 != 0 {
+            Some(self.dipswitch & 0x03)
+        } else {
+            None
+        }
+    }
+
+    fn mirroring(&self) -> Mirroring {
+        if self.regs[1] & 0x20 != 0 {
+            Mirroring::Vertical
+        } else {
+            Mirroring::Horizontal
+        }
+    }
+
+    fn reset(&mut self, soft: bool) {
+        self.regs = [0; 2];
+        if soft {
+            self.dipswitch = self.dipswitch.wrapping_add(1);
+        }
     }
 }
 
