@@ -321,6 +321,20 @@ function stepTile(delta: number) {
   drawSheet();
 }
 
+function focusTile(tile: number) {
+  if (!tileCount.value) return;
+  stopStroke();
+  selTile.value = Math.max(0, Math.min(tileCount.value - 1, Math.floor(tile || 0)));
+  drawZoom();
+  drawSheet();
+}
+
+function applyChrTileFocus() {
+  const focus = store.chrTileFocus;
+  if (!sheet.value || focus.path !== sheet.value.path) return;
+  focusTile(focus.tile);
+}
+
 function setTool(next: Tool) {
   stopStroke();
   tool.value = next;
@@ -457,12 +471,14 @@ function pickPaletteColor(nesIdx: number) {
 }
 
 watch([sheet, selTile], () => { nextTick(() => { syncZoomSize(); syncSheetTileSize(); drawZoom(); drawSheet(); }); });
+watch(() => store.chrTileFocus.seq, () => nextTick(applyChrTileFocus), { flush: "post" });
 watch(() => store.chr?.path, () => {
   stopStroke();
   undoStack.value = [];
   redoStack.value = [];
   hoverPixel.value = null;
   selTile.value = 0;
+  nextTick(applyChrTileFocus);
 });
 watch(() => store.chr?.pixels, () => { drawZoom(); drawSheet(); }, { deep: true });
 watch(zoomSize, () => nextTick(drawZoom));
@@ -485,7 +501,13 @@ watch(sheetWrap, (el) => {
     nextTick(syncSheetTileSize);
   }
 }, { flush: "post" });
-onMounted(() => { syncZoomSize(); syncSheetTileSize(); drawZoom(); drawSheet(); });
+onMounted(() => {
+  syncZoomSize();
+  syncSheetTileSize();
+  applyChrTileFocus();
+  drawZoom();
+  drawSheet();
+});
 onBeforeUnmount(() => {
   zoomObserver?.disconnect();
   sheetObserver?.disconnect();

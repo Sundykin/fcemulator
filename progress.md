@@ -218,6 +218,16 @@
   - Updated `docs/M1-创作IDE-使用说明.md` to describe `ide_get_state` as the state-query entry point for agents.
   - Runtime verified through the real Tauri app and `target/debug/fc ide-mcp` with both successful and failing builds.
 
+### Phase 21: Map Selected Tile To CHR Focus
+- **Status:** complete
+- Actions taken:
+  - Audited `MapEditorPanel.vue`, `ChrEditorPanel.vue`, and the project store selected-tile/focus flow.
+  - Added `chrTileFocus` state plus `requestChrTileFocus()` and `openChr(path, focusTile)` in the project store.
+  - Updated Map editor "打开 CHR" to pass the current selected map tile into the bound CHR open action.
+  - Updated CHR editor to apply pending tile focus on mount, CHR path changes, and tile-focus signal changes.
+  - Runtime verified in the real Tauri app with an IDE MCP-created demo project: Map selected tile 11 opened the CHR editor at `图块 11 / 511`.
+  - Runtime verified an out-of-range tile request clamps to the final tile (`图块 511 / 511`).
+
 ## Test Results
 | Test | Result |
 |------|--------|
@@ -315,6 +325,11 @@
 | IDE MCP `ide_get_state` after successful build | PASS; returned `output_status=current`, `output_current=true`, 40976 output bytes, and 444 source-map entries |
 | IDE MCP `ide_get_state` after failed build with old ROM on disk | PASS; returned `last.success=false`, one `src/main.s:1` diagnostic, `output_exists=true`, and `output_status=stale_after_failed_build` |
 | Tauri store sync after failed IDE MCP build | PASS; real store showed studio mode, active `src/main.s`, Build diagnostics tab requested, and status `MCP 构建失败（1 错误）` |
+| `npm --prefix fc-tauri run build` after Map→CHR tile focus | PASS, with existing Vite large chunk warning |
+| `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml` after Map→CHR tile focus | PASS |
+| `git diff --check` after Map→CHR tile focus | PASS |
+| Real Tauri Map selected tile opens CHR tile | PASS; Map `selTile=11` opened `chr/sprites.chr` and CHR editor showed `图块 11 / 511` |
+| Real Tauri Map selected tile clamp | PASS; requesting tile 9999 clamped CHR editor to `图块 511 / 511` |
 | `fc-tauri/node_modules/.bin/vue-tsc --noEmit` | NOT RUN; local project has no `vue-tsc` binary |
 | `cd fc-tauri && npx vue-tsc --noEmit` | BLOCKED by restricted network; `npx` attempted `registry.npmmirror.com/vue-tsc` and failed DNS |
 
@@ -331,3 +346,5 @@
 | 2026-06-24 | File-tree UI selectors were empty during active-resource verification | IDE MCP project creation left the app on the launcher, where Dockview/tree panels are not mounted | Switched the Tauri shell to `studio` via the app store, then reran UI verification against the mounted file tree |
 | 2026-06-24 | Tauri runtime still returned `map/level12.bin` after patch | The running Vite/HMR instance had not picked up the new `nextAvailablePath()` function | Reloaded the Tauri webview, reopened the MCP-created project through IDE MCP, and verified the component returned `map/level2.bin` |
 | 2026-06-25 | Looked for non-existent `fc-tauri/src-tauri/src/ide.rs` | Initial state-radar audit used the wrong backend file name | Continued from actual files: `ide_mcp.rs`, `project.rs`, `build_pipeline.rs`, and `watch.rs` |
+| 2026-06-25 | First Tauri dev link failed with `.llvm` undefined symbols | `npm --prefix fc-tauri run tauri dev` hit a stale/inconsistent Rust incremental link cache | Ran `CARGO_INCREMENTAL=0 cargo build --manifest-path fc-tauri/src-tauri/Cargo.toml`, then restarted `tauri dev` with `CARGO_INCREMENTAL=0` successfully |
+| 2026-06-25 | CHR editor first opened at tile 0 despite `chrTileFocus.tile=7` | Tile-focus signal arrived before the CHR editor mounted | Added pending focus application on CHR editor mount and CHR path changes |

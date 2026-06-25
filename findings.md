@@ -171,6 +171,15 @@
 - Runtime verification also deliberately wrote `BROKEN_OPCODE_FOR_STATE` into `src/main.s`. The failed build left the old ROM on disk but `ide_get_state` returned `last.success=false`, one `src/main.s:1` diagnostic, and `output_status=stale_after_failed_build`.
 - Real Tauri store inspection through the project MCP showed the same failed build was visible in the UI state: studio mode, active `src/main.s`, Build panel requested diagnostics, and status `MCP 构建失败（1 错误）`.
 
+## Map Selected Tile To CHR Focus Findings
+- Before this slice, the Map editor's "打开 CHR" action opened the bound CHR sheet but the CHR editor always reset to tile 0. This broke the natural workflow of painting a map tile and immediately editing that tile's pixels.
+- The project store now has a `chrTileFocus` signal containing `path`, `tile`, and `seq`. It is separate from `focusChr`, so Dockview can open the CHR panel and the CHR editor can still consume a pending tile request after mounting.
+- `openChr(path, focusTile)` clamps tile requests to the sheet's valid range, updates active-resource state, and records the requested tile focus.
+- `MapEditorPanel.vue` now passes its current `selTile` to `openBoundChrForActiveMap(selTile)`.
+- Initial runtime verification found a mount-order race: the store signal reached `tile=7`, but a newly mounted CHR editor displayed tile 0. `ChrEditorPanel.vue` now applies pending tile focus on signal changes, CHR path changes, and component mount.
+- Runtime verification with a real Tauri demo project showed Map selected tile 11 opened `chr/sprites.chr` with the CHR editor context bar reading `图块 11 / 511`.
+- Runtime verification also sent tile 9999 and confirmed it clamps to `图块 511 / 511`, avoiding out-of-range editor state.
+
 ## Files To Inspect Next
 - `fc-tauri/src/ide/MapEditorPanel.vue` template/style sections
 - `fc-tauri/src/ide/ChrEditorPanel.vue` template/style sections

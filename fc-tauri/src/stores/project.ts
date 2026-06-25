@@ -143,6 +143,7 @@ export const useProjectStore = defineStore("project", {
     chr: null as { path: string; tiles: number; pixels: number[] } | null,
     chrSaved: "" as string, // JSON of last-saved pixels, for dirty check
     focusChr: 0, // bumped to ask the IDE to focus the CHR panel
+    chrTileFocus: { path: "", tile: 0, seq: 0 },
     // active map being edited (map-editor)
     map: null as { path: string; data: ide.MapData } | null,
     mapSaved: "" as string,
@@ -190,6 +191,7 @@ export const useProjectStore = defineStore("project", {
       this.lastHaltPc = -1;
       this.chr = null;
       this.chrSaved = "";
+      this.chrTileFocus = { path: "", tile: 0, seq: 0 };
       this.map = null;
       this.mapSaved = "";
       this.mapChrBindings = {};
@@ -566,7 +568,14 @@ export const useProjectStore = defineStore("project", {
       this.status = "已请求取消构建";
     },
     // ---- CHR editor ----
-    async openChr(path: string) {
+    requestChrTileFocus(path: string, tile = 0) {
+      this.chrTileFocus = {
+        path,
+        tile: Math.max(0, Math.floor(tile || 0)),
+        seq: this.chrTileFocus.seq + 1,
+      };
+    },
+    async openChr(path: string, focusTile?: number) {
       const sheet = await ide.chrRead(path);
       this.chr = { path, tiles: sheet.tiles, pixels: sheet.pixels };
       this.chrSaved = JSON.stringify(sheet.pixels);
@@ -576,11 +585,19 @@ export const useProjectStore = defineStore("project", {
       }
       this.focusChr++;
       this.markActiveResource("chr", path);
-      this.status = `CHR ${path}（${sheet.tiles} 图块）`;
+      if (focusTile !== undefined) {
+        const maxTile = Math.max(0, sheet.tiles - 1);
+        const tile = Math.max(0, Math.min(maxTile, Math.floor(focusTile)));
+        this.requestChrTileFocus(path, tile);
+        this.status = `CHR ${path}（${sheet.tiles} 图块）· 图块 ${tile}`;
+      } else {
+        this.status = `CHR ${path}（${sheet.tiles} 图块）`;
+      }
     },
     newChr(path: string, tiles = 256) {
       this.chr = { path, tiles, pixels: new Array(tiles * 64).fill(0) };
       this.chrSaved = "";
+      this.chrTileFocus = { path, tile: 0, seq: this.chrTileFocus.seq + 1 };
       this.focusChr++;
       this.markActiveResource("chr", path);
     },
@@ -694,13 +711,13 @@ export const useProjectStore = defineStore("project", {
       }
       this.status = `地图 ${this.map.path} 使用 CHR ${path}`;
     },
-    async openBoundChrForActiveMap() {
+    async openBoundChrForActiveMap(tile?: number) {
       const path = this.boundChrForActiveMap;
       if (!path) {
         this.status = "当前地图未绑定 CHR";
         return false;
       }
-      await this.openChr(path);
+      await this.openChr(path, tile);
       return true;
     },
     async openMapUsingActiveChr(path?: string) {

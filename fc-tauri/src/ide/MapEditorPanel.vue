@@ -815,7 +815,7 @@ async function onChrChange(e: Event) {
 
 async function openBoundChr() {
   try {
-    await store.openBoundChrForActiveMap();
+    await store.openBoundChrForActiveMap(selTile.value);
   } catch (err) {
     store.status = "打开绑定 CHR 失败：" + err;
   }

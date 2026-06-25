@@ -4,7 +4,7 @@
 Evolve the fc-tauri studio into a mature NES game-development IDE engine. The target experience is continuous project/resource/map/music workflows, comfortable editing controls, and editors that fill their available workspace instead of using tiny native-pixel canvases.
 
 ## Current Phase
-Phase 20: IDE MCP Project State Radar
+Phase 21: Map Selected Tile To CHR Focus
 
 ## Phases
 
@@ -153,6 +153,14 @@ Phase 20: IDE MCP Project State Radar
 - [x] Verify success and failure build summaries through the real Tauri app and `target/debug/fc ide-mcp`
 - **Status:** complete
 
+### Phase 21: Map Selected Tile To CHR Focus
+- [x] Audit Map and CHR editor selected-tile state and cross-editor focus path
+- [x] Add a project-store CHR tile focus signal that can survive Dockview panel mounting
+- [x] Pass the Map editor's selected tile when opening the bound CHR
+- [x] Make the CHR editor consume pending tile-focus requests on mount, CHR path change, and signal updates
+- [x] Verify real Tauri Map→CHR navigation opens the bound CHR editor at the selected tile and clamps out-of-range requests
+- **Status:** complete
+
 ## Key Questions
 1. Which editor currently wastes the most available panel area or forces tiny pixel editing?
 2. Where is map-to-CHR binding surfaced, and does opening a map automatically load/show the right CHR resource?
@@ -181,6 +189,7 @@ Phase 20: IDE MCP Project State Radar
 | MCP builds should surface diagnostics in the visible IDE | A programming agent writing code through MCP needs the same build/fix feedback loop as a human pressing Build: visible problems, source jump, and success health state |
 | Map and CHR editors should be navigable from their binding relationship | Binding state is only useful if the user can jump between a map and the CHR sheet that defines its tile palette without hunting through the file tree |
 | `ide_get_state` should be the agent's project radar | Programming agents need one semantic MCP call for resources, bindings, missing files, build diagnostics, source-map counts, and stale/current ROM status instead of scraping the Tauri DOM |
+| Map→CHR navigation should preserve tile context | Opening a bound CHR from the Map editor should land on the tile the user is painting, so pixel editing continues from the map context instead of resetting to tile 0 |
 
 ## Errors Encountered
 | Error | Attempt | Resolution |
@@ -192,3 +201,4 @@ Phase 20: IDE MCP Project State Radar
 | Tauri runtime initially reported `map/level12.bin` after the patch | The live Vite/HMR instance still had the old `nextAvailablePath()` implementation loaded | Reloaded the Tauri webview, reopened the MCP-created project, and verified the new runtime function returned `map/level2.bin` |
 | Rapid `ide_open_resource` calls ended on the wrong active panel | Source/CHR/map/music opens were emitted in order, but async frontend handlers completed out of order and map focus overwrote the final music request | Serialized IDE MCP frontend sync through a promise queue and re-verified the last resource request wins |
 | Looked for a non-existent `fc-tauri/src-tauri/src/ide.rs` | Initial audit assumed an IDE backend file name that does not exist | Continued from the actual backend files: `ide_mcp.rs`, `project.rs`, and `build_pipeline.rs` |
+| Tauri dev failed with macOS linker `.llvm` undefined symbols | First `tauri dev` after frontend-only changes hit a stale/inconsistent incremental link cache, while `cargo check` passed | Rebuilt with `CARGO_INCREMENTAL=0`, then restarted Tauri dev successfully |
