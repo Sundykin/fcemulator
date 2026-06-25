@@ -195,6 +195,13 @@
 - Attribute patches follow the Map editor's existing semantics: `x/y` is a map coordinate, and the backend writes the corresponding 2x2 attribute byte.
 - The project store treats `chr-patch` and `map-patch` as resource-targeted events, using `focusResource()` so the visible editor refreshes and lands on the patched tile/cell instead of requiring DOM bridge state pokes.
 
+## IDE MCP Granular Tracker Patch Findings
+- Before this slice, music had semantic whole-song read/write, but an agent still had to round-trip the full `.song.json` to tweak one note/effect cell.
+- `ide_patch_song_cell` follows the same Tauri-hosted MCP shape as CHR/map patch tools: read the existing song, patch only supplied `note/instrument/volume/fx/param` fields at `pattern/row/channel`, write pretty JSON, register the song in manifest music if needed, and emit a resource-targeted IPC event.
+- Tracker focus belongs to component-local state (`patIdx`, `selRow`, `selCh`, `view`), so the project store now carries a `songCellFocus` signal parallel to `chrTileFocus` and `mapCellFocus`.
+- `syncFromIdeMcp()` treats `song-patch` as a resource-targeted event and avoids the generic music reload from overriding the requested focus.
+- `TrackerPanel.vue` consumes pending song-cell focus on mount, song path changes, and focus-signal changes, switches to Pattern view, clamps pattern/row/channel, focuses the panel, and scrolls the selected cell into view.
+
 ## Files To Inspect Next
 - `fc-tauri/src/ide/MapEditorPanel.vue` template/style sections
 - `fc-tauri/src/ide/ChrEditorPanel.vue` template/style sections

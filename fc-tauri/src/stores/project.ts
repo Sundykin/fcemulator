@@ -129,6 +129,9 @@ interface IdeMcpExtra {
   x?: number;
   y?: number;
   layer?: string;
+  pattern?: number;
+  row?: number;
+  channel?: number;
 }
 
 export const useProjectStore = defineStore("project", {
@@ -171,6 +174,7 @@ export const useProjectStore = defineStore("project", {
     song: null as { path: string; data: ide.Song } | null,
     songSaved: "" as string,
     focusTracker: 0,
+    songCellFocus: { path: "", pattern: 0, row: 0, channel: 0, seq: 0 },
     trackerPlaying: false,
     watching: false,
   }),
@@ -216,6 +220,7 @@ export const useProjectStore = defineStore("project", {
       this.mapChrBindings = {};
       this.song = null;
       this.songSaved = "";
+      this.songCellFocus = { path: "", pattern: 0, row: 0, channel: 0, seq: 0 };
       this.trackerPlaying = false;
     },
     markActiveResource(kind: Exclude<ResourceKind, "">, path: string) {
@@ -346,7 +351,13 @@ export const useProjectStore = defineStore("project", {
           await this.openPrimarySource();
         }
         const hasResourceTarget = changed.includes("resource") && extra?.path;
-        if (hasResourceTarget && (reason === "resource-focus" || reason === "chr-patch" || reason === "map-patch")) {
+        if (hasResourceTarget && reason === "song-patch") {
+          await this.openTracker(extra.path, {
+            pattern: typeof extra.pattern === "number" ? extra.pattern : 0,
+            row: typeof extra.row === "number" ? extra.row : 0,
+            channel: typeof extra.channel === "number" ? extra.channel : 0,
+          });
+        } else if (hasResourceTarget && (reason === "resource-focus" || reason === "chr-patch" || reason === "map-patch")) {
           await this.focusResource(extra.path, extra.kind, {
             line: typeof extra.line === "number" ? extra.line : undefined,
             tile: typeof extra.tile === "number" ? extra.tile : undefined,
@@ -370,7 +381,7 @@ export const useProjectStore = defineStore("project", {
         if (extra?.path && changed.includes("map") && this.map?.path === extra.path && !hasResourceTarget) {
           await this.openMap(extra.path);
         }
-        if (extra?.path && changed.includes("music") && this.song?.path === extra.path) {
+        if (extra?.path && changed.includes("music") && this.song?.path === extra.path && !hasResourceTarget) {
           await this.openTracker(extra.path);
         }
         if (changed.includes("preview")) this.requestPreviewFocus();
@@ -837,13 +848,32 @@ export const useProjectStore = defineStore("project", {
       this.focusTracker++;
       this.markActiveResource("music", path);
     },
-    async openTracker(path: string) {
+    requestSongCellFocus(path: string, pattern = 0, row = 0, channel = 0) {
+      this.songCellFocus = {
+        path,
+        pattern: Math.max(0, Math.floor(pattern || 0)),
+        row: Math.max(0, Math.floor(row || 0)),
+        channel: Math.max(0, Math.min(4, Math.floor(channel || 0))),
+        seq: this.songCellFocus.seq + 1,
+      };
+    },
+    async openTracker(path: string, focusCell?: { pattern?: number; row?: number; channel?: number }) {
       const data = await ide.trackerLoad(path);
       this.song = { path, data };
       this.songSaved = JSON.stringify(data);
       this.focusTracker++;
       this.markActiveResource("music", path);
-      this.status = `乐曲 ${path}`;
+      if (focusCell) {
+        const patternIndex = Math.max(0, Math.min(data.patterns.length - 1, Math.floor(focusCell.pattern ?? 0)));
+        const pattern = data.patterns[patternIndex];
+        const rowMax = Math.max(0, (pattern?.rows.length ?? 1) - 1);
+        const row = Math.max(0, Math.min(rowMax, Math.floor(focusCell.row ?? 0)));
+        const channel = Math.max(0, Math.min(4, Math.floor(focusCell.channel ?? 0)));
+        this.requestSongCellFocus(path, patternIndex, row, channel);
+        this.status = `乐曲 ${path} · P${patternIndex} R${row} C${channel}`;
+      } else {
+        this.status = `乐曲 ${path}`;
+      }
     },
     async importFtm() {
       const src = await ide.pickFile("FamiTracker 文本导出", ["txt"]);

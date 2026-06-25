@@ -249,6 +249,21 @@
   - Updated the project store so `chr-patch` and `map-patch` refresh visible resources through `focusResource()` and land on the patched tile/cell.
   - Runtime verified with the real Tauri app and `target/debug/fc ide-mcp`: CHR tile 22 focused in the visible CHR editor, map tile/collision/attr patches focused the visible Map editor, and disk readback matched the patched values.
 
+### Phase 24: IDE MCP Granular Tracker Patching
+- **Status:** complete
+- Actions taken:
+  - Resumed in `/Users/sunmeng/workspace/fc-creative-mode` on `codex/creative-mode-simple-game`; initial dirty state was only the partially registered `ide_patch_song_cell` tool.
+  - Implemented the Rust backend `ide_patch_song_cell` dispatcher target in `fc-tauri/src-tauri/src/ide_mcp.rs`.
+  - Added validation for active project root, project-relative path, pattern index, row index, channel index, optional `u8` fields, and "at least one changed field".
+  - Made the patch write pretty `.song.json`, register the path in `project.toml` music if needed, and emit `song-patch` with `changed=["tree","manifest","music","resource"]`.
+  - Added project-store `songCellFocus`, `requestSongCellFocus()`, and `openTracker(path, focusCell)` support.
+  - Routed `song-patch` through the IDE MCP sync queue so the visible Tracker panel reloads and focuses the patched Pattern cell.
+  - Updated `TrackerPanel.vue` to consume pending song-cell focus, switch to Pattern view, clamp target coordinates, and scroll the selected cell into view.
+  - Updated M1/M2 usage docs to document `ide_patch_song_cell`.
+  - Static verified with `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml`, `npm --prefix fc-tauri run build`, and `git diff --check`.
+  - Runtime verified through the real Tauri app and `target/debug/fc ide-mcp` by creating `/var/folders/.../fc-song-patch-*`, writing `music/patch_verify.song.json`, patching row 7/channel 2 to C4 with effect `134`, reading disk state back, and inspecting the visible Tauri Tracker state through the project MCP.
+  - Confirmed Pinia `songCellFocus={path:"music/patch_verify.song.json",pattern:0,row:7,channel:2}`, active resource `music/patch_verify.song.json`, manifest music registration, patched cell `{note:37,instrument:0,volume:13,fx:1,param:52}`, and DOM selected tracker cell row 7/channel 2.
+
 ## Test Results
 | Test | Result |
 |------|--------|
@@ -258,6 +273,7 @@
 | `git diff --check` | PASS |
 | `npm --prefix fc-tauri run tauri dev` | PASS; Tauri app started and all three MCP sockets appeared |
 | `target/debug/fc emu-mcp` initialize/tools-list | PASS; server identified as `fc-tauri-emu-mcp` |
+| `target/debug/fc ide-mcp` `ide_patch_song_cell` runtime verification | PASS; patched song cell persisted and visible Tracker selected row 7/channel 2 |
 | live `emu_load_rom` with `/Users/sunmeng/workspace/fc/roms/SuperMarioBro.nes` | PASS; visible Vue store switched to player/main with `SuperMarioBro.nes` |
 | live `emu_set_speed`, `emu_control`, `emu_step_frame`, `emu_get_state` | PASS; store and runtime state reflected MCP operations |
 | Tauri DOM/store inspection | PASS; `window.__emu.liveMcp.online=true`, toolbar MCP pill class `mcpstat on` |

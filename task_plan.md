@@ -4,7 +4,7 @@
 Evolve the fc-tauri studio into a mature NES game-development IDE engine. The target experience is continuous project/resource/map/music workflows, comfortable editing controls, and editors that fill their available workspace instead of using tiny native-pixel canvases.
 
 ## Current Phase
-Phase 23: IDE MCP Granular Resource Patching
+Phase 24: IDE MCP Granular Tracker Patching
 
 ## Phases
 
@@ -176,6 +176,13 @@ Phase 23: IDE MCP Granular Resource Patching
 - [x] Verify patch tools in the real Tauri IDE and confirm disk/resource state changed
 - **Status:** complete
 
+### Phase 24: IDE MCP Granular Tracker Patching
+- [x] Add `ide_patch_song_cell` to patch a single tracker Pattern cell without rewriting the whole song
+- [x] Register patched `.song.json` resources in `project.toml` music if needed
+- [x] Route song patch events through Pinia and preserve focus on the patched Pattern row/channel
+- [x] Verify through the real Tauri IDE and `target/debug/fc ide-mcp` without browser automation
+- **Status:** complete
+
 ## Key Questions
 1. Which editor currently wastes the most available panel area or forces tiny pixel editing?
 2. Where is map-to-CHR binding surfaced, and does opening a map automatically load/show the right CHR resource?
@@ -207,6 +214,7 @@ Phase 23: IDE MCP Granular Resource Patching
 | Map→CHR navigation should preserve tile context | Opening a bound CHR from the Map editor should land on the tile the user is painting, so pixel editing continues from the map context instead of resetting to tile 0 |
 | IDE MCP should support semantic resource focus | A programming agent writing a game needs to show the exact source line, CHR tile, or map cell it just changed without using the Tauri DOM bridge for normal creative control |
 | IDE MCP should patch resources at creative granularity | Agents should not have to round-trip whole CHR sheets or maps for small edits; tile/cell patch tools make iterative game creation safer and faster |
+| Tracker cells should be patchable at musical granularity | A game-writing agent should be able to tweak one note/effect/volume value and see the visible music editor land there, just like CHR tile and map cell patch flows |
 
 ## Errors Encountered
 | Error | Attempt | Resolution |

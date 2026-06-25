@@ -101,6 +101,11 @@ const TOOLS: &[Tool] = &[
         schema: r#"{"type":"object","properties":{"path":{"type":"string"},"song":{"type":"object"}},"required":["path","song"]}"#,
     },
     Tool {
+        name: "ide_patch_song_cell",
+        description: "Patch one tracker pattern cell in-place and focus that cell in the visible music editor.",
+        schema: r#"{"type":"object","properties":{"path":{"type":"string"},"pattern":{"type":"integer","minimum":0,"default":0},"row":{"type":"integer","minimum":0},"channel":{"type":"integer","minimum":0,"maximum":4},"note":{"type":"integer","minimum":0,"maximum":255},"instrument":{"type":"integer","minimum":0,"maximum":255},"volume":{"type":"integer","minimum":0,"maximum":255},"fx":{"type":"integer","minimum":0,"maximum":255},"param":{"type":"integer","minimum":0,"maximum":255}},"required":["path","row","channel"]}"#,
+    },
+    Tool {
         name: "ide_open_resource",
         description: "Ask the visible Tauri IDE to open and focus a project resource editor. kind: auto|source|chr|map|music.",
         schema: r#"{"type":"object","properties":{"path":{"type":"string"},"kind":{"type":"string","enum":["auto","source","chr","map","music"],"default":"auto"}},"required":["path"]}"#,
@@ -265,6 +270,7 @@ fn call_tool(app: &AppHandle, name: &str, args: &Value) -> Value {
         "ide_bind_map_chr" => with_result(|| bind_map_chr(app, args)),
         "ide_read_song" => with_result(|| read_song(app, args)),
         "ide_write_song" => with_result(|| write_song(app, args)),
+        "ide_patch_song_cell" => with_result(|| patch_song_cell(app, args)),
         "ide_open_resource" => with_result(|| open_resource(app, args)),
         "ide_focus_resource" => with_result(|| focus_resource(app, args)),
         "ide_build" => with_result(|| build_project(app)),
@@ -330,6 +336,19 @@ fn arg_required_u64(args: &Value, key: &str) -> Result<u64, String> {
     args.get(key)
         .and_then(|v| v.as_u64())
         .ok_or_else(|| format!("缺少参数 {key}"))
+}
+
+fn arg_optional_u8(args: &Value, key: &str) -> Result<Option<u8>, String> {
+    let Some(value) = args.get(key) else {
+        return Ok(None);
+    };
+    let Some(n) = value.as_u64() else {
+        return Err(format!("{key} 必须是 0..=255 的整数"));
+    };
+    if n > u8::MAX as u64 {
+        return Err(format!("{key} 超出 0..=255"));
+    }
+    Ok(Some(n as u8))
 }
 
 fn arg_array<'a>(args: &'a Value, key: &str) -> Result<&'a Vec<Value>, String> {
@@ -942,6 +961,83 @@ fn write_song(app: &AppHandle, args: &Value) -> Result<Value, String> {
         "name": song.name,
         "patterns": song.patterns.len(),
         "order": song.order.len(),
+    }))
+}
+
+fn patch_song_cell(app: &AppHandle, args: &Value) -> Result<Value, String> {
+    let root = active_root(app)?;
+    let path = arg_str(args, "path")?;
+    let pattern_index = arg_u64(args, "pattern", 0) as usize;
+    let row_index = arg_required_u64(args, "row")? as usize;
+    let channel_index = arg_required_u64(args, "channel")? as usize;
+    if channel_index >= 5 {
+        return Err(format!("channel {channel_index} 越界,范围 0..4"));
+    }
+    let dst = resolve(&root, path)?;
+    let text = std::fs::read_to_string(&dst).map_err(|e| format!("读取 {path} 失败: {e}"))?;
+    let mut song: Song = serde_json::from_str(&text).map_err(|e| format!("解析乐曲失败: {e}"))?;
+    let pattern_count = song.patterns.len();
+    let Some(pattern) = song.patterns.get_mut(pattern_index) else {
+        return Err(format!("pattern {pattern_index} 越界,Pattern 数 {pattern_count}"));
+    };
+    let row_count = pattern.rows.len();
+    let Some(row) = pattern.rows.get_mut(row_index) else {
+        return Err(format!("row {row_index} 越界,行数 {row_count}"));
+    };
+    let cell = &mut row[channel_index];
+    let mut changed_fields = Vec::new();
+    if let Some(value) = arg_optional_u8(args, "note")? {
+        cell.note = value;
+        changed_fields.push("note");
+    }
+    if let Some(value) = arg_optional_u8(args, "instrument")? {
+        cell.instrument = value;
+        changed_fields.push("instrument");
+    }
+    if let Some(value) = arg_optional_u8(args, "volume")? {
+        cell.volume = value;
+        changed_fields.push("volume");
+    }
+    if let Some(value) = arg_optional_u8(args, "fx")? {
+        cell.fx = value;
+        changed_fields.push("fx");
+    }
+    if let Some(value) = arg_optional_u8(args, "param")? {
+        cell.param = value;
+        changed_fields.push("param");
+    }
+    if changed_fields.is_empty() {
+        return Err("至少提供 note/instrument/volume/fx/param 中的一项".into());
+    }
+    let patched_cell = *cell;
+    let next_text =
+        serde_json::to_string_pretty(&song).map_err(|e| format!("序列化乐曲失败: {e}"))?;
+    std::fs::write(&dst, next_text).map_err(|e| format!("写入 {path} 失败: {e}"))?;
+    let mut manifest = project::load_manifest(&root)?;
+    if !manifest.music.contains(&path.to_string()) {
+        manifest.music.push(path.to_string());
+        project::save_manifest(&root, &manifest)?;
+    }
+    emit_refresh(
+        app,
+        "song-patch",
+        &["tree", "manifest", "music", "resource"],
+        json!({
+            "root": root.to_string_lossy(),
+            "path": path,
+            "kind": "music",
+            "pattern": pattern_index,
+            "row": row_index,
+            "channel": channel_index,
+        }),
+    );
+    Ok(json!({
+        "path": path,
+        "pattern": pattern_index,
+        "row": row_index,
+        "channel": channel_index,
+        "changed": changed_fields,
+        "cell": patched_cell,
     }))
 }
 

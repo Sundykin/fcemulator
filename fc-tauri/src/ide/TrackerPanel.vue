@@ -181,6 +181,33 @@ function selectCell(r: number, c: number) {
   selCh.value = c;
 }
 
+function clampInt(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) return min;
+  return Math.max(min, Math.min(max, Math.floor(value)));
+}
+
+function focusSelectedPatternCell() {
+  nextTick(() => {
+    root.value?.focus({ preventScroll: true });
+    const selected = root.value?.querySelector(".grid .cell.sel");
+    selected?.scrollIntoView({ block: "center", inline: "center" });
+  });
+}
+
+function applyPendingSongCellFocus() {
+  const focus = store.songCellFocus;
+  const current = store.song;
+  if (!current || !song.value || focus.path !== current.path || !focus.seq) return false;
+  if (!song.value.patterns.length) return false;
+  view.value = "pattern";
+  patIdx.value = clampInt(focus.pattern, 0, song.value.patterns.length - 1);
+  const p = song.value.patterns[patIdx.value];
+  selRow.value = clampInt(focus.row, 0, Math.max(0, p.rows.length - 1));
+  selCh.value = clampInt(focus.channel, 0, 4);
+  focusSelectedPatternCell();
+  return true;
+}
+
 function isEditableTarget(target: EventTarget | null): boolean {
   const el = target instanceof HTMLElement ? target : null;
   return !!el?.closest("input, textarea, select, button, [contenteditable='true']");
@@ -403,6 +430,13 @@ watch(() => store.song?.path, () => {
   selRow.value = 0;
   selCh.value = 0;
   patIdx.value = 0;
+  nextTick(applyPendingSongCellFocus);
+});
+watch(() => store.songCellFocus.seq, () => {
+  applyPendingSongCellFocus();
+});
+onMounted(() => {
+  applyPendingSongCellFocus();
 });
 </script>
 
