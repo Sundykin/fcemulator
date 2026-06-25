@@ -79,6 +79,14 @@ impl ControlDeck {
         self.cpu.reset(&mut self.bus);
     }
 
+    pub fn supports_barcode_input(&self) -> bool {
+        self.bus.cartridge.supports_barcode_input()
+    }
+
+    pub fn input_barcode(&mut self, digits: &str) -> Result<(), String> {
+        self.bus.cartridge.input_barcode(digits)
+    }
+
     /// Run until the PPU completes a frame, or until a breakpoint halts.
     /// Returns false if no ROM is running or execution halted mid-frame.
     pub fn run_frame(&mut self) -> bool {
@@ -557,6 +565,19 @@ mod tests {
         rom
     }
 
+    fn mapper157_rom() -> Vec<u8> {
+        let mut rom = vec![0u8; 16 + 2 * 0x4000 + 0x2000];
+        rom[0..4].copy_from_slice(b"NES\x1A");
+        rom[4] = 2;
+        rom[5] = 1;
+        rom[6] = 0xD0;
+        rom[7] = 0x90;
+        let base = 16 + 2 * 0x4000;
+        rom[base - 2] = 0x00;
+        rom[base - 1] = 0x80;
+        rom
+    }
+
     // The empty cartridge executes NOPs from $8000, so we can drive the
     // conditional-breakpoint logic without a real ROM.
     #[test]
@@ -600,6 +621,16 @@ mod tests {
             .unwrap();
         assert_eq!(deck.region(), Region::Pal);
         assert!((deck.region_frame_rate() - 50.0070).abs() < 0.001);
+    }
+
+    #[test]
+    fn datach_barcode_input_is_exposed_through_control_deck() {
+        let mut deck = ControlDeck::new(Region::Ntsc);
+        assert!(!deck.supports_barcode_input());
+        deck.load_rom(&mapper157_rom()).unwrap();
+        assert!(deck.supports_barcode_input());
+        assert!(deck.input_barcode("1234567").is_ok());
+        assert!(deck.input_barcode("123456").is_err());
     }
 
     #[test]

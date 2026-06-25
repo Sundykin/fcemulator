@@ -29,10 +29,11 @@
 - `fc-core/src/mapper/basic/konami.rs:1-74`
   - 新增 Mapper 75 / VRC1。
   - 覆盖 8KB PRG、4KB CHR、CHR 高位模式和 mirroring。
-- `fc-core/src/mapper/basic/bandai.rs:1-515`
+- `fc-core/src/mapper/basic/bandai.rs:1-777`
   - 新增 Mapper 16 / 153 / 159 的 Bandai FCG-1/FCG-2/LZ93D50 第一版。
   - 覆盖 16KB PRG、8 个 1KB CHR register、Mapper153 CHR low-bit PRG outer block、mirroring register、CPU-cycle IRQ、submapper 4/5 写窗口差异、FCG 直接 counter 与 LZ93D50 reload latch 差异、24C01/24C02 EEPROM bit4/open-bus 读，以及 Mapper153 `$800D` PRG-RAM gate。
-  - 当前 factory 尚未把 NES 2.0 PRG-NVRAM byte 透传给 mapper，因此 mapper16 submapper 5 的“仅 header 声明 256B 时接 24C02”仍留作后续 factory 扩参精修；Mapper157/Datach 条码外设留待核心外设输入接口后补齐。
+  - 新增 Mapper 157 / Datach Barcode Battler：内置 24C02 + 额外 24C01、条码输入设备、1000-cycle 字节输出节拍、`$6000-$7FFF` 读回合成，以及 `MapperOps::supports_barcode_input/input_barcode` 入口。
+  - 当前 factory 尚未把 NES 2.0 PRG-NVRAM byte 透传给 mapper，因此 mapper16 submapper 5 的“仅 header 声明 256B 时接 24C02”仍留作后续 factory 扩参精修。
 - `fc-core/src/mapper/basic/latch/sunsoft.rs:1-159`
   - 新增 Mapper 68 / Sunsoft-4。
   - 覆盖 16KB PRG、四个 2KB CHR、mirroring 控制，以及 nametable 到 CHR-ROM/CHR-RAM 1KB page 的映射。
@@ -111,7 +112,12 @@
 | 21 | `vrc4.rs:1-329` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Konami/VRC2_4.h` | 37-48, 223-233 | mapper 21 variant detection 与 submapper 0 OR heuristics cross-check |
 | 12 | `mmc3.rs:19-21,134-139,646-651,710-718,1110-1152,1258-1265,1330-1350; mapper.rs:379-382,821-824,981-984,1138-1141` | `/Users/sunmeng/workspace/fc/fceux/src/boards/mmc3.cpp` | 377-413 | Mapper 12 MMC3 clone：expansion reg0/reg1 控制 pattern table 两半 CHR bit8，reg2 语言读回，reset toggle 并重置 MMC3 寄存器 |
 | 12 | `mmc3.rs:19-21,134-139,646-651,710-718,1110-1152,1258-1265,1330-1350; mapper.rs:379-382,821-824,981-984,1138-1141` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/mmc3.c` | 367-407 | FCEUmm mapper 12 cross-check；submapper 1 转 FFE_Init 记录为后续精修，不混入标准 mapper 12 |
-| 16/153/159 | `basic/bandai.rs:1-515; factory.rs:32,150,154; tests.rs:945-1059` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Bandai/BandaiFcg.h` | 12-92,127-239 | Mapper 16/153/157/159 共用 Bandai FCG/LZ93D50：PRG/CHR/mirroring、CPU-cycle IRQ、submapper 4/5 register window 与 IRQ counter/reload 差异、Mapper153 PRG outer/SRAM gate、Mapper159 24C01、低区 read/open-bus 语义 |
+| 16/153/159 | `basic/bandai.rs:1-777; factory.rs:32,150,154; tests.rs:945-1059` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Bandai/BandaiFcg.h` | 12-92,127-239 | Mapper 16/153/159 共用 Bandai FCG/LZ93D50：PRG/CHR/mirroring、CPU-cycle IRQ、submapper 4/5 register window 与 IRQ counter/reload 差异、Mapper153 PRG outer/SRAM gate、Mapper159 24C01、低区 read/open-bus 语义 |
+| 157 | `basic/bandai.rs:278-777; mapper.rs:186-192; dispatch.rs:254-258; cartridge.rs:411-416; control_deck.rs:82-87,626-633; tests.rs:1170-1203` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Bandai/BandaiFcg.h` | 46-60,75-83,142-157,159-239 | Mapper 157 / Datach Joint ROM：内置 24C02、额外 24C01、条码设备接入、1000-cycle 输出节拍、`$6000-$7FFF` 读回合成与 `$8000-$FFFF` 写窗口 |
+| 157 | `basic/bandai.rs:278-777; mapper.rs:186-192; dispatch.rs:254-258; cartridge.rs:411-416; control_deck.rs:82-87,626-633; tests.rs:1170-1203` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Input/DatachBarcodeReader.h` | 34-73,75-189 | 条码输入、8/13 位校验码、33 前导/32 尾随空闲位、1000-cycle 输出节拍 |
+| 157 | `basic/bandai.rs:278-777; mapper.rs:186-192; dispatch.rs:254-258; cartridge.rs:411-416; control_deck.rs:82-87,626-633; tests.rs:1170-1203` | `/Users/sunmeng/workspace/fc/fceux/src/boards/bandai.cpp` | 389-610 | FCEUX Datach 读出合成、24C01/24C02 线控、条码编码/节拍与 `Mapper157_Init` |
+| 157 | `basic/bandai.rs:278-777; mapper.rs:186-192; dispatch.rs:254-258; cartridge.rs:411-416; control_deck.rs:82-87,626-633; tests.rs:1170-1203` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/bandai.c` | 411-640 | FCEUmm Datach 读出合成、24C01/24C02 线控、条码编码/节拍与 `Mapper157_Init` |
+| 157 | `basic/bandai.rs:278-777; mapper.rs:186-192; dispatch.rs:254-258; cartridge.rs:411-416; control_deck.rs:82-87,626-633; tests.rs:1170-1203` | `/Users/sunmeng/workspace/fc/nestopia/source/core/board/NstBoardBandaiDatach.cpp` | 42-377 | Nestopia Datach barcode device、state/reset、Transfer、fetcher sync 与 `Peek_6000` |
 | 16/159 | `basic/bandai.rs:14-276,400-415,463-478` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Bandai/BaseEeprom24C0X.h` | 8-69 | 24C0X mode/state、SCL/SDA line helper 和 output bit 语义 |
 | 16 | `basic/bandai.rs:25-205,400-415,463-478` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Bandai/Eeprom24C02.h` | 9-144 | 24C02 START/STOP、chip-address compare、ACK、read/write byte 和 address auto-increment |
 | 159 | `basic/bandai.rs:25-119,207-276,400-415,463-478` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Bandai/Eeprom24C01.h` | 9-127 | 24C01 LSB-first address/data/read、128-byte wrap、ACK/idle transitions |

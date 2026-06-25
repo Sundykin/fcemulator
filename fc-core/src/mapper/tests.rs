@@ -122,6 +122,7 @@ fn watches_ppu_bus_matches_notify_a12_overrides() {
         (150, false),  // Sachen 74LS374N
         (243, false),  // Sachen 74LS374N
         (156, false),  // Mapper 156
+        (157, false),  // Datach Barcode Battler
         (162, false),  // Waixing FS304
         (163, false),  // Nanjing FC-001
         (164, false),  // Waixing FFV / PEC-9588
@@ -345,6 +346,7 @@ fn clocks_cpu_matches_cpu_clock_overrides() {
         (150, false),  // Sachen 74LS374N
         (243, false),  // Sachen 74LS374N
         (156, false),  // Mapper 156
+        (157, true),   // Datach IRQ/barcode reader clocks per CPU cycle
         (162, false),  // Waixing FS304
         (163, false),  // Nanjing FC-001
         (164, false),  // Waixing FFV / PEC-9588
@@ -572,6 +574,7 @@ fn clocks_hblank_matches_hblank_clock_overrides() {
         (149, false),
         (150, false),
         (156, false),
+        (157, false),
         (162, true),
         (163, true),
         (164, false),
@@ -1161,6 +1164,42 @@ fn bandai_mapper159_uses_24c01_eeprom_and_high_register_window() {
     assert_eq!(
         mapper.read_low_register_with_open_bus(0x6000, 0x55, 0x00),
         Some(0x10)
+    );
+}
+
+#[test]
+fn bandai_mapper157_datach_maps_prg_chr_irq_eeprom_and_barcode() {
+    let mut mapper = Mapper::new(157, 32, 16, Mirroring::Horizontal, 0).expect("mapper 157");
+    assert!(mapper.supports_barcode_input());
+    assert_eq!(mapper.chr_index(0x1ABC), 0x1ABC);
+    assert!(!mapper.write_low_register(0x6008, 0x04));
+    assert_eq!(
+        mapper.peek_low_register_with_open_bus(0x6000, 0x55, 0xFF),
+        Some(0xE7)
+    );
+
+    mapper.write_register(0x8008, 0x04);
+    assert_eq!(mapper.prg_index(0x8004), 4 * 0x4000 + 4);
+    assert_eq!(mapper.prg_index(0xC004), 0x0F * 0x4000 + 4);
+    mapper.write_register(0x8009, 0x03);
+    assert_eq!(mapper.mirroring(), Mirroring::SingleScreenHigh);
+
+    mapper.write_register(0x800B, 0x01);
+    mapper.write_register(0x800C, 0x00);
+    mapper.write_register(0x800A, 0x01);
+    mapper.cpu_clock();
+    assert!(!mapper.irq());
+    mapper.cpu_clock();
+    assert!(mapper.irq());
+
+    assert!(mapper.input_barcode("1234567").is_ok());
+    assert!(mapper.input_barcode("123456").is_err());
+    for _ in 0..1000 {
+        mapper.cpu_clock();
+    }
+    assert_eq!(
+        mapper.read_low_register_with_open_bus(0x6000, 0x00, 0xFF),
+        Some(0xEF)
     );
 }
 

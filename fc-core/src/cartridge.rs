@@ -408,6 +408,14 @@ impl Cartridge {
         self.mapper.write_controller_strobe(value)
     }
 
+    pub fn supports_barcode_input(&self) -> bool {
+        self.mapper.supports_barcode_input()
+    }
+
+    pub fn input_barcode(&mut self, digits: &str) -> Result<(), String> {
+        self.mapper.input_barcode(digits)
+    }
+
     fn cpu_read_expansion_with_open_bus(&mut self, addr: u16, open_bus: u8) -> u8 {
         self.mapper
             .read_expansion_with_open_bus(addr, open_bus)

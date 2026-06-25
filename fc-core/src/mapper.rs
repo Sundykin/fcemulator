@@ -183,6 +183,14 @@ pub trait MapperOps {
     /// Some boards change writable CHR-RAM routing based on the current VRAM
     /// address before the byte is actually stored.
     fn notify_ppudata_write(&mut self, _addr: u16, _value: u8) {}
+    /// Optional mapper-owned barcode reader input. Datach-style boards expose a
+    /// mapper-side peripheral rather than a normal controller-port device.
+    fn supports_barcode_input(&self) -> bool {
+        false
+    }
+    fn input_barcode(&mut self, _digits: &str) -> Result<(), String> {
+        Err("mapper does not support barcode input".to_string())
+    }
     /// Optional mapper-owned nametable read (`$2000..=$3EFF`).
     fn nametable_read(&mut self, _addr: u16, _ciram: &[u8; 0x1000]) -> Option<u8> {
         None

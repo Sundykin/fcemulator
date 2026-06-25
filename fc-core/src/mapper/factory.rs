@@ -170,6 +170,7 @@ impl Mapper {
             154 => Mapper::Namco108Mapper154(Namco108Mapper154::new(prg_16k)),
             155 => Mapper::Mmc1(Mmc1::new_155(prg_16k, chr_8k)),
             156 => Mapper::Mapper156(Mapper156::new(prg_16k)),
+            157 => Mapper::BandaiFcg(BandaiFcg::new_157(prg_16k, chr_8k)),
             158 => Mapper::Rambo1(Rambo1::new_158(prg_16k, chr_8k)),
             159 => Mapper::BandaiFcg(BandaiFcg::new_159(prg_16k, chr_8k)),
             162 => Mapper::NanjingMapper(NanjingMapper::new(prg_16k, NanjingVariant::Mapper162)),

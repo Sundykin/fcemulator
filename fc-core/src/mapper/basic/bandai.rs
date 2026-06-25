@@ -275,10 +275,191 @@ impl Eeprom24C0x {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct DatachBarcodeReader {
+    stream: Vec<u8>,
+    pos: usize,
+    cycle_count: u16,
+    output: u8,
+}
+
+impl DatachBarcodeReader {
+    const CYCLES_PER_BIT: u16 = 1000;
+
+    fn new() -> Self {
+        Self {
+            stream: Vec::new(),
+            pos: 0,
+            cycle_count: 0,
+            output: 0,
+        }
+    }
+
+    fn output(&self) -> u8 {
+        self.output & 0x08
+    }
+
+    fn reset(&mut self) {
+        self.stream.clear();
+        self.pos = 0;
+        self.cycle_count = 0;
+        self.output = 0;
+    }
+
+    fn input_barcode(&mut self, digits: &str) -> Result<(), String> {
+        let len = digits.len();
+        if !matches!(len, 7 | 8 | 12 | 13) {
+            return Err("Datach barcode must be 7, 8, 12, or 13 digits".to_string());
+        }
+        let mut code = Vec::with_capacity(13);
+        for byte in digits.bytes() {
+            if !byte.is_ascii_digit() {
+                return Err("Datach barcode must contain only digits".to_string());
+            }
+            code.push(byte - b'0');
+        }
+        match len {
+            7 => {
+                let check = Self::ean8_check_digit(&code[..7]);
+                code.push(check);
+            }
+            12 => {
+                let check = Self::ean13_check_digit(&code[..12]);
+                code.push(check);
+            }
+            _ => {}
+        }
+
+        self.stream = Self::encode(&code);
+        self.pos = 0;
+        self.cycle_count = 0;
+        self.output = 0x08;
+        Ok(())
+    }
+
+    fn ean13_check_digit(code: &[u8]) -> u8 {
+        let sum: u32 = code
+            .iter()
+            .enumerate()
+            .map(|(i, digit)| u32::from(*digit) * if i & 1 != 0 { 3 } else { 1 })
+            .sum();
+        ((10 - (sum % 10)) % 10) as u8
+    }
+
+    fn ean8_check_digit(code: &[u8]) -> u8 {
+        let sum: u32 = code
+            .iter()
+            .enumerate()
+            .map(|(i, digit)| u32::from(*digit) * if i & 1 != 0 { 1 } else { 3 })
+            .sum();
+        ((10 - (sum % 10)) % 10) as u8
+    }
+
+    fn encode(code: &[u8]) -> Vec<u8> {
+        const PREFIX_PARITY_TYPE: [[u8; 6]; 10] = [
+            [8, 8, 8, 8, 8, 8],
+            [8, 8, 0, 8, 0, 0],
+            [8, 8, 0, 0, 8, 0],
+            [8, 8, 0, 0, 0, 8],
+            [8, 0, 8, 8, 0, 0],
+            [8, 0, 0, 8, 8, 0],
+            [8, 0, 0, 0, 8, 8],
+            [8, 0, 8, 0, 8, 0],
+            [8, 0, 8, 0, 0, 8],
+            [8, 0, 0, 8, 0, 8],
+        ];
+        const DATA_LEFT_ODD: [[u8; 7]; 10] = [
+            [8, 8, 8, 0, 0, 8, 0],
+            [8, 8, 0, 0, 8, 8, 0],
+            [8, 8, 0, 8, 8, 0, 0],
+            [8, 0, 0, 0, 0, 8, 0],
+            [8, 0, 8, 8, 8, 0, 0],
+            [8, 0, 0, 8, 8, 8, 0],
+            [8, 0, 8, 0, 0, 0, 0],
+            [8, 0, 0, 0, 8, 0, 0],
+            [8, 0, 0, 8, 0, 0, 0],
+            [8, 8, 8, 0, 8, 0, 0],
+        ];
+        const DATA_LEFT_EVEN: [[u8; 7]; 10] = [
+            [8, 0, 8, 8, 0, 0, 0],
+            [8, 0, 0, 8, 8, 0, 0],
+            [8, 8, 0, 0, 8, 0, 0],
+            [8, 0, 8, 8, 8, 8, 0],
+            [8, 8, 0, 0, 0, 8, 0],
+            [8, 0, 0, 0, 8, 8, 0],
+            [8, 8, 8, 8, 0, 8, 0],
+            [8, 8, 0, 8, 8, 8, 0],
+            [8, 8, 8, 0, 8, 8, 0],
+            [8, 8, 0, 8, 0, 0, 0],
+        ];
+        const DATA_RIGHT: [[u8; 7]; 10] = [
+            [0, 0, 0, 8, 8, 0, 8],
+            [0, 0, 8, 8, 0, 0, 8],
+            [0, 0, 8, 0, 0, 8, 8],
+            [0, 8, 8, 8, 8, 0, 8],
+            [0, 8, 0, 0, 0, 8, 8],
+            [0, 8, 8, 0, 0, 0, 8],
+            [0, 8, 0, 8, 8, 8, 8],
+            [0, 8, 8, 8, 0, 8, 8],
+            [0, 8, 8, 0, 8, 8, 8],
+            [0, 0, 0, 8, 0, 8, 8],
+        ];
+
+        let mut data = Vec::with_capacity(128);
+        data.extend(std::iter::repeat_n(8, 33));
+        data.extend([0, 8, 0]);
+        if code.len() == 13 {
+            for i in 0..6 {
+                let digit = code[i + 1] as usize;
+                if PREFIX_PARITY_TYPE[code[0] as usize][i] != 0 {
+                    data.extend(DATA_LEFT_ODD[digit]);
+                } else {
+                    data.extend(DATA_LEFT_EVEN[digit]);
+                }
+            }
+            data.extend([8, 0, 8, 0, 8]);
+            for digit in code.iter().take(13).skip(7) {
+                data.extend(DATA_RIGHT[*digit as usize]);
+            }
+        } else {
+            for digit in code.iter().take(4) {
+                data.extend(DATA_LEFT_ODD[*digit as usize]);
+            }
+            data.extend([8, 0, 8, 0, 8]);
+            for digit in code.iter().take(8).skip(4) {
+                data.extend(DATA_RIGHT[*digit as usize]);
+            }
+        }
+        data.extend([0, 8, 0]);
+        data.extend(std::iter::repeat_n(8, 32));
+        data
+    }
+
+    fn clock(&mut self) {
+        if self.stream.is_empty() {
+            return;
+        }
+        self.cycle_count += 1;
+        if self.cycle_count < Self::CYCLES_PER_BIT {
+            return;
+        }
+        self.cycle_count -= Self::CYCLES_PER_BIT;
+        if let Some(value) = self.stream.get(self.pos) {
+            self.output = *value & 0x08;
+            self.pos += 1;
+        } else {
+            self.output = 0;
+            self.stream.clear();
+            self.pos = 0;
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum BandaiFcgVariant {
     Mapper16,
     Mapper153,
+    Mapper157,
     Mapper159,
 }
 
@@ -299,6 +480,10 @@ pub struct BandaiFcg {
     irq_reload: u16,
     irq_pending: bool,
     eeprom: Option<Eeprom24C0x>,
+    extra_eeprom: Option<Eeprom24C0x>,
+    extra_eeprom_scl: u8,
+    extra_eeprom_sda: u8,
+    barcode: Option<DatachBarcodeReader>,
 }
 
 impl BandaiFcg {
@@ -308,6 +493,10 @@ impl BandaiFcg {
 
     pub(in crate::mapper) fn new_153(prg_16k: usize, chr_8k: usize) -> Self {
         Self::with_variant(prg_16k, chr_8k, 0, BandaiFcgVariant::Mapper153)
+    }
+
+    pub(in crate::mapper) fn new_157(prg_16k: usize, chr_8k: usize) -> Self {
+        Self::with_variant(prg_16k, chr_8k, 0, BandaiFcgVariant::Mapper157)
     }
 
     pub(in crate::mapper) fn new_159(prg_16k: usize, chr_8k: usize) -> Self {
@@ -324,13 +513,24 @@ impl BandaiFcg {
         let high_write_enabled = submapper != 4;
         let (low_write_enabled, high_write_enabled) = match variant {
             BandaiFcgVariant::Mapper16 => (low_write_enabled, high_write_enabled),
-            BandaiFcgVariant::Mapper153 | BandaiFcgVariant::Mapper159 => (false, true),
+            BandaiFcgVariant::Mapper153
+            | BandaiFcgVariant::Mapper157
+            | BandaiFcgVariant::Mapper159 => (false, true),
         };
         let eeprom = match variant {
             BandaiFcgVariant::Mapper16 if submapper != 4 => {
                 Some(Eeprom24C0x::new(EepromKind::X24C02))
             }
+            BandaiFcgVariant::Mapper157 => Some(Eeprom24C0x::new(EepromKind::X24C02)),
             BandaiFcgVariant::Mapper159 => Some(Eeprom24C0x::new(EepromKind::X24C01)),
+            _ => None,
+        };
+        let extra_eeprom = match variant {
+            BandaiFcgVariant::Mapper157 => Some(Eeprom24C0x::new(EepromKind::X24C01)),
+            _ => None,
+        };
+        let barcode = match variant {
+            BandaiFcgVariant::Mapper157 => Some(DatachBarcodeReader::new()),
             _ => None,
         };
         Self {
@@ -349,6 +549,10 @@ impl BandaiFcg {
             irq_reload: 0,
             irq_pending: false,
             eeprom,
+            extra_eeprom,
+            extra_eeprom_scl: 0,
+            extra_eeprom_sda: 0,
+            barcode,
         }
     }
 
@@ -366,7 +570,15 @@ impl BandaiFcg {
 
     fn write_register_inner(&mut self, addr: u16, value: u8) {
         match addr & 0x000F {
-            0x00..=0x07 => self.chr_regs[(addr & 0x07) as usize] = value,
+            0x00..=0x07 => {
+                self.chr_regs[(addr & 0x07) as usize] = value;
+                if self.variant == BandaiFcgVariant::Mapper157 && (addr & 0x0F) <= 3 {
+                    self.extra_eeprom_scl = (value >> 3) & 1;
+                    if let Some(eeprom) = &mut self.extra_eeprom {
+                        eeprom.write(self.extra_eeprom_scl, self.extra_eeprom_sda);
+                    }
+                }
+            }
             0x08 => self.prg_page = value & 0x0F,
             0x09 => {
                 self.mirroring = match value & 0x03 {
@@ -400,8 +612,16 @@ impl BandaiFcg {
             0x0D => {
                 if self.variant == BandaiFcgVariant::Mapper153 {
                     self.prg_ram_enabled = value & 0x20 != 0;
-                } else if let Some(eeprom) = &mut self.eeprom {
-                    eeprom.write((value >> 5) & 1, (value >> 6) & 1);
+                } else {
+                    let scl = (value >> 5) & 1;
+                    let sda = (value >> 6) & 1;
+                    if let Some(eeprom) = &mut self.eeprom {
+                        eeprom.write(scl, sda);
+                    }
+                    self.extra_eeprom_sda = sda;
+                    if let Some(eeprom) = &mut self.extra_eeprom {
+                        eeprom.write(self.extra_eeprom_scl, self.extra_eeprom_sda);
+                    }
                 }
             }
             _ => {}
@@ -409,9 +629,16 @@ impl BandaiFcg {
     }
 
     fn eeprom_read_value(&self, open_bus: u8) -> Option<u8> {
-        self.eeprom
-            .as_ref()
-            .map(|e| (open_bus & 0xEF) | (e.read() << 4))
+        if self.variant == BandaiFcgVariant::Mapper157 {
+            let standard = self.eeprom.as_ref().map_or(0, Eeprom24C0x::read);
+            let extra = self.extra_eeprom.as_ref().map_or(0, Eeprom24C0x::read);
+            let barcode = self.barcode.as_ref().map_or(0, DatachBarcodeReader::output);
+            Some((open_bus & 0xE7) | ((standard | extra) << 4) | barcode)
+        } else {
+            self.eeprom
+                .as_ref()
+                .map(|e| (open_bus & 0xEF) | (e.read() << 4))
+        }
     }
 }
 
@@ -427,7 +654,10 @@ impl MapperOps for BandaiFcg {
     }
 
     fn chr_index(&self, addr: u16) -> usize {
-        if self.variant == BandaiFcgVariant::Mapper153 {
+        if matches!(
+            self.variant,
+            BandaiFcgVariant::Mapper153 | BandaiFcgVariant::Mapper157
+        ) {
             return (addr & 0x1FFF) as usize;
         }
         let slot = ((addr & 0x1FFF) / 0x0400) as usize;
@@ -450,11 +680,19 @@ impl MapperOps for BandaiFcg {
     }
 
     fn low_prg_ram_read_enabled(&self, _addr: u16) -> bool {
-        self.variant != BandaiFcgVariant::Mapper153 || self.prg_ram_enabled
+        match self.variant {
+            BandaiFcgVariant::Mapper153 => self.prg_ram_enabled,
+            BandaiFcgVariant::Mapper157 => false,
+            _ => true,
+        }
     }
 
     fn low_prg_ram_write_enabled(&self, _addr: u16) -> bool {
-        self.variant != BandaiFcgVariant::Mapper153 || self.prg_ram_enabled
+        match self.variant {
+            BandaiFcgVariant::Mapper153 => self.prg_ram_enabled,
+            BandaiFcgVariant::Mapper157 => false,
+            _ => true,
+        }
     }
 
     fn read_low_register_with_open_bus(
@@ -480,6 +718,9 @@ impl MapperOps for BandaiFcg {
     }
 
     fn cpu_clock(&mut self) {
+        if let Some(barcode) = &mut self.barcode {
+            barcode.clock();
+        }
         if self.irq_enabled {
             if self.irq_counter == 0 {
                 self.irq_pending = true;
@@ -500,6 +741,18 @@ impl MapperOps for BandaiFcg {
         self.irq_pending = false;
     }
 
+    fn supports_barcode_input(&self) -> bool {
+        self.barcode.is_some()
+    }
+
+    fn input_barcode(&mut self, digits: &str) -> Result<(), String> {
+        if let Some(barcode) = &mut self.barcode {
+            barcode.input_barcode(digits)
+        } else {
+            Err("mapper does not support barcode input".to_string())
+        }
+    }
+
     fn reset(&mut self, _soft: bool) {
         self.chr_regs = [0; 8];
         self.prg_page = 0;
@@ -511,6 +764,14 @@ impl MapperOps for BandaiFcg {
         self.irq_pending = false;
         if let Some(eeprom) = &mut self.eeprom {
             eeprom.reset_lines();
+        }
+        if let Some(eeprom) = &mut self.extra_eeprom {
+            eeprom.reset_lines();
+        }
+        self.extra_eeprom_scl = 0;
+        self.extra_eeprom_sda = 0;
+        if let Some(barcode) = &mut self.barcode {
+            barcode.reset();
         }
     }
 }

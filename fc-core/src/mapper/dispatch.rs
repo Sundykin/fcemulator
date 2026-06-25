@@ -251,6 +251,12 @@ impl MapperOps for Mapper {
     fn notify_ppudata_write(&mut self, addr: u16, value: u8) {
         dispatch!(self, m => m.notify_ppudata_write(addr, value))
     }
+    fn supports_barcode_input(&self) -> bool {
+        dispatch!(self, m => m.supports_barcode_input())
+    }
+    fn input_barcode(&mut self, digits: &str) -> Result<(), String> {
+        dispatch!(self, m => m.input_barcode(digits))
+    }
     fn nametable_read(&mut self, addr: u16, ciram: &[u8; 0x1000]) -> Option<u8> {
         dispatch!(self, m => m.nametable_read(addr, ciram))
     }
