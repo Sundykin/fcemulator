@@ -202,6 +202,13 @@
 - `syncFromIdeMcp()` treats `song-patch` as a resource-targeted event and avoids the generic music reload from overriding the requested focus.
 - `TrackerPanel.vue` consumes pending song-cell focus on mount, song path changes, and focus-signal changes, switches to Pattern view, clamps pattern/row/channel, focuses the panel, and scrolls the selected cell into view.
 
+## IDE MCP Semantic Resource Creation Findings
+- UI file-tree actions already create blank source, CHR, map, and song resources, but IDE MCP only had whole-resource write tools. That forced agents to know `.chr` planar size, map binary shape, or full tracker JSON just to start a resource.
+- `ide_create_resource` should be a Tauri-hosted semantic MCP tool parallel to the visible file-tree workflow: create a source template, blank CHR sheet, blank map, or blank tracker song, register it in `project.toml`, emit an IPC creation event, and let the visible IDE open the new editor.
+- The backend already has reusable primitives for this: `encode_sheet`, `MapData::blank().encode()`, `Song::blank()`, manifest `sources/chr/maps/music`, and map-to-CHR bindings.
+- The frontend needs only a small routing addition: treat `resource-create` like `resource-open`, reusing `openResource()` so Dockview, active-resource state, and editor focus stay on the normal path.
+- Runtime verification confirmed the tool can create all four resource classes in one live Tauri session, register them in manifest/resource radar, open the final music resource visibly, and still build the project successfully.
+
 ## Files To Inspect Next
 - `fc-tauri/src/ide/MapEditorPanel.vue` template/style sections
 - `fc-tauri/src/ide/ChrEditorPanel.vue` template/style sections

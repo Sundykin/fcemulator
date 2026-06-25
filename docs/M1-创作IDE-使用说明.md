@@ -33,6 +33,7 @@ Tauri IDE 启动时会同时启动一个语义级 MCP socket:`/tmp/fc-tauri-ide-
 
 - `ide_new_project` / `ide_open_project` 新建或打开当前 IDE 工程。
 - `ide_get_state` 查询 live IDE 工程雷达:资源分类/缺失、map↔CHR 绑定、构建产物新旧状态、最近诊断和源码映射摘要。
+- `ide_create_resource` 创建空白源码/CHR/地图/乐曲资源,登记到 `project.toml`,并让真实 IDE 打开对应编辑器。
 - `ide_read_file` / `ide_write_file` 写源码;写入 `src/*.s` / `.asm` 会自动登记进 `sources`。
 - `ide_read_chr` / `ide_write_chr` 写 CHR 像素资源。
 - `ide_read_map` / `ide_write_map` / `ide_bind_map_chr` 写地图和资源绑定。

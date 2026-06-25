@@ -56,6 +56,11 @@ const TOOLS: &[Tool] = &[
         schema: r#"{"type":"object","properties":{"path":{"type":"string"},"content":{"type":"string"}},"required":["path","content"]}"#,
     },
     Tool {
+        name: "ide_create_resource",
+        description: "Create a first-class blank IDE resource and open it in the visible editor. kind: source|chr|map|music.",
+        schema: r#"{"type":"object","properties":{"kind":{"type":"string","enum":["source","chr","map","music"]},"path":{"type":"string"},"tiles":{"type":"integer","minimum":1,"default":256},"width":{"type":"integer","minimum":1,"maximum":256,"default":32},"height":{"type":"integer","minimum":1,"maximum":240,"default":30},"chr":{"type":"string"},"rows":{"type":"integer","minimum":1,"maximum":256,"default":32}},"required":["kind","path"]}"#,
+    },
+    Tool {
         name: "ide_read_chr",
         description: "Read a project .chr file as editable tile pixels.",
         schema: r#"{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}"#,
@@ -261,6 +266,7 @@ fn call_tool(app: &AppHandle, name: &str, args: &Value) -> Value {
         "ide_open_project" => with_result(|| open_project(app, args)),
         "ide_read_file" => with_result(|| read_file(app, args)),
         "ide_write_file" => with_result(|| write_file(app, args)),
+        "ide_create_resource" => with_result(|| create_resource(app, args)),
         "ide_read_chr" => with_result(|| read_chr(app, args)),
         "ide_write_chr" => with_result(|| write_chr(app, args)),
         "ide_patch_chr_tile" => with_result(|| patch_chr_tile(app, args)),
@@ -332,6 +338,10 @@ fn arg_u64(args: &Value, key: &str, default: u64) -> u64 {
     args.get(key).and_then(|v| v.as_u64()).unwrap_or(default)
 }
 
+fn clamp_arg_u64(args: &Value, key: &str, default: u64, min: u64, max: u64) -> u64 {
+    arg_u64(args, key, default).clamp(min, max)
+}
+
 fn arg_required_u64(args: &Value, key: &str) -> Result<u64, String> {
     args.get(key)
         .and_then(|v| v.as_u64())
@@ -397,6 +407,91 @@ fn emit_refresh(app: &AppHandle, reason: &str, changed: &[&str], extra: Value) {
             "extra": extra,
         }),
     );
+}
+
+fn trim_resource_path(path: &str) -> Result<String, String> {
+    let rel = path
+        .trim()
+        .trim_start_matches('/')
+        .split('/')
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("/");
+    if rel.is_empty() {
+        return Err("名称不能为空".into());
+    }
+    Ok(rel)
+}
+
+fn normalize_source_path(path: &str) -> Result<String, String> {
+    let mut rel = trim_resource_path(path)?;
+    if !rel.contains('/') {
+        rel = format!("src/{rel}");
+    }
+    if !(rel.ends_with(".s") || rel.ends_with(".asm")) {
+        rel.push_str(".s");
+    }
+    Ok(rel)
+}
+
+fn normalize_resource_path(path: &str, dir: &str, suffix: &str) -> Result<String, String> {
+    let mut rel = trim_resource_path(path)?;
+    if !rel.contains('/') {
+        rel = format!("{dir}/{rel}");
+    }
+    if !rel.ends_with(suffix) {
+        rel.push_str(suffix);
+    }
+    Ok(rel)
+}
+
+fn source_template(path: &str) -> String {
+    let mut label: String = path
+        .rsplit('/')
+        .next()
+        .unwrap_or(path)
+        .split('.')
+        .next()
+        .unwrap_or("module")
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || ch == '_' {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    if label.is_empty() {
+        label = "module".into();
+    }
+    if label
+        .chars()
+        .next()
+        .is_some_and(|ch| ch.is_ascii_digit())
+    {
+        label = format!("mod_{label}");
+    }
+    format!(
+        "; {path}\n\n.export {label}_init\n.export {label}_tick\n\n.segment \"CODE\"\n\n{label}_init:\n    rts\n\n{label}_tick:\n    rts\n"
+    )
+}
+
+fn blank_song(rows: usize) -> Song {
+    let mut song = Song::blank();
+    let rows = rows.max(1);
+    song.rows_per_pattern = rows;
+    song.patterns = vec![crate::tracker::Pattern {
+        rows: vec![[crate::tracker::Cell::default(); 5]; rows],
+    }];
+    song.order = vec![0];
+    if let Some(inst) = song.instruments.first_mut() {
+        inst.name = "lead".into();
+        inst.volume = vec![15, 14, 12, 10, 8];
+        inst.arpeggio = vec![0];
+        inst.duty = 2;
+    }
+    song
 }
 
 fn rel_exists(root: &Path, rel: &str) -> bool {
@@ -672,6 +767,113 @@ fn write_file(app: &AppHandle, args: &Value) -> Result<Value, String> {
     Ok(
         json!({"path": path, "bytes": content.len(), "registered": registered, "resource": resource_kind}),
     )
+}
+
+fn create_resource(app: &AppHandle, args: &Value) -> Result<Value, String> {
+    let root = active_root(app)?;
+    let kind = arg_str(args, "kind")?;
+    let raw_path = arg_str(args, "path")?;
+    let mut manifest = project::load_manifest(&root)?;
+    let mut extra = json!({
+        "root": root.to_string_lossy(),
+        "kind": kind,
+    });
+    let changed: Vec<&str> = match kind {
+        "source" => {
+            let path = normalize_source_path(raw_path)?;
+            let dst = resolve(&root, &path)?;
+            if dst.exists() {
+                return Err(format!("已存在: {path}"));
+            }
+            if let Some(parent) = dst.parent() {
+                std::fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {e}"))?;
+            }
+            std::fs::write(&dst, source_template(&path))
+                .map_err(|e| format!("写入 {path} 失败: {e}"))?;
+            if !manifest.sources.contains(&path) {
+                manifest.sources.push(path.clone());
+            }
+            extra["path"] = Value::String(path);
+            vec!["tree", "manifest", "source", "resource"]
+        }
+        "chr" => {
+            let path = normalize_resource_path(raw_path, "chr", ".chr")?;
+            let tiles = clamp_arg_u64(args, "tiles", 256, 1, 1024) as usize;
+            let dst = resolve(&root, &path)?;
+            if dst.exists() {
+                return Err(format!("已存在: {path}"));
+            }
+            if let Some(parent) = dst.parent() {
+                std::fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {e}"))?;
+            }
+            let pixels = vec![0u8; tiles * CHR_TILE_PIXELS];
+            std::fs::write(&dst, encode_sheet(&pixels))
+                .map_err(|e| format!("写入 {path} 失败: {e}"))?;
+            if !manifest.chr.contains(&path) {
+                manifest.chr.push(path.clone());
+            }
+            extra["path"] = Value::String(path);
+            extra["tiles"] = json!(tiles);
+            extra["tile"] = json!(0);
+            vec!["tree", "manifest", "chr", "resource"]
+        }
+        "map" => {
+            let path = normalize_resource_path(raw_path, "map", ".bin")?;
+            let w = clamp_arg_u64(args, "width", 32, 1, 256) as u32;
+            let h = clamp_arg_u64(args, "height", 30, 1, 240) as u32;
+            let dst = resolve(&root, &path)?;
+            if dst.exists() {
+                return Err(format!("已存在: {path}"));
+            }
+            if let Some(parent) = dst.parent() {
+                std::fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {e}"))?;
+            }
+            let map = MapData::blank(w, h);
+            std::fs::write(&dst, map.encode()).map_err(|e| format!("写入 {path} 失败: {e}"))?;
+            if !manifest.maps.contains(&path) {
+                manifest.maps.push(path.clone());
+            }
+            if let Some(chr) = args.get("chr").and_then(|v| v.as_str()).filter(|v| !v.is_empty()) {
+                let chr = trim_resource_path(chr)?;
+                manifest.map_chr.insert(path.clone(), chr.clone());
+                extra["chr"] = Value::String(chr);
+            }
+            extra["path"] = Value::String(path);
+            extra["w"] = json!(w);
+            extra["h"] = json!(h);
+            extra["x"] = json!(0);
+            extra["y"] = json!(0);
+            extra["layer"] = json!("tiles");
+            vec!["tree", "manifest", "map", "resource"]
+        }
+        "music" => {
+            let path = normalize_resource_path(raw_path, "music", ".song.json")?;
+            let rows = clamp_arg_u64(args, "rows", 32, 1, 256) as usize;
+            let dst = resolve(&root, &path)?;
+            if dst.exists() {
+                return Err(format!("已存在: {path}"));
+            }
+            if let Some(parent) = dst.parent() {
+                std::fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {e}"))?;
+            }
+            let song = blank_song(rows);
+            let text = serde_json::to_string_pretty(&song)
+                .map_err(|e| format!("序列化乐曲失败: {e}"))?;
+            std::fs::write(&dst, text).map_err(|e| format!("写入 {path} 失败: {e}"))?;
+            if !manifest.music.contains(&path) {
+                manifest.music.push(path.clone());
+            }
+            extra["path"] = Value::String(path);
+            extra["pattern"] = json!(0);
+            extra["row"] = json!(0);
+            extra["channel"] = json!(0);
+            vec!["tree", "manifest", "music", "resource"]
+        }
+        other => return Err(format!("未知资源类型 {other}")),
+    };
+    project::save_manifest(&root, &manifest)?;
+    emit_refresh(app, "resource-create", &changed, extra.clone());
+    Ok(json!({"path": extra["path"], "kind": kind, "manifest": manifest}))
 }
 
 fn read_chr(app: &AppHandle, args: &Value) -> Result<Value, String> {

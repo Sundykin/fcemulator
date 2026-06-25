@@ -264,6 +264,24 @@
   - Runtime verified through the real Tauri app and `target/debug/fc ide-mcp` by creating `/var/folders/.../fc-song-patch-*`, writing `music/patch_verify.song.json`, patching row 7/channel 2 to C4 with effect `134`, reading disk state back, and inspecting the visible Tauri Tracker state through the project MCP.
   - Confirmed Pinia `songCellFocus={path:"music/patch_verify.song.json",pattern:0,row:7,channel:2}`, active resource `music/patch_verify.song.json`, manifest music registration, patched cell `{note:37,instrument:0,volume:13,fx:1,param:52}`, and DOM selected tracker cell row 7/channel 2.
 
+### Phase 25: IDE MCP Semantic Resource Creation
+- **Status:** complete
+- Actions taken:
+  - Confirmed worktree `/Users/sunmeng/workspace/fc-creative-mode` is clean on `codex/creative-mode-simple-game`.
+  - Audited IDE MCP tool list and found whole-resource writes/patches exist, but no semantic blank resource creation equivalent to the visible file-tree "新建源码/CHR/地图/乐曲" workflow.
+  - Audited frontend store creation methods and backend resource types. Existing UI creates source templates, blank CHR sheets, blank maps, and blank songs, but agents currently need to handcraft full payloads to do the same through MCP.
+  - Added `ide_create_resource` to the Tauri-hosted IDE MCP with `kind=source|chr|map|music`.
+  - Source creation writes a ca65 module template and registers it in `manifest.sources`.
+  - CHR creation writes a blank encoded `.chr` sheet with configurable tile count and registers it in `manifest.chr`.
+  - Map creation writes a blank `map/*.bin` with configurable width/height, optionally records a CHR binding, and registers it in `manifest.maps`.
+  - Music creation writes a blank tracker `.song.json` with configurable row count and registers it in `manifest.music`.
+  - Routed `resource-create` through the project store so the visible IDE opens the new resource editor using the same path as `ide_open_resource`.
+  - Updated M1/M2 docs to document semantic resource creation for programming agents.
+  - Static verified with `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml`, `npm --prefix fc-tauri run build`, and `git diff --check`.
+  - Runtime verified through the real Tauri app and `target/debug/fc ide-mcp` by creating `src/agent_logic.s`, `chr/agent_tiles.chr` with 4 tiles, `map/agent_room.bin` at 6×5 bound to the new CHR, and `music/agent_theme.song.json` with 12 rows.
+  - Read resources back through IDE MCP: source template exported `agent_logic_init/tick`, CHR had 4 tiles / 256 pixels, map was 6×5 with 30 tile cells, song had 12 Pattern rows, and `ide_get_state` reported counts source=2/chr=2/map=2/music=1 with no missing resources.
+  - Inspected the visible Tauri state through the Tauri MCP: studio mode, active resource `music/agent_theme.song.json`, Tracker visible, manifest registered all created resources, and `ide_build` succeeded with `build/game.nes` and 0 diagnostics.
+
 ## Test Results
 | Test | Result |
 |------|--------|
@@ -274,6 +292,7 @@
 | `npm --prefix fc-tauri run tauri dev` | PASS; Tauri app started and all three MCP sockets appeared |
 | `target/debug/fc emu-mcp` initialize/tools-list | PASS; server identified as `fc-tauri-emu-mcp` |
 | `target/debug/fc ide-mcp` `ide_patch_song_cell` runtime verification | PASS; patched song cell persisted and visible Tracker selected row 7/channel 2 |
+| `target/debug/fc ide-mcp` `ide_create_resource` runtime verification | PASS; created source/CHR/map/music skeletons, opened the visible Tracker editor, and build succeeded |
 | live `emu_load_rom` with `/Users/sunmeng/workspace/fc/roms/SuperMarioBro.nes` | PASS; visible Vue store switched to player/main with `SuperMarioBro.nes` |
 | live `emu_set_speed`, `emu_control`, `emu_step_frame`, `emu_get_state` | PASS; store and runtime state reflected MCP operations |
 | Tauri DOM/store inspection | PASS; `window.__emu.liveMcp.online=true`, toolbar MCP pill class `mcpstat on` |

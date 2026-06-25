@@ -4,7 +4,7 @@
 Evolve the fc-tauri studio into a mature NES game-development IDE engine. The target experience is continuous project/resource/map/music workflows, comfortable editing controls, and editors that fill their available workspace instead of using tiny native-pixel canvases.
 
 ## Current Phase
-Phase 24: IDE MCP Granular Tracker Patching
+Phase 25: IDE MCP Semantic Resource Creation
 
 ## Phases
 
@@ -183,6 +183,13 @@ Phase 24: IDE MCP Granular Tracker Patching
 - [x] Verify through the real Tauri IDE and `target/debug/fc ide-mcp` without browser automation
 - **Status:** complete
 
+### Phase 25: IDE MCP Semantic Resource Creation
+- [x] Audit whether IDE MCP can create first-class blank resources without requiring full file-format payloads
+- [x] Add `ide_create_resource` for source, CHR, map, and music resource skeletons
+- [x] Route creation events through Pinia so the visible IDE opens the newly created editor
+- [x] Verify resource creation through the real Tauri IDE and `target/debug/fc ide-mcp`
+- **Status:** complete
+
 ## Key Questions
 1. Which editor currently wastes the most available panel area or forces tiny pixel editing?
 2. Where is map-to-CHR binding surfaced, and does opening a map automatically load/show the right CHR resource?
@@ -215,6 +222,7 @@ Phase 24: IDE MCP Granular Tracker Patching
 | IDE MCP should support semantic resource focus | A programming agent writing a game needs to show the exact source line, CHR tile, or map cell it just changed without using the Tauri DOM bridge for normal creative control |
 | IDE MCP should patch resources at creative granularity | Agents should not have to round-trip whole CHR sheets or maps for small edits; tile/cell patch tools make iterative game creation safer and faster |
 | Tracker cells should be patchable at musical granularity | A game-writing agent should be able to tweak one note/effect/volume value and see the visible music editor land there, just like CHR tile and map cell patch flows |
+| IDE MCP should create resource skeletons semantically | A programming agent should not need to handcraft full CHR/map/song payloads just to start a new resource; creation should match the visible IDE's new-resource workflow |
 
 ## Errors Encountered
 | Error | Attempt | Resolution |

@@ -365,7 +365,7 @@ export const useProjectStore = defineStore("project", {
             y: typeof extra.y === "number" ? extra.y : undefined,
             layer: extra.layer === "tiles" || extra.layer === "attr" || extra.layer === "collision" ? extra.layer : "",
           });
-        } else if (reason === "resource-open" && extra?.path) {
+        } else if ((reason === "resource-open" || reason === "resource-create") && extra?.path) {
           await this.openResource(extra.path, extra.kind);
         }
         if (extra?.path && changed.includes("source")) {
