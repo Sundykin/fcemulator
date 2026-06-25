@@ -1275,3 +1275,15 @@
 - Verification:
   - `cargo fmt --check`: PASS.
   - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 67/67.
+
+### MMC3 Module Split
+- Split `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs` into focused private submodules without behavior changes:
+  - `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3/state.rs` now owns `Mmc3ChrLayout`, `Mmc3OuterBank`, `Mmc3NametableLayout`, and the mapper 208 protection LUT.
+  - `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3/constructors.rs` now owns `Mmc3::new*` constructors and serde default helpers.
+  - `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3/tests.rs` now owns the 47 MMC3 behavior tests.
+- Kept constructor visibility scoped to `crate::mapper` so `factory.rs` can instantiate boards while the state types remain private to the MMC3 module.
+- Verification:
+  - `cargo fmt --check`: PASS.
+  - `git diff --check`: PASS.
+  - `cargo test -p fc-core mapper::mmc3::tests -- --nocapture`: PASS, 47/47.
+  - `cargo test`: PASS, workspace tests.

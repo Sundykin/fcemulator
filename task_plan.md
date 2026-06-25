@@ -156,6 +156,7 @@ Phase 17: Mapper compatibility gap closure
 - [x] Add initial reusable bank mapping helpers for PRG/CHR page index translation
 - [x] Extend bank mapping helpers for mixed ROM/RAM windows
 - [x] Add CPU address handler helpers for expansion, low, and high mapper ranges
+- [x] Split MMC3 state, constructors, and behavior tests into focused modules
 - [ ] Extract reusable IRQ units: MMC3 A12, CPU counter, HBlank, VRC/RAMBO-style counters
 - [ ] Standardize reset/power hooks, mapper register reads, side effects, and open-bus paths
 - [ ] Route expansion audio boards through a shared mapper audio interface
