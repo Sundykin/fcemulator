@@ -520,8 +520,6 @@ impl MapperOps for Mapper50 {
         (addr & 0x1FFF) as usize
     }
 
-    fn write_register(&mut self, _addr: u16, _value: u8) {}
-
     fn low_prg_index(&self, addr: u16) -> Option<usize> {
         if (0x6000..=0x7FFF).contains(&addr) {
             Some(0x0F * 0x2000 + (addr as usize & 0x1FFF))

@@ -197,8 +197,6 @@ impl MapperOps for Mapper193 {
         bank * 0x0400 + (a as usize & 0x03FF)
     }
 
-    fn write_register(&mut self, _addr: u16, _value: u8) {}
-
     fn write_low_register(&mut self, addr: u16, value: u8) -> bool {
         if (0x6000..=0x6003).contains(&addr) {
             self.regs[(addr & 0x03) as usize] = value;
@@ -254,8 +252,6 @@ impl MapperOps for Mapper186 {
     fn chr_index(&self, addr: u16) -> usize {
         (addr & 0x1FFF) as usize
     }
-
-    fn write_register(&mut self, _addr: u16, _value: u8) {}
 
     fn write_low_register(&mut self, addr: u16, value: u8) -> bool {
         if (0x6000..=0x7FFF).contains(&addr) {
@@ -383,8 +379,6 @@ impl MapperOps for Mapper218 {
         self.pattern_ram[index] = value;
         true
     }
-
-    fn write_register(&mut self, _addr: u16, _value: u8) {}
 
     fn mirroring(&self) -> Mirroring {
         self.mirroring

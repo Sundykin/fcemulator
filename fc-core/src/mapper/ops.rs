@@ -35,7 +35,7 @@ pub trait MapperOps {
         self.chr_index(addr)
     }
     /// Handle a CPU write to `$8000..=$FFFF` (mapper register update).
-    fn write_register(&mut self, addr: u16, value: u8);
+    fn write_register(&mut self, _addr: u16, _value: u8) {}
     /// Optional mapper-owned CPU read inside `$8000..=$FFFF`. Used by boards
     /// whose high register windows are readable or whose reads update latch
     /// state. `prg_value` is the byte that the currently mapped PRG-ROM would

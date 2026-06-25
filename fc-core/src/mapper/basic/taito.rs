@@ -232,7 +232,6 @@ impl MapperOps for TaitoX1005 {
         let slot = ((addr & 0x1FFF) / 0x0400) as usize;
         self.chr_1k[slot] * 0x0400 + (addr as usize & 0x03FF)
     }
-    fn write_register(&mut self, _addr: u16, _value: u8) {}
     fn write_low_register(&mut self, addr: u16, value: u8) -> bool {
         match addr {
             0x7EF0 => self.set_chr_2k(0, value),
@@ -351,7 +350,6 @@ impl MapperOps for TaitoX1017 {
         };
         logical_bank * 0x0400 + (addr as usize & 0x03FF)
     }
-    fn write_register(&mut self, _addr: u16, _value: u8) {}
     fn write_low_register(&mut self, addr: u16, value: u8) -> bool {
         match addr {
             0x7EF0..=0x7EF5 => self.chr_regs[(addr - 0x7EF0) as usize] = value,

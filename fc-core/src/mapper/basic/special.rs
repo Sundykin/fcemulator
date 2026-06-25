@@ -92,7 +92,6 @@ impl MapperOps for Mapper120 {
     fn chr_index(&self, addr: u16) -> usize {
         (addr & 0x1FFF) as usize
     }
-    fn write_register(&mut self, _addr: u16, _value: u8) {}
     fn write_expansion(&mut self, addr: u16, value: u8) {
         if addr == 0x41FF {
             self.low_prg_bank = (value & 0x07) as usize;
@@ -252,8 +251,6 @@ impl MapperOps for Mapper111 {
     fn chr_index(&self, addr: u16) -> usize {
         chr_8k(usize::from(self.reg & 0x10 != 0), addr)
     }
-
-    fn write_register(&mut self, _addr: u16, _value: u8) {}
 
     fn write_expansion(&mut self, addr: u16, value: u8) {
         if (0x5000..=0x5FFF).contains(&addr) {
@@ -767,7 +764,6 @@ impl MapperOps for Mapper170 {
     fn chr_index(&self, addr: u16) -> usize {
         (addr & 0x1FFF) as usize
     }
-    fn write_register(&mut self, _addr: u16, _value: u8) {}
     fn write_low_register(&mut self, addr: u16, value: u8) -> bool {
         if addr == 0x6502 || addr == 0x7000 {
             self.reg = (value << 1) & 0x80;

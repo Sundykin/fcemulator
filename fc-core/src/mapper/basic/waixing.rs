@@ -80,8 +80,6 @@ impl MapperOps for Mapper178 {
         (addr & 0x1FFF) as usize
     }
 
-    fn write_register(&mut self, _addr: u16, _value: u8) {}
-
     fn write_expansion(&mut self, addr: u16, value: u8) {
         match addr {
             0x4800..=0x4FFF => self.regs[(addr & 0x03) as usize] = value,

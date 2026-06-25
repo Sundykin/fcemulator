@@ -76,7 +76,6 @@ impl MapperOps for Nina01 {
             self.chr_bank1 * 0x1000 + (addr as usize - 0x1000)
         }
     }
-    fn write_register(&mut self, _addr: u16, _value: u8) {}
     fn write_low_register(&mut self, addr: u16, value: u8) -> bool {
         match addr {
             0x7FFD => self.prg_bank = (value & 0x01) as usize,

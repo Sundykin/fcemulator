@@ -275,8 +275,6 @@ impl MapperOps for Mapper99 {
         (((self.latch >> 2) & 0x01) as usize) * 0x2000 + (addr as usize & 0x1FFF)
     }
 
-    fn write_register(&mut self, _addr: u16, _value: u8) {}
-
     fn write_controller_strobe(&mut self, value: u8) -> bool {
         self.latch = value;
         true
@@ -364,7 +362,6 @@ impl MapperOps for Mapper31 {
     fn chr_index(&self, addr: u16) -> usize {
         (addr & 0x1FFF) as usize
     }
-    fn write_register(&mut self, _addr: u16, _value: u8) {}
     fn write_expansion(&mut self, addr: u16, value: u8) {
         if (0x5000..=0x5FFF).contains(&addr) {
             self.regs[(addr & 0x07) as usize] = value;

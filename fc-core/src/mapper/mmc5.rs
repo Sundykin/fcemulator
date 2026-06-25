@@ -213,8 +213,6 @@ impl MapperOps for Mmc5 {
         self.chr_bank_for_addr(addr, access) * 0x400 + (addr & 0x03FF) as usize
     }
 
-    fn write_register(&mut self, _addr: u16, _value: u8) {}
-
     fn read_expansion(&mut self, addr: u16) -> Option<u8> {
         match addr {
             0x5204 => {

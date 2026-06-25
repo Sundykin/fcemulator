@@ -316,3 +316,4 @@
 - Mapper 205 继续适合挂在 `Mmc3OuterBank`：低区 `$6000-$7FFF` 只选择 outer block，PRG/CHR wrapper 按 block 做 mask/OR，普通 MMC3 A12 IRQ 不变；FCEUX 的 split-ROM/solder-pad 分支需要更细 ROM-chip 元数据，当前按 Mesen2/FCEUmm single-ROM 语义落第一版。
 - Mapper 249 是 MMC3 security permutation 变体：`$5000` expansion register 只影响 PRG/CHR page number 置换，IRQ、mirroring 和标准 MMC3 register 写路径不变，继续说明 `Mmc3OuterBank` 能承载这类 clone board。
 - `fc-core/src/mapper/mmc3.rs` 的下一步扩展瓶颈已经从公开 facade 转为 MMC3 内部模块边界。将 MMC3 state enum / protection LUT 拆到 `mmc3/state.rs`、构造器拆到 `mmc3/constructors.rs`、行为测试拆到 `mmc3/tests.rs` 后，主文件保留热路径和行为实现，后续新增 MMC3 clone 时可以优先改构造器与 outer/state 定义，不必继续撑大单文件。
+- `MapperOps::write_register()` 现在有默认 no-op：无高区寄存器的板卡不再需要显式空实现，后续机械翻译 mapper 时只需实现真实解码窗口。现有 18 个空实现已删除，行为由 mapper 测试和全量测试覆盖保持不变。

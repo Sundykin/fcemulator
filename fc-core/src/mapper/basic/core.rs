@@ -34,7 +34,6 @@ impl MapperOps for Nrom {
     fn chr_index(&self, addr: u16) -> usize {
         (addr & 0x1FFF) as usize
     }
-    fn write_register(&mut self, _addr: u16, _value: u8) {}
     fn mirroring(&self) -> Mirroring {
         self.mirroring
     }

@@ -1287,3 +1287,12 @@
   - `git diff --check`: PASS.
   - `cargo test -p fc-core mapper::mmc3::tests -- --nocapture`: PASS, 47/47.
   - `cargo test`: PASS, workspace tests.
+
+### MapperOps High-Write Default
+- Changed `/Users/sunmeng/workspace/fc/fc-core/src/mapper/ops.rs` so `MapperOps::write_register()` defaults to a no-op, matching the existing default style of optional low/expansion/read hooks.
+- Removed 18 explicit empty `write_register()` implementations from mappers without high-register behavior (`Nrom`, `Mmc5`, discrete/latch/special boards, etc.) without changing any mapper state transitions.
+- Verification:
+  - `cargo fmt --check`: PASS.
+  - `git diff --check`: PASS.
+  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 67/67.
+  - `cargo test`: PASS, workspace tests.

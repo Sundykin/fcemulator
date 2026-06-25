@@ -136,8 +136,6 @@ impl MapperOps for Mapper60 {
         self.game * 0x2000 + (addr as usize & 0x1FFF)
     }
 
-    fn write_register(&mut self, _addr: u16, _value: u8) {}
-
     fn mirroring(&self) -> Mirroring {
         self.mirroring
     }

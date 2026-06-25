@@ -125,8 +125,6 @@ impl MapperOps for NanjingMapper {
         chr_4k_at(self.chr_bank_4k, addr, addr & 0x1000)
     }
 
-    fn write_register(&mut self, _addr: u16, _value: u8) {}
-
     fn read_expansion(&mut self, addr: u16) -> Option<u8> {
         self.peek_expansion(addr)
     }

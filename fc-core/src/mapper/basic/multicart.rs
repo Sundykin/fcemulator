@@ -1240,7 +1240,6 @@ impl MapperOps for Mapper246 {
         let slot = ((addr & 0x1FFF) / 0x0800) as usize;
         self.chr_2k[slot] * 0x0800 + (addr as usize & 0x07FF)
     }
-    fn write_register(&mut self, _addr: u16, _value: u8) {}
     fn write_low_register(&mut self, addr: u16, value: u8) -> bool {
         if !(0x6000..=0x67FF).contains(&addr) {
             return false;
