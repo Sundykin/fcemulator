@@ -95,6 +95,11 @@ const TOOLS: &[Tool] = &[
         schema: r#"{"type":"object","properties":{"path":{"type":"string"},"kind":{"type":"string","enum":["auto","source","chr","map","music"],"default":"auto"}},"required":["path"]}"#,
     },
     Tool {
+        name: "ide_focus_resource",
+        description: "Open a visible IDE resource and focus a location. Source uses line; CHR uses tile; map uses x/y and optional layer tiles|attr|collision.",
+        schema: r#"{"type":"object","properties":{"path":{"type":"string"},"kind":{"type":"string","enum":["auto","source","chr","map","music"],"default":"auto"},"line":{"type":"integer","minimum":1},"tile":{"type":"integer","minimum":0},"x":{"type":"integer","minimum":0},"y":{"type":"integer","minimum":0},"layer":{"type":"string","enum":["tiles","attr","collision"]}},"required":["path"]}"#,
+    },
+    Tool {
         name: "ide_build",
         description: "Build the active live IDE project through ca65/ld65 and push the result into the Build panel.",
         schema: r#"{"type":"object","properties":{}}"#,
@@ -229,6 +234,7 @@ fn call_tool(app: &AppHandle, name: &str, args: &Value) -> Value {
         "ide_read_song" => with_result(|| read_song(app, args)),
         "ide_write_song" => with_result(|| write_song(app, args)),
         "ide_open_resource" => with_result(|| open_resource(app, args)),
+        "ide_focus_resource" => with_result(|| focus_resource(app, args)),
         "ide_build" => with_result(|| build_project(app)),
         "ide_run" => with_result(|| run_project(app, args)),
         "ide_press_buttons" => with_result(|| press_buttons(app, args)),
@@ -678,6 +684,38 @@ fn open_resource(app: &AppHandle, args: &Value) -> Result<Value, String> {
         json!({"root": root.to_string_lossy(), "path": path, "kind": kind}),
     );
     Ok(json!({"path": path, "kind": kind}))
+}
+
+fn focus_resource(app: &AppHandle, args: &Value) -> Result<Value, String> {
+    let root = active_root(app)?;
+    let path = arg_str(args, "path")?;
+    let resolved = resolve(&root, path)?;
+    if !resolved.is_file() {
+        return Err(format!("资源不存在: {path}"));
+    }
+    let manifest = project::load_manifest(&root)?;
+    let requested = args.get("kind").and_then(|v| v.as_str());
+    let kind = infer_resource_kind(path, &manifest, requested)?;
+    let line = args.get("line").and_then(|v| v.as_u64()).map(|v| v.max(1));
+    let tile = args.get("tile").and_then(|v| v.as_u64());
+    let x = args.get("x").and_then(|v| v.as_u64());
+    let y = args.get("y").and_then(|v| v.as_u64());
+    let layer = args
+        .get("layer")
+        .and_then(|v| v.as_str())
+        .filter(|v| matches!(*v, "tiles" | "attr" | "collision"));
+    let extra = json!({
+        "root": root.to_string_lossy(),
+        "path": path,
+        "kind": kind,
+        "line": line,
+        "tile": tile,
+        "x": x,
+        "y": y,
+        "layer": layer,
+    });
+    emit_refresh(app, "resource-focus", &["project", "resource"], extra);
+    Ok(json!({"path": path, "kind": kind, "line": line, "tile": tile, "x": x, "y": y, "layer": layer}))
 }
 
 fn build_project(app: &AppHandle) -> Result<Value, String> {

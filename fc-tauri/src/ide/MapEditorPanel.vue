@@ -870,6 +870,42 @@ function centerViewport() {
   wrap.scrollTop = Math.max(0, (rect.height - wrap.clientHeight) / 2);
 }
 
+function scrollCellIntoView(cell: MapCell) {
+  const wrap = mapWrap.value;
+  if (!wrap) return;
+  const size = effectiveCellPx.value;
+  const left = cell.x * size;
+  const top = cell.y * size;
+  const right = left + size;
+  const bottom = top + size;
+  if (left < wrap.scrollLeft) wrap.scrollLeft = left;
+  else if (right > wrap.scrollLeft + wrap.clientWidth) wrap.scrollLeft = Math.max(0, right - wrap.clientWidth);
+  if (top < wrap.scrollTop) wrap.scrollTop = top;
+  else if (bottom > wrap.scrollTop + wrap.clientHeight) wrap.scrollTop = Math.max(0, bottom - wrap.clientHeight);
+}
+
+function applyMapCellFocus() {
+  const focus = store.mapCellFocus;
+  const m = map.value;
+  if (!m || focus.path !== store.map?.path) return;
+  const cell = {
+    x: Math.max(0, Math.min(m.w - 1, Math.floor(focus.x || 0))),
+    y: Math.max(0, Math.min(m.h - 1, Math.floor(focus.y || 0))),
+  };
+  if (focus.layer === "tiles" || focus.layer === "attr" || focus.layer === "collision") {
+    layer.value = focus.layer;
+  }
+  hover.value = cell;
+  selection.value = { x0: cell.x, y0: cell.y, x1: cell.x, y1: cell.y };
+  if (layer.value === "tiles") selTile.value = layerValue(m, cell.x, cell.y);
+  else if (layer.value === "attr") selAttr.value = layerValue(m, cell.x, cell.y) & 3;
+  else selCollision.value = layerValue(m, cell.x, cell.y) ? 1 : 0;
+  nextTick(() => {
+    draw();
+    scrollCellIntoView(cell);
+  });
+}
+
 function setViewMode(next: ViewMode) {
   if (next === "manual" && viewMode.value !== "manual") {
     setZoom(Math.max(1, Math.round(effectiveCellPx.value / 8)));
@@ -996,6 +1032,7 @@ watch(
     drawTilePalette();
     window.requestAnimationFrame(() => {
       centerViewport();
+      applyMapCellFocus();
       drawTilePalette();
     });
   },
@@ -1012,6 +1049,7 @@ watch(selTile, () => {
   draw();
   drawTilePalette();
 }, { flush: "post" });
+watch(() => store.mapCellFocus.seq, () => nextTick(applyMapCellFocus), { flush: "post" });
 watch(tilePalette, async () => {
   await nextTick();
   drawTilePalette();
@@ -1055,6 +1093,7 @@ onMounted(async () => {
   await nextTick();
   syncMapViewport();
   syncPaletteViewport();
+  applyMapCellFocus();
   draw();
   drawTilePalette();
 });

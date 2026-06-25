@@ -180,6 +180,14 @@
 - Runtime verification with a real Tauri demo project showed Map selected tile 11 opened `chr/sprites.chr` with the CHR editor context bar reading `图块 11 / 511`.
 - Runtime verification also sent tile 9999 and confirmed it clamps to `图块 511 / 511`, avoiding out-of-range editor state.
 
+## IDE MCP Semantic Resource Focus Findings
+- `ide_open_resource` is enough to show a resource editor, but a game-writing agent often needs to land on the exact code line, CHR tile, or map cell it just wrote.
+- The new `ide_focus_resource` tool stays inside the Tauri-hosted IDE MCP and emits `resource-focus` through the same `ide-mcp-updated` IPC path as other creative operations.
+- Source focus reuses the existing `gotoSource()` and CodeMirror `goto` signal, so diagnostics and MCP location requests share one path.
+- CHR focus reuses the `chrTileFocus` signal added for Map→CHR navigation, preserving Dockview mount-order safety.
+- Map focus now has its own `mapCellFocus` signal with `path`, `x`, `y`, optional `layer`, and `seq`. The Map editor consumes it on signal changes, mount, and map path changes, then highlights/selects the target cell and scrolls it into view.
+- This keeps normal programming-agent work on the IDE MCP instead of requiring the Tauri DOM bridge to poke component-local state.
+
 ## Files To Inspect Next
 - `fc-tauri/src/ide/MapEditorPanel.vue` template/style sections
 - `fc-tauri/src/ide/ChrEditorPanel.vue` template/style sections

@@ -4,7 +4,7 @@
 Evolve the fc-tauri studio into a mature NES game-development IDE engine. The target experience is continuous project/resource/map/music workflows, comfortable editing controls, and editors that fill their available workspace instead of using tiny native-pixel canvases.
 
 ## Current Phase
-Phase 21: Map Selected Tile To CHR Focus
+Phase 22: IDE MCP Semantic Resource Focus
 
 ## Phases
 
@@ -161,6 +161,13 @@ Phase 21: Map Selected Tile To CHR Focus
 - [x] Verify real Tauri Map→CHR navigation opens the bound CHR editor at the selected tile and clamps out-of-range requests
 - **Status:** complete
 
+### Phase 22: IDE MCP Semantic Resource Focus
+- [x] Add an IDE-owned MCP tool that opens a resource and requests a source line, CHR tile, or map cell focus
+- [x] Route the MCP focus event through Pinia instead of the DOM bridge
+- [x] Make the Map editor consume pending map-cell focus requests after Dockview mounting and map path changes
+- [x] Verify the real Tauri IDE responds to `ide_focus_resource` for source, CHR, and map resources
+- **Status:** complete
+
 ## Key Questions
 1. Which editor currently wastes the most available panel area or forces tiny pixel editing?
 2. Where is map-to-CHR binding surfaced, and does opening a map automatically load/show the right CHR resource?
@@ -190,6 +197,7 @@ Phase 21: Map Selected Tile To CHR Focus
 | Map and CHR editors should be navigable from their binding relationship | Binding state is only useful if the user can jump between a map and the CHR sheet that defines its tile palette without hunting through the file tree |
 | `ide_get_state` should be the agent's project radar | Programming agents need one semantic MCP call for resources, bindings, missing files, build diagnostics, source-map counts, and stale/current ROM status instead of scraping the Tauri DOM |
 | Map→CHR navigation should preserve tile context | Opening a bound CHR from the Map editor should land on the tile the user is painting, so pixel editing continues from the map context instead of resetting to tile 0 |
+| IDE MCP should support semantic resource focus | A programming agent writing a game needs to show the exact source line, CHR tile, or map cell it just changed without using the Tauri DOM bridge for normal creative control |
 
 ## Errors Encountered
 | Error | Attempt | Resolution |

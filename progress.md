@@ -228,6 +228,17 @@
   - Runtime verified in the real Tauri app with an IDE MCP-created demo project: Map selected tile 11 opened the CHR editor at `图块 11 / 511`.
   - Runtime verified an out-of-range tile request clamps to the final tile (`图块 511 / 511`).
 
+### Phase 22: IDE MCP Semantic Resource Focus
+- **Status:** complete
+- Actions taken:
+  - Audited IDE MCP tool coverage and found `ide_open_resource` can open editor panels but cannot land on a specific source line, CHR tile, or map cell without DOM scripting.
+  - Added `ide_focus_resource` to the embedded Tauri IDE MCP tool list and call dispatcher.
+  - Implemented backend resource validation and a `resource-focus` IPC event carrying `line`, `tile`, `x`, `y`, and optional map `layer`.
+  - Added project-store `focusResource()` routing: source uses `gotoSource()`, CHR uses `openChr(path, tile)`, map uses `openMap(path, { x, y, layer })`.
+  - Added `mapCellFocus` state and Map editor consumption so MCP focus requests highlight/select the target cell and scroll it into view after Dockview mounting.
+  - Updated M1/M2 docs to document `ide_focus_resource` as the semantic, non-DOM way to focus exact resource locations.
+  - Runtime verified in the real Tauri app with `target/debug/fc ide-mcp`: `src/main.s:12` focused CodeMirror line 12, `chr/sprites.chr` selected tile 13, and `map/room.bin` focused cell `9,6` on the collision layer.
+
 ## Test Results
 | Test | Result |
 |------|--------|
@@ -330,6 +341,12 @@
 | `git diff --check` after Map→CHR tile focus | PASS |
 | Real Tauri Map selected tile opens CHR tile | PASS; Map `selTile=11` opened `chr/sprites.chr` and CHR editor showed `图块 11 / 511` |
 | Real Tauri Map selected tile clamp | PASS; requesting tile 9999 clamped CHR editor to `图块 511 / 511` |
+| `npm --prefix fc-tauri run build` after `ide_focus_resource` | PASS, with existing Vite large chunk warning |
+| `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml` after `ide_focus_resource` | PASS |
+| `git diff --check` after `ide_focus_resource` | PASS |
+| Real Tauri `ide_focus_resource` source line | PASS; visible editor focused `src/main.s`, CodeMirror content focused, DOM selection on line 12 |
+| Real Tauri `ide_focus_resource` CHR tile | PASS; visible CHR editor selected `图块 13 / 511` |
+| Real Tauri `ide_focus_resource` map cell | PASS; visible Map editor focused `map/room.bin`, layer `collision`, hover/selection at `9,6` |
 | `fc-tauri/node_modules/.bin/vue-tsc --noEmit` | NOT RUN; local project has no `vue-tsc` binary |
 | `cd fc-tauri && npx vue-tsc --noEmit` | BLOCKED by restricted network; `npx` attempted `registry.npmmirror.com/vue-tsc` and failed DNS |
 

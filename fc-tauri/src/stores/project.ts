@@ -114,6 +114,23 @@ interface ActiveResource {
   seq: number;
 }
 
+type MapLayer = "tiles" | "attr" | "collision";
+
+interface IdeMcpExtra {
+  root?: string;
+  romPath?: string;
+  path?: string;
+  map?: string;
+  chr?: string;
+  kind?: string;
+  result?: ide.BuildResult;
+  line?: number;
+  tile?: number;
+  x?: number;
+  y?: number;
+  layer?: string;
+}
+
 export const useProjectStore = defineStore("project", {
   state: () => ({
     manifest: null as ide.ProjectManifest | null,
@@ -148,6 +165,7 @@ export const useProjectStore = defineStore("project", {
     map: null as { path: string; data: ide.MapData } | null,
     mapSaved: "" as string,
     focusMap: 0,
+    mapCellFocus: { path: "", x: 0, y: 0, layer: "" as MapLayer | "", seq: 0 },
     mapChrBindings: {} as Record<string, string>,
     // active tracker song (audio-tracker)
     song: null as { path: string; data: ide.Song } | null,
@@ -194,6 +212,7 @@ export const useProjectStore = defineStore("project", {
       this.chrTileFocus = { path: "", tile: 0, seq: 0 };
       this.map = null;
       this.mapSaved = "";
+      this.mapCellFocus = { path: "", x: 0, y: 0, layer: "", seq: 0 };
       this.mapChrBindings = {};
       this.song = null;
       this.songSaved = "";
@@ -251,6 +270,25 @@ export const useProjectStore = defineStore("project", {
       }
       this.status = `已打开 ${path}`;
     },
+    async focusResource(
+      path: string,
+      kind = "auto",
+      target: { line?: number; tile?: number; x?: number; y?: number; layer?: MapLayer | "" } = {},
+    ) {
+      const resolvedKind = this.resourceKindFor(path, kind);
+      if (resolvedKind === "source") {
+        await this.gotoSource(path, target.line ?? 1);
+      } else if (resolvedKind === "chr") {
+        await this.openChr(path, target.tile);
+      } else if (resolvedKind === "map") {
+        await this.openMap(path, target.x !== undefined && target.y !== undefined
+          ? { x: target.x, y: target.y, layer: target.layer }
+          : undefined);
+      } else {
+        await this.openTracker(path);
+      }
+      this.status = `已定位 ${path}`;
+    },
     async openPrimarySource() {
       const path = this.manifest?.sources[0];
       if (!path) return false;
@@ -292,7 +330,7 @@ export const useProjectStore = defineStore("project", {
     async syncFromIdeMcp(
       reason = "ide-mcp",
       root?: string,
-      extra?: { path?: string; map?: string; chr?: string; kind?: string; result?: ide.BuildResult },
+      extra?: IdeMcpExtra,
       changed: string[] = [],
     ) {
       try {
@@ -307,7 +345,15 @@ export const useProjectStore = defineStore("project", {
         if (reason === "project-new" || reason === "project-open") {
           await this.openPrimarySource();
         }
-        if (reason === "resource-open" && extra?.path) {
+        if (reason === "resource-focus" && extra?.path) {
+          await this.focusResource(extra.path, extra.kind, {
+            line: typeof extra.line === "number" ? extra.line : undefined,
+            tile: typeof extra.tile === "number" ? extra.tile : undefined,
+            x: typeof extra.x === "number" ? extra.x : undefined,
+            y: typeof extra.y === "number" ? extra.y : undefined,
+            layer: extra.layer === "tiles" || extra.layer === "attr" || extra.layer === "collision" ? extra.layer : "",
+          });
+        } else if (reason === "resource-open" && extra?.path) {
           await this.openResource(extra.path, extra.kind);
         }
         if (extra?.path && changed.includes("source")) {
@@ -337,7 +383,7 @@ export const useProjectStore = defineStore("project", {
       ideMcpUnlisten = await listen<{ reason?: string; changed?: string[]; extra?: unknown }>("ide-mcp-updated", (e) => {
         const reason = e.payload?.reason || "ide-mcp";
         const changed = e.payload?.changed || [];
-        const extra = e.payload?.extra as { root?: string; romPath?: string; path?: string; map?: string; chr?: string; kind?: string; result?: ide.BuildResult } | undefined;
+        const extra = e.payload?.extra as IdeMcpExtra | undefined;
         ideMcpSyncQueue = ideMcpSyncQueue
           .catch(() => {})
           .then(async () => {
@@ -613,7 +659,16 @@ export const useProjectStore = defineStore("project", {
       this.status = `已保存 CHR ${this.chr.path}`;
     },
     // ---- map editor ----
-    async openMap(path: string) {
+    requestMapCellFocus(path: string, x = 0, y = 0, layer: MapLayer | "" = "") {
+      this.mapCellFocus = {
+        path,
+        x: Math.max(0, Math.floor(x || 0)),
+        y: Math.max(0, Math.floor(y || 0)),
+        layer,
+        seq: this.mapCellFocus.seq + 1,
+      };
+    },
+    async openMap(path: string, focusCell?: { x?: number; y?: number; layer?: MapLayer | "" }) {
       const data = await ide.mapRead(path);
       this.map = { path, data };
       this.mapSaved = JSON.stringify(data);
@@ -634,7 +689,14 @@ export const useProjectStore = defineStore("project", {
       }
       this.focusMap++;
       this.markActiveResource("map", path);
-      this.status = `地图 ${path}（${data.w}×${data.h}${bindingWarning}）`;
+      if (focusCell) {
+        const x = Math.max(0, Math.min(data.w - 1, Math.floor(focusCell.x ?? 0)));
+        const y = Math.max(0, Math.min(data.h - 1, Math.floor(focusCell.y ?? 0)));
+        this.requestMapCellFocus(path, x, y, focusCell.layer || "");
+        this.status = `地图 ${path}（${data.w}×${data.h}${bindingWarning}）· ${x},${y}`;
+      } else {
+        this.status = `地图 ${path}（${data.w}×${data.h}${bindingWarning}）`;
+      }
     },
     newMap(path: string, w = 32, h = 30) {
       const aw = Math.ceil(w / 2), ah = Math.ceil(h / 2);
