@@ -1268,3 +1268,10 @@
   - `cargo test -p fc-core mapper::tests::capability -- --nocapture`: PASS, 3/3.
   - `cargo fmt --check`: PASS.
   - `cargo test`: PASS, workspace tests.
+
+### Mapper Test Split
+- Split `fc-core/src/mapper/tests/behavior.rs` into family modules under `fc-core/src/mapper/tests/behavior/` (`asic`, `audio`, `bandai`, `irq`, `latch`, `txc`) without changing any assertions or mapper behavior.
+- Kept the public `mapper::tests::behavior::*` test names intact, only moving the implementation bodies into submodules so the test surface stays the same while the source file stops growing monolithically.
+- Verification:
+  - `cargo fmt --check`: PASS.
+  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 67/67.
