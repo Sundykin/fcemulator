@@ -106,6 +106,7 @@ macro_rules! dispatch {
             Mapper::Mapper241($m) => $body,
             Mapper::Mapper244($m) => $body,
             Mapper::Mapper246($m) => $body,
+            Mapper::Mapper252($m) => $body,
             Mapper::Mapper253($m) => $body,
             Mapper::IremLrog017($m) => $body,
             Mapper::Namco108Mapper154($m) => $body,
@@ -246,6 +247,9 @@ impl MapperOps for Mapper {
     }
     fn write_controller_strobe(&mut self, value: u8) -> bool {
         dispatch!(self, m => m.write_controller_strobe(value))
+    }
+    fn notify_ppudata_write(&mut self, addr: u16, value: u8) {
+        dispatch!(self, m => m.notify_ppudata_write(addr, value))
     }
     fn nametable_read(&mut self, addr: u16, ciram: &[u8; 0x1000]) -> Option<u8> {
         dispatch!(self, m => m.nametable_read(addr, ciram))

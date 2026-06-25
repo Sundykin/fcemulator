@@ -159,6 +159,213 @@ impl MapperOps for Mapper178 {
 }
 
 // ============================================================================
+// Mapper 252 — Waixing San Guo Zhi
+//
+// References:
+// - Mesen2 `Core/NES/Mappers/Waixing/Waixing252.h:5-68`
+// - FCEUmm `src/boards/252_253.c:20-71`
+// - Nestopia `source/core/board/NstBoard.cpp:3366-3373`
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Mapper252 {
+    prg_8k_total: usize,
+    chr_1k_total: usize,
+    prg: [u8; 2],
+    chr: [u16; 8],
+    chr_ram: Vec<u8>,
+    chr_ram_mask: u16,
+    chr_ram_compare: u16,
+    mirroring: Mirroring,
+    irq_latch: u8,
+    irq_counter: u8,
+    irq_enable: bool,
+    irq_enable_after_ack: bool,
+    irq_cycle_mode: bool,
+    irq_prescaler: u16,
+    irq_pending: bool,
+}
+
+impl Mapper252 {
+    pub(in crate::mapper) fn new(prg_16k: usize, chr_8k: usize) -> Self {
+        Mapper252 {
+            prg_8k_total: (prg_16k * 2).max(4),
+            chr_1k_total: (chr_8k * 8).max(8),
+            prg: [0, 1],
+            chr: [0, 1, 2, 3, 4, 5, 6, 7],
+            chr_ram: vec![0; 0x2000],
+            chr_ram_mask: 0xFE,
+            chr_ram_compare: 0x06,
+            mirroring: Mirroring::Vertical,
+            irq_latch: 0,
+            irq_counter: 0,
+            irq_enable: false,
+            irq_enable_after_ack: false,
+            irq_cycle_mode: false,
+            irq_prescaler: 0,
+            irq_pending: false,
+        }
+    }
+
+    fn chr_ram_index(&self, addr: u16) -> Option<usize> {
+        let slot = ((addr >> 10) & 0x07) as usize;
+        let bank = self.chr[slot];
+        if (bank & self.chr_ram_mask) == self.chr_ram_compare {
+            Some(((bank as usize & 0x07) * 0x0400) + (addr as usize & 0x03FF))
+        } else {
+            None
+        }
+    }
+
+    fn write_chr_nibble(&mut self, addr: u16, value: u8) {
+        let bank = ((((addr - 0xB000) >> 1) & 0x1800) | ((addr << 7) & 0x0400)) / 0x400;
+        let slot = bank as usize & 0x07;
+        if addr & 0x0004 != 0 {
+            self.chr[slot] = (self.chr[slot] & 0x00F) | ((value as u16 & 0x0F) << 4);
+        } else {
+            self.chr[slot] = (self.chr[slot] & 0x1F0) | (value as u16 & 0x0F);
+        }
+    }
+
+    fn clock_irq_counter(&mut self) {
+        if self.irq_counter == 0xFF {
+            self.irq_counter = self.irq_latch;
+            self.irq_pending = true;
+        } else {
+            self.irq_counter = self.irq_counter.wrapping_add(1);
+        }
+    }
+}
+
+impl MapperOps for Mapper252 {
+    fn prg_index(&self, addr: u16) -> usize {
+        let slot = ((addr - 0x8000) / 0x2000) as usize;
+        let bank = match slot {
+            0 | 1 => self.prg[slot] as usize,
+            2 => self.prg_8k_total - 2,
+            _ => self.prg_8k_total - 1,
+        };
+        (bank % self.prg_8k_total) * 0x2000 + (addr as usize & 0x1FFF)
+    }
+
+    fn chr_index(&self, addr: u16) -> usize {
+        let slot = ((addr >> 10) & 0x07) as usize;
+        (self.chr[slot] as usize % self.chr_1k_total) * 0x0400 + (addr as usize & 0x03FF)
+    }
+
+    fn chr_read(&self, addr: u16, _access: ChrAccess) -> Option<u8> {
+        self.chr_ram_index(addr).map(|i| self.chr_ram[i])
+    }
+
+    fn has_chr_read(&self) -> bool {
+        true
+    }
+
+    fn chr_write(&mut self, addr: u16, value: u8) -> bool {
+        if let Some(i) = self.chr_ram_index(addr) {
+            self.chr_ram[i] = value;
+            true
+        } else {
+            false
+        }
+    }
+
+    fn write_register(&mut self, addr: u16, value: u8) {
+        match addr {
+            0x8000..=0x8FFF => self.prg[0] = value,
+            0xA000..=0xAFFF => self.prg[1] = value,
+            0x9000..=0x9FFF => {
+                self.mirroring = match value & 0x03 {
+                    0 => Mirroring::Vertical,
+                    1 => Mirroring::Horizontal,
+                    2 => Mirroring::SingleScreenLow,
+                    _ => Mirroring::SingleScreenHigh,
+                };
+            }
+            0xB000..=0xEFFF => self.write_chr_nibble(addr, value),
+            _ => match addr & 0xF00C {
+                0xF000 => {
+                    self.irq_pending = false;
+                    self.irq_latch = (self.irq_latch & 0xF0) | (value & 0x0F);
+                }
+                0xF004 => {
+                    self.irq_pending = false;
+                    self.irq_latch = (self.irq_latch & 0x0F) | ((value & 0x0F) << 4);
+                }
+                0xF008 => {
+                    self.irq_pending = false;
+                    self.irq_enable_after_ack = value & 0x01 != 0;
+                    self.irq_enable = value & 0x02 != 0;
+                    self.irq_cycle_mode = value & 0x04 != 0;
+                    if self.irq_enable {
+                        self.irq_counter = self.irq_latch;
+                        self.irq_prescaler = 0;
+                    }
+                }
+                0xF00C => {
+                    self.irq_pending = false;
+                    self.irq_enable = self.irq_enable_after_ack;
+                }
+                _ => {}
+            },
+        }
+    }
+
+    fn notify_ppudata_write(&mut self, addr: u16, _value: u8) {
+        if addr & 0x2000 != 0 {
+            return;
+        }
+        let slot = ((addr >> 10) & 0x07) as usize;
+        match self.chr[slot] {
+            0x88 => {
+                self.chr_ram_mask = 0xFC;
+                self.chr_ram_compare = 0x4C;
+            }
+            0xC2 => {
+                self.chr_ram_mask = 0xFE;
+                self.chr_ram_compare = 0x7C;
+            }
+            0xC8 => {
+                self.chr_ram_mask = 0xFE;
+                self.chr_ram_compare = 0x04;
+            }
+            _ => {}
+        }
+    }
+
+    fn mirroring(&self) -> Mirroring {
+        self.mirroring
+    }
+
+    fn cpu_clock(&mut self) {
+        if !self.irq_enable {
+            return;
+        }
+        if self.irq_cycle_mode {
+            self.clock_irq_counter();
+        } else {
+            self.irq_prescaler += 3;
+            if self.irq_prescaler >= 341 {
+                self.irq_prescaler -= 341;
+                self.clock_irq_counter();
+            }
+        }
+    }
+
+    fn clocks_cpu(&self) -> bool {
+        true
+    }
+
+    fn irq(&self) -> bool {
+        self.irq_pending
+    }
+
+    fn clear_irq(&mut self) {
+        self.irq_pending = false;
+    }
+}
+
+// ============================================================================
 // Mapper 253 — Waixing Dragon Ball pirate
 //
 // References:
@@ -341,6 +548,84 @@ impl MapperOps for Mapper253 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mapper252_switches_prg_chr_mirroring_and_vrc_irq() {
+        let mut mapper = Mapper252::new(32, 64);
+
+        assert_eq!(mapper.prg_index(0x8004), 0x0004);
+        assert_eq!(mapper.prg_index(0xA004), 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 62 * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xE004), 63 * 0x2000 + 4);
+        assert_eq!(mapper.chr_index(0x1004), 4 * 0x400 + 4);
+
+        mapper.write_register(0x8000, 0x12);
+        mapper.write_register(0xA000, 0x13);
+        assert_eq!(mapper.prg_index(0x8004), 0x12 * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xA004), 0x13 * 0x2000 + 4);
+
+        mapper.write_register(0x9000, 0x03);
+        assert_eq!(mapper.mirroring(), Mirroring::SingleScreenHigh);
+
+        mapper.write_register(0xB000, 0x08);
+        mapper.write_register(0xB004, 0x08);
+        assert_eq!(mapper.chr_index(0x0004), 0x88 * 0x400 + 4);
+        mapper.write_register(0xB008, 0x02);
+        mapper.write_register(0xB00C, 0x0C);
+        assert_eq!(mapper.chr_index(0x0404), 0xC2 * 0x400 + 4);
+
+        mapper.write_register(0xF000, 0xFE);
+        mapper.write_register(0xF004, 0x0F);
+        mapper.write_register(0xF008, 0x06);
+        assert!(mapper.clocks_cpu());
+        mapper.cpu_clock();
+        assert!(!mapper.irq());
+        mapper.cpu_clock();
+        assert!(mapper.irq());
+        mapper.write_register(0xF00C, 0);
+        assert!(!mapper.irq());
+    }
+
+    #[test]
+    fn mapper252_ppudata_write_switches_chr_ram_mask_from_current_vram_bank() {
+        let mut mapper = Mapper252::new(32, 256);
+
+        assert!(mapper.chr_write(0x1807, 0x5A));
+        assert_eq!(mapper.chr_read(0x1807, ChrAccess::Default), Some(0x5A));
+        assert!(!mapper.chr_write(0x0007, 0x11));
+
+        mapper.write_register(0xB000, 0x08);
+        mapper.write_register(0xB004, 0x08);
+        mapper.notify_ppudata_write(0x0000, 0);
+        assert!(!mapper.chr_write(0x1807, 0x66));
+
+        mapper.write_register(0xE000, 0x0C);
+        mapper.write_register(0xE004, 0x04);
+        assert!(mapper.chr_write(0x1807, 0x66));
+        assert_eq!(mapper.chr_read(0x1807, ChrAccess::Default), Some(0x66));
+
+        mapper.write_register(0xC000, 0x02);
+        mapper.write_register(0xC004, 0x0C);
+        mapper.notify_ppudata_write(0x0800, 0);
+        assert!(!mapper.chr_write(0x1807, 0x77));
+
+        mapper.write_register(0xE000, 0x0C);
+        mapper.write_register(0xE004, 0x07);
+        assert!(mapper.chr_write(0x1807, 0x77));
+        assert_eq!(mapper.chr_read(0x1807, ChrAccess::Default), Some(0x77));
+
+        mapper.write_register(0xC000, 0x08);
+        mapper.write_register(0xC004, 0x0C);
+        mapper.notify_ppudata_write(0x2800, 0);
+        assert!(mapper.chr_write(0x1807, 0x88));
+        mapper.notify_ppudata_write(0x0800, 0);
+        assert!(!mapper.chr_write(0x1807, 0x99));
+
+        mapper.write_register(0xE000, 0x04);
+        mapper.write_register(0xE004, 0x00);
+        assert!(mapper.chr_write(0x1807, 0x99));
+        assert_eq!(mapper.chr_read(0x1807, ChrAccess::Default), Some(0x99));
+    }
 
     #[test]
     fn mapper178_switches_prg_modes_mirroring_and_banked_wram() {

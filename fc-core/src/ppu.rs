@@ -1191,6 +1191,7 @@ impl Ppu {
             }
             7 => {
                 let addr = self.v & 0x3FFF;
+                cart.mapper.notify_ppudata_write(addr, value);
                 self.ppu_write(cart, addr, value);
                 self.v = self.v.wrapping_add(self.addr_increment());
                 if cart.mapper_watches_ppu_bus {
@@ -1307,6 +1308,18 @@ impl Ppu {
 mod tests {
     use super::*;
 
+    fn mapper252_cart() -> Cartridge {
+        let prg_16k = 2usize;
+        let chr_8k = 32usize;
+        let mut rom = vec![0u8; 16 + prg_16k * 0x4000 + chr_8k * 0x2000];
+        rom[0..4].copy_from_slice(b"NES\x1A");
+        rom[4] = prg_16k as u8;
+        rom[5] = chr_8k as u8;
+        rom[6] = 0xC0;
+        rom[7] = 0xF0;
+        Cartridge::from_bytes(&rom).expect("mapper 252 rom")
+    }
+
     #[test]
     fn ppudata_read_buffer_updates_after_dot_delay() {
         let mut ppu = Ppu::new(Region::Ntsc);
@@ -1323,6 +1336,23 @@ mod tests {
             ppu.tick(&mut cart);
         }
         assert_eq!(ppu.read_register(0x2007, &mut cart), 0x22);
+    }
+
+    #[test]
+    fn ppudata_write_notifies_mapper_before_chr_write() {
+        let mut ppu = Ppu::new(Region::Ntsc);
+        let mut cart = mapper252_cart();
+
+        cart.mapper.write_register(0xB000, 0x08);
+        cart.mapper.write_register(0xB004, 0x08);
+        assert!(cart.mapper.chr_write(0x1807, 0x5A));
+        assert_eq!(cart.mapper.chr_read(0x1807, ChrAccess::Default), Some(0x5A));
+
+        ppu.write_register(0x2006, 0x00, &mut cart);
+        ppu.write_register(0x2006, 0x00, &mut cart);
+        ppu.write_register(0x2007, 0x77, &mut cart);
+
+        assert!(!cart.mapper.chr_write(0x1807, 0x66));
     }
 
     #[test]

@@ -179,6 +179,10 @@ pub trait MapperOps {
     fn write_controller_strobe(&mut self, _value: u8) -> bool {
         false
     }
+    /// Optional mapper notification for CPU writes through PPUDATA (`$2007`).
+    /// Some boards change writable CHR-RAM routing based on the current VRAM
+    /// address before the byte is actually stored.
+    fn notify_ppudata_write(&mut self, _addr: u16, _value: u8) {}
     /// Optional mapper-owned nametable read (`$2000..=$3EFF`).
     fn nametable_read(&mut self, _addr: u16, _ciram: &[u8; 0x1000]) -> Option<u8> {
         None
@@ -277,15 +281,15 @@ pub use basic::{
     Mapper151, Mapper156, Mapper168, Mapper170, Mapper171, Mapper175, Mapper177, Mapper178,
     Mapper18, Mapper181, Mapper183, Mapper185, Mapper186, Mapper188, Mapper190, Mapper193,
     Mapper203, Mapper212, Mapper218, Mapper222, Mapper226, Mapper230, Mapper233, Mapper234,
-    Mapper235, Mapper236, Mapper237, Mapper240, Mapper241, Mapper244, Mapper246, Mapper253,
-    Mapper29, Mapper31, Mapper35, Mapper36, Mapper40, Mapper42, Mapper43, Mapper50, Mapper51,
-    Mapper53, Mapper57, Mapper60, Mapper63, Mapper65, Mapper67, Mapper72, Mapper73, Mapper79,
-    Mapper8, Mapper81, Mapper83, Mapper91, Mapper92, Mapper96, Mapper99, Namco108Mapper154,
-    Namco108Mapper206, Namco108Mapper95, Namco118, NanjingMapper, NanjingVariant, Nina01,
-    Nina03_06, Nrom, Ntdec112, Sachen133, Sachen149, Sachen74Ls374N, Sachen74Ls374NVariant,
-    Sachen8259, Sachen8259Variant, SachenSa0161m, Subor166, SuborVariant, Sunsoft184, Sunsoft4,
-    Sunsoft89, TaitoTc0190, TaitoX1005, TaitoX1017, TxcMapper, TxcVariant, UnlPci556, Unrom,
-    UnromVariant, UnromVariantMapper, Vrc1,
+    Mapper235, Mapper236, Mapper237, Mapper240, Mapper241, Mapper244, Mapper246, Mapper252,
+    Mapper253, Mapper29, Mapper31, Mapper35, Mapper36, Mapper40, Mapper42, Mapper43, Mapper50,
+    Mapper51, Mapper53, Mapper57, Mapper60, Mapper63, Mapper65, Mapper67, Mapper72, Mapper73,
+    Mapper79, Mapper8, Mapper81, Mapper83, Mapper91, Mapper92, Mapper96, Mapper99,
+    Namco108Mapper154, Namco108Mapper206, Namco108Mapper95, Namco118, NanjingMapper,
+    NanjingVariant, Nina01, Nina03_06, Nrom, Ntdec112, Sachen133, Sachen149, Sachen74Ls374N,
+    Sachen74Ls374NVariant, Sachen8259, Sachen8259Variant, SachenSa0161m, Subor166, SuborVariant,
+    Sunsoft184, Sunsoft4, Sunsoft89, TaitoTc0190, TaitoX1005, TaitoX1017, TxcMapper, TxcVariant,
+    UnlPci556, Unrom, UnromVariant, UnromVariantMapper, Vrc1,
 };
 pub use expansion_mappers::{Fme7, Namco163, Vrc6, Vrc6Variant, Vrc7};
 pub use mmc1::Mmc1;
@@ -402,6 +406,7 @@ pub enum Mapper {
     Mapper241(Mapper241),
     Mapper244(Mapper244),
     Mapper246(Mapper246),
+    Mapper252(Mapper252),
     Mapper253(Mapper253),
     IremLrog017(IremLrog017),
     Namco108Mapper154(Namco108Mapper154),

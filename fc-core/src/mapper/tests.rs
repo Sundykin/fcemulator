@@ -206,6 +206,7 @@ fn watches_ppu_bus_matches_notify_a12_overrides() {
         (249, true),   // Mapper 249 MMC3 A12 IRQ
         (250, true),   // Mapper 250 MMC3 A12 IRQ
         (246, false),  // Mapper 246
+        (252, false),  // Mapper 252 IRQ is CPU-clocked
         (253, false),  // Mapper 253 IRQ is CPU-clocked, not PPU-bus-clocked
         (254, true),   // Mapper 254 MMC3 A12 IRQ
         (255, false),  // Mapper 255
@@ -429,6 +430,7 @@ fn clocks_cpu_matches_cpu_clock_overrides() {
         (249, false),  // Mapper 249 uses PPU A12 edges
         (250, false),  // Mapper 250 uses PPU A12 edges
         (246, false),  // Mapper 246
+        (252, true),   // Mapper 252 VRC4-style IRQ clocks per CPU cycle
         (253, true),   // Mapper 253 IRQ counter clocks per CPU cycle
         (254, false),  // Mapper 254 uses PPU A12 edges
         (255, false),  // Mapper 255
@@ -660,6 +662,7 @@ fn clocks_hblank_matches_hblank_clock_overrides() {
         (249, false),
         (250, false),
         (246, false),
+        (252, false),
         (253, false),
         (254, false),
         (255, false),

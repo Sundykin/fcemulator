@@ -268,6 +268,7 @@ impl Mapper {
             249 => Mapper::Mmc3(Mmc3::new_249(prg_16k, chr_8k, mirroring)),
             250 => Mapper::Mmc3(Mmc3::new_250(prg_16k, chr_8k, mirroring)),
             246 => Mapper::Mapper246(Mapper246::new(prg_16k, mirroring)),
+            252 => Mapper::Mapper252(Mapper252::new(prg_16k, chr_8k)),
             253 => Mapper::Mapper253(Mapper253::new(prg_16k, chr_8k)),
             254 => Mapper::Mmc3(Mmc3::new_254(prg_16k, chr_8k, mirroring)),
             255 => Mapper::AddrLatch16k(AddrLatch16k::new(AddrLatchVariant::Mapper255)),
