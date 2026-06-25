@@ -221,6 +221,22 @@
 - Error note:
   - Attempted to pass multiple test filters to one `cargo test` command; cargo accepts one filter, so reran mapper-wide tests instead.
 
+### Mapper 301/340/341/343 Long-tail Batch
+- Started from FCEUmm `asic_latch` references:
+  - `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/301.c:24-58`
+  - `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/340.c:24-50`
+  - `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/341.c:24-39`
+  - `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/343.c:24-52`
+- Planned implementation location: `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/multicart.rs`, with enum/factory/capability/behavior-test wiring.
+- Implemented mapper 301, 340, 341, and 343 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/multicart.rs`.
+- Wired the batch through `basic.rs`, `mapper.rs`, `dispatch.rs`, and `factory.rs`.
+- Added mapper-local tests and facade behavior/capability tests.
+- Updated `/Users/sunmeng/workspace/fc/docs/Mapper-适配差距清单.md` and `/Users/sunmeng/workspace/fc/docs/Mapper-适配引用记录.md`.
+- Verification so far:
+  - `cargo test -p fc-core mapper::basic::multicart::tests -- --nocapture`: PASS, 7/7.
+  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 66/66.
+  - `cargo fmt --check && git diff --check`: PASS.
+
 ### Mapper 119 TQROM Pass
 - Implemented mapper 119 / TQROM by generalizing MMC3 mapper-owned CHR-RAM routing in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs`.
 - Replaced the single `chr_ram_bank_base` active path with `Mmc3ChrRamWindow { first, last }`, keeping the old field as a serde fallback for mapper 74/194 save-state compatibility.

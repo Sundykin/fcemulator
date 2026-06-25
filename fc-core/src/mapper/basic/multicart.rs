@@ -1426,6 +1426,262 @@ impl MapperOps for Mapper237 {
     }
 }
 
+// ============================================================================
+// Mapper 301 — BMC 8157-style latch multicart
+//
+// Reference:
+// - FCEUmm `src/boards/301.c`
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Mapper301 {
+    half: u8,
+    reg: u8,
+    latch_data: u8,
+}
+
+impl Mapper301 {
+    pub(in crate::mapper) fn new() -> Self {
+        Mapper301 {
+            half: 0,
+            reg: 0,
+            latch_data: 0,
+        }
+    }
+
+    fn prg_outer(&self) -> usize {
+        (((self.half << 5) & 0x20) | ((self.reg << 3) & 0x18)) as usize
+    }
+}
+
+impl MapperOps for Mapper301 {
+    fn prg_index(&self, addr: u16) -> usize {
+        let bank = if addr < 0xC000 {
+            self.prg_outer() | ((self.latch_data & 0x07) as usize)
+        } else {
+            self.prg_outer() | 0x07
+        };
+        bank * 0x4000 + (addr as usize & 0x3FFF)
+    }
+
+    fn chr_index(&self, addr: u16) -> usize {
+        addr as usize & 0x1FFF
+    }
+
+    fn write_register(&mut self, _addr: u16, value: u8) {
+        self.latch_data = value;
+    }
+
+    fn write_expansion(&mut self, addr: u16, value: u8) {
+        if (0x5000..=0x5FFF).contains(&addr) {
+            self.reg = value;
+        }
+    }
+
+    fn mirroring(&self) -> Mirroring {
+        if self.reg & 0x04 != 0 {
+            Mirroring::Horizontal
+        } else {
+            Mirroring::Vertical
+        }
+    }
+
+    fn reset(&mut self, _soft: bool) {
+        self.half ^= 1;
+        self.reg = 0;
+        self.latch_data = 0;
+    }
+}
+
+// ============================================================================
+// Mapper 340 — K-3008/K-3032/K-3036/K-3055 discrete multicarts
+//
+// Reference:
+// - FCEUmm `src/boards/340.c`
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Mapper340 {
+    latch_addr: u16,
+    submapper: u8,
+}
+
+impl Mapper340 {
+    pub(in crate::mapper) fn new(submapper: u8) -> Self {
+        Mapper340 {
+            latch_addr: 0,
+            submapper,
+        }
+    }
+
+    fn prg_latch(&self) -> usize {
+        (((self.latch_addr >> 2) & 0x20) | (self.latch_addr & 0x1F)) as usize
+    }
+
+    fn nrom_mode(&self) -> bool {
+        self.latch_addr & 0x20 != 0
+    }
+}
+
+impl MapperOps for Mapper340 {
+    fn prg_index(&self, addr: u16) -> usize {
+        let prg = self.prg_latch();
+        let bank = if self.nrom_mode() {
+            if self.latch_addr & 0x01 != 0 {
+                return prg * 0x4000 + (addr as usize & 0x3FFF);
+            }
+            return (prg >> 1) * 0x8000 + (addr as usize & 0x7FFF);
+        } else if addr < 0xC000 {
+            prg
+        } else {
+            prg | 0x07
+        };
+        bank * 0x4000 + (addr as usize & 0x3FFF)
+    }
+
+    fn chr_index(&self, addr: u16) -> usize {
+        addr as usize & 0x1FFF
+    }
+
+    fn chr_write(&mut self, _addr: u16, _value: u8) -> bool {
+        // FCEUmm makes CHR-RAM writable only in UNROM mode.
+        self.nrom_mode()
+    }
+
+    fn write_register(&mut self, addr: u16, _value: u8) {
+        self.latch_addr = addr;
+    }
+
+    fn mirroring(&self) -> Mirroring {
+        let horizontal = if self.nrom_mode() {
+            self.latch_addr & 0x04 != 0
+        } else if self.submapper == 1 {
+            self.latch_addr & 0x08 == 0 && self.latch_addr & 0x10 != 0
+        } else {
+            self.latch_addr & 0x40 != 0
+        };
+        if horizontal {
+            Mirroring::Horizontal
+        } else {
+            Mirroring::Vertical
+        }
+    }
+
+    fn reset(&mut self, _soft: bool) {
+        self.latch_addr = 0;
+    }
+}
+
+// ============================================================================
+// Mapper 341 — address-latch PRG/CHR32 multicart
+//
+// Reference:
+// - FCEUmm `src/boards/341.c`
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Mapper341 {
+    latch_addr: u16,
+    submapper: u8,
+}
+
+impl Mapper341 {
+    pub(in crate::mapper) fn new(submapper: u8) -> Self {
+        Mapper341 {
+            latch_addr: 0,
+            submapper,
+        }
+    }
+
+    fn bank(&self) -> usize {
+        (self.latch_addr >> 8) as usize
+    }
+}
+
+impl MapperOps for Mapper341 {
+    fn prg_index(&self, addr: u16) -> usize {
+        self.bank() * 0x8000 + (addr as usize & 0x7FFF)
+    }
+
+    fn chr_index(&self, addr: u16) -> usize {
+        self.bank() * 0x2000 + (addr as usize & 0x1FFF)
+    }
+
+    fn write_register(&mut self, addr: u16, _value: u8) {
+        if self.submapper != 1 || (addr & 0x00F0) == 0x00A0 {
+            self.latch_addr = addr;
+        }
+    }
+
+    fn mirroring(&self) -> Mirroring {
+        let mask = if self.submapper == 1 { 0x0800 } else { 0x0200 };
+        if self.latch_addr & mask != 0 {
+            Mirroring::Horizontal
+        } else {
+            Mirroring::Vertical
+        }
+    }
+
+    fn reset(&mut self, _soft: bool) {
+        self.latch_addr = 0;
+    }
+}
+
+// ============================================================================
+// Mapper 343 — latch-data PRG32 multicart
+//
+// Reference:
+// - FCEUmm `src/boards/343.c`
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Mapper343 {
+    reg: u8,
+    latch_data: u8,
+}
+
+impl Mapper343 {
+    pub(in crate::mapper) fn new() -> Self {
+        Mapper343 {
+            reg: 0,
+            latch_data: 0,
+        }
+    }
+}
+
+impl MapperOps for Mapper343 {
+    fn prg_index(&self, addr: u16) -> usize {
+        (self.latch_data as usize) * 0x8000 + (addr as usize & 0x7FFF)
+    }
+
+    fn chr_index(&self, addr: u16) -> usize {
+        addr as usize & 0x1FFF
+    }
+
+    fn write_register(&mut self, _addr: u16, value: u8) {
+        self.latch_data = value;
+    }
+
+    fn write_expansion(&mut self, addr: u16, value: u8) {
+        if (0x5000..=0x5FFF).contains(&addr) {
+            self.reg = value;
+        }
+    }
+
+    fn mirroring(&self) -> Mirroring {
+        if self.reg & 0x08 != 0 {
+            Mirroring::Horizontal
+        } else {
+            Mirroring::Vertical
+        }
+    }
+
+    fn reset(&mut self, _soft: bool) {
+        self.reg = 0;
+        self.latch_data = 0;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1492,5 +1748,87 @@ mod tests {
             sub1.peek_register_with_open_bus(0x8000, 0x55, 0xA5),
             Some(0xA5)
         );
+    }
+
+    #[test]
+    fn mapper301_uses_low_register_and_reset_half_latch() {
+        let mut mapper = Mapper301::new();
+
+        mapper.write_register(0x8000, 0x05);
+        assert_eq!(mapper.prg_index(0x8004), 5 * 0x4000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 7 * 0x4000 + 4);
+        assert_eq!(mapper.mirroring(), Mirroring::Vertical);
+
+        mapper.write_expansion(0x5000, 0x07);
+        assert_eq!(mapper.prg_index(0x8004), 0x1D * 0x4000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 0x1F * 0x4000 + 4);
+        assert_eq!(mapper.mirroring(), Mirroring::Horizontal);
+
+        mapper.reset(true);
+        assert_eq!(mapper.prg_index(0x8004), 0x20 * 0x4000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 0x27 * 0x4000 + 4);
+        assert_eq!(mapper.mirroring(), Mirroring::Vertical);
+    }
+
+    #[test]
+    fn mapper340_switches_nrom_unrom_modes_and_submapper_mirroring() {
+        let mut mapper = Mapper340::new(0);
+
+        mapper.write_register(0x8045, 0);
+        assert_eq!(mapper.prg_index(0x8004), 5 * 0x4000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 7 * 0x4000 + 4);
+        assert_eq!(mapper.mirroring(), Mirroring::Horizontal);
+        assert!(!mapper.chr_write(0x0010, 0x12));
+
+        mapper.write_register(0x8025, 0);
+        assert_eq!(mapper.prg_index(0x8004), 5 * 0x4000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 5 * 0x4000 + 4);
+        assert_eq!(mapper.mirroring(), Mirroring::Horizontal);
+        assert!(mapper.chr_write(0x0010, 0x12));
+
+        mapper.write_register(0x8024, 0);
+        assert_eq!(mapper.prg_index(0x8004), 2 * 0x8000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 2 * 0x8000 + 0x4004);
+
+        let mut sub1 = Mapper340::new(1);
+        sub1.write_register(0x8010, 0);
+        assert_eq!(sub1.mirroring(), Mirroring::Horizontal);
+        sub1.write_register(0x8040, 0);
+        assert_eq!(sub1.mirroring(), Mirroring::Vertical);
+    }
+
+    #[test]
+    fn mapper341_latches_address_and_submapper_trap() {
+        let mut mapper = Mapper341::new(0);
+
+        mapper.write_register(0x8A23, 0);
+        assert_eq!(mapper.prg_index(0x8004), 0x8A * 0x8000 + 4);
+        assert_eq!(mapper.chr_index(0x1004), 0x8A * 0x2000 + 0x1004);
+        assert_eq!(mapper.mirroring(), Mirroring::Horizontal);
+
+        let mut sub1 = Mapper341::new(1);
+        sub1.write_register(0x8B90, 0);
+        assert_eq!(sub1.prg_index(0x8004), 0x0004);
+        sub1.write_register(0x8BA0, 0);
+        assert_eq!(sub1.prg_index(0x8004), 0x8B * 0x8000 + 4);
+        assert_eq!(sub1.mirroring(), Mirroring::Horizontal);
+        sub1.write_register(0x8C90, 0);
+        assert_eq!(sub1.prg_index(0x8004), 0x8B * 0x8000 + 4);
+    }
+
+    #[test]
+    fn mapper343_uses_latch_data_for_prg32_and_low_mirroring_register() {
+        let mut mapper = Mapper343::new();
+
+        mapper.write_register(0x8000, 3);
+        assert_eq!(mapper.prg_index(0x8004), 3 * 0x8000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 3 * 0x8000 + 0x4004);
+        assert_eq!(mapper.mirroring(), Mirroring::Vertical);
+
+        mapper.write_expansion(0x5000, 0x08);
+        assert_eq!(mapper.mirroring(), Mirroring::Horizontal);
+        mapper.reset(true);
+        assert_eq!(mapper.prg_index(0x8004), 0x0004);
+        assert_eq!(mapper.mirroring(), Mirroring::Vertical);
     }
 }

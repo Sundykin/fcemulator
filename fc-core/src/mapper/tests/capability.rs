@@ -210,6 +210,10 @@ fn watches_ppu_bus_matches_notify_a12_overrides() {
         (253, false),  // Mapper 253 IRQ is CPU-clocked, not PPU-bus-clocked
         (254, true),   // Mapper 254 MMC3 A12 IRQ
         (255, false),  // Mapper 255
+        (301, false),  // Mapper 301
+        (340, false),  // Mapper 340
+        (341, false),  // Mapper 341
+        (343, false),  // Mapper 343
         (184, false),  // Sunsoft 184
         (4, true),     // MMC3
         (5, true),     // MMC5
@@ -435,6 +439,10 @@ fn clocks_cpu_matches_cpu_clock_overrides() {
         (253, true),   // Mapper 253 IRQ counter clocks per CPU cycle
         (254, false),  // Mapper 254 uses PPU A12 edges
         (255, false),  // Mapper 255
+        (301, false),  // Mapper 301
+        (340, false),  // Mapper 340
+        (341, false),  // Mapper 341
+        (343, false),  // Mapper 343
         (184, false),  // Sunsoft 184
     ];
     for (num, expected) in cases {
@@ -668,6 +676,10 @@ fn clocks_hblank_matches_hblank_clock_overrides() {
         (253, false),
         (254, false),
         (255, false),
+        (301, false),
+        (340, false),
+        (341, false),
+        (343, false),
     ];
     for (num, expected) in cases {
         let submapper = if num == 34 { 2 } else { 0 };

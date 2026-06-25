@@ -119,6 +119,44 @@ fn mapper51_switches_multicart_bank_mode_and_low_prg_rom() {
 }
 
 #[test]
+fn long_tail_latch_multicarts_301_340_341_343_follow_reference_banking() {
+    let mut m301 = Mapper::new(301, 128, 0, Mirroring::Vertical, 0).expect("mapper 301");
+    m301.write_register(0x8000, 0x05);
+    assert_eq!(m301.prg_index(0x8004), 5 * 0x4000 + 4);
+    assert_eq!(m301.prg_index(0xC004), 7 * 0x4000 + 4);
+    m301.write_expansion(0x5000, 0x07);
+    assert_eq!(m301.prg_index(0x8004), 0x1D * 0x4000 + 4);
+    assert_eq!(m301.mirroring(), Mirroring::Horizontal);
+    m301.reset(true);
+    assert_eq!(m301.prg_index(0xC004), 0x27 * 0x4000 + 4);
+
+    let mut m340 = Mapper::new(340, 128, 0, Mirroring::Vertical, 0).expect("mapper 340");
+    m340.write_register(0x8045, 0);
+    assert_eq!(m340.prg_index(0x8004), 5 * 0x4000 + 4);
+    assert_eq!(m340.prg_index(0xC004), 7 * 0x4000 + 4);
+    assert_eq!(m340.mirroring(), Mirroring::Horizontal);
+    m340.write_register(0x8024, 0);
+    assert_eq!(m340.prg_index(0x8004), 2 * 0x8000 + 4);
+    assert_eq!(m340.prg_index(0xC004), 2 * 0x8000 + 0x4004);
+
+    let mut m341 = Mapper::new(341, 128, 128, Mirroring::Vertical, 1).expect("mapper 341");
+    m341.write_register(0x8B90, 0);
+    assert_eq!(m341.prg_index(0x8004), 0x0004);
+    m341.write_register(0x8BA0, 0);
+    assert_eq!(m341.prg_index(0x8004), 0x8B * 0x8000 + 4);
+    assert_eq!(m341.chr_index(0x1004), 0x8B * 0x2000 + 0x1004);
+    assert_eq!(m341.mirroring(), Mirroring::Horizontal);
+
+    let mut m343 = Mapper::new(343, 128, 0, Mirroring::Vertical, 0).expect("mapper 343");
+    m343.write_register(0x8000, 3);
+    assert_eq!(m343.prg_index(0xC004), 3 * 0x8000 + 0x4004);
+    m343.write_expansion(0x5000, 0x08);
+    assert_eq!(m343.mirroring(), Mirroring::Horizontal);
+    m343.reset(true);
+    assert_eq!(m343.prg_index(0x8004), 0x0004);
+}
+
+#[test]
 fn mapper81_uses_address_latch_for_prg16_and_data_latch_for_chr8() {
     let mut m81 = Mapper::new(81, 8, 4, Mirroring::Vertical, 0).expect("mapper 81");
     assert_eq!(m81.prg_index(0x8004), 0x0004);
