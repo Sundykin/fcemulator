@@ -39,6 +39,7 @@ Tauri IDE 启动时会同时启动一个语义级 MCP socket:`/tmp/fc-tauri-ide-
 - `ide_read_map` / `ide_write_map` / `ide_bind_map_chr` 写地图和资源绑定。
 - `ide_patch_chr_tile` / `ide_patch_map_cells` / `ide_patch_song_cell` 小粒度修改图块、地图格或 tracker 单元格,适合智能体迭代资源而不整文件重写。
 - `ide_read_song` / `ide_write_song` 写 tracker 乐曲资源;`ide_patch_song_cell` 会定位到对应 Pattern 行/声道。
+- `ide_export_song` 将 `.song.json` 导出为 `music/*.s` + `music/fc_player.s`,登记为音乐构建输入,并刷新真实 IDE 文件树/工程清单。
 - `ide_open_resource` 打开并聚焦源码/CHR/地图/音乐编辑器,让智能体写完资源后直接把真实 IDE 切到对应上下文。
 - `ide_focus_resource` 打开并定位资源:源码可跳到 `line`,CHR 可选中 `tile`,地图可跳到 `x/y` 与 `layer`。
 - `ide_build` / `ide_run` 调用 IDE 构建链并把产物加载进当前预览。

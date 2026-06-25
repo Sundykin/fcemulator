@@ -4,7 +4,7 @@
 Evolve the fc-tauri studio into a mature NES game-development IDE engine. The target experience is continuous project/resource/map/music workflows, comfortable editing controls, and editors that fill their available workspace instead of using tiny native-pixel canvases.
 
 ## Current Phase
-Phase 25: IDE MCP Semantic Resource Creation
+Phase 26: IDE MCP Semantic Tracker Export
 
 ## Phases
 
@@ -190,6 +190,13 @@ Phase 25: IDE MCP Semantic Resource Creation
 - [x] Verify resource creation through the real Tauri IDE and `target/debug/fc ide-mcp`
 - **Status:** complete
 
+### Phase 26: IDE MCP Semantic Tracker Export
+- [x] Audit tracker export path and identify reusable backend primitive
+- [x] Add `ide_export_song` to export `.song.json` into ca65 song data plus `music/fc_player.s`
+- [x] Register exported music assembly inputs in `project.toml` and notify the visible IDE through IPC
+- [x] Verify through the real Tauri IDE and `target/debug/fc ide-mcp` without browser automation
+- **Status:** complete
+
 ## Key Questions
 1. Which editor currently wastes the most available panel area or forces tiny pixel editing?
 2. Where is map-to-CHR binding surfaced, and does opening a map automatically load/show the right CHR resource?
@@ -223,6 +230,7 @@ Phase 25: IDE MCP Semantic Resource Creation
 | IDE MCP should patch resources at creative granularity | Agents should not have to round-trip whole CHR sheets or maps for small edits; tile/cell patch tools make iterative game creation safer and faster |
 | Tracker cells should be patchable at musical granularity | A game-writing agent should be able to tweak one note/effect/volume value and see the visible music editor land there, just like CHR tile and map cell patch flows |
 | IDE MCP should create resource skeletons semantically | A programming agent should not need to handcraft full CHR/map/song payloads just to start a new resource; creation should match the visible IDE's new-resource workflow |
+| IDE MCP should export tracker songs semantically | A programming agent should not need to hand-write `music/*.s` data after composing `.song.json`; export should reuse the same backend path as the visible Tracker button |
 
 ## Errors Encountered
 | Error | Attempt | Resolution |

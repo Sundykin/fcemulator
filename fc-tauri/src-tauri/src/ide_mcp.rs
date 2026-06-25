@@ -9,7 +9,7 @@ use crate::chr::{decode_sheet, encode_sheet};
 use crate::emu::EmuState;
 use crate::map::MapData;
 use crate::project::{self, ProjectState};
-use crate::tracker::Song;
+use crate::tracker::{self, Song};
 use fc_core::Button;
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
@@ -109,6 +109,11 @@ const TOOLS: &[Tool] = &[
         name: "ide_patch_song_cell",
         description: "Patch one tracker pattern cell in-place and focus that cell in the visible music editor.",
         schema: r#"{"type":"object","properties":{"path":{"type":"string"},"pattern":{"type":"integer","minimum":0,"default":0},"row":{"type":"integer","minimum":0},"channel":{"type":"integer","minimum":0,"maximum":4},"note":{"type":"integer","minimum":0,"maximum":255},"instrument":{"type":"integer","minimum":0,"maximum":255},"volume":{"type":"integer","minimum":0,"maximum":255},"fx":{"type":"integer","minimum":0,"maximum":255},"param":{"type":"integer","minimum":0,"maximum":255}},"required":["path","row","channel"]}"#,
+    },
+    Tool {
+        name: "ide_export_song",
+        description: "Export a tracker .song.json to ca65 music assembly plus music/fc_player.s, register both build inputs, and refresh the visible IDE.",
+        schema: r#"{"type":"object","properties":{"path":{"type":"string"},"out":{"type":"string"}},"required":["path"]}"#,
     },
     Tool {
         name: "ide_open_resource",
@@ -277,6 +282,7 @@ fn call_tool(app: &AppHandle, name: &str, args: &Value) -> Value {
         "ide_read_song" => with_result(|| read_song(app, args)),
         "ide_write_song" => with_result(|| write_song(app, args)),
         "ide_patch_song_cell" => with_result(|| patch_song_cell(app, args)),
+        "ide_export_song" => with_result(|| export_song(app, args)),
         "ide_open_resource" => with_result(|| open_resource(app, args)),
         "ide_focus_resource" => with_result(|| focus_resource(app, args)),
         "ide_build" => with_result(|| build_project(app)),
@@ -492,6 +498,27 @@ fn blank_song(rows: usize) -> Song {
         inst.duty = 2;
     }
     song
+}
+
+fn normalize_music_asm_path(path: &str) -> Result<String, String> {
+    let mut rel = trim_resource_path(path)?;
+    if !rel.contains('/') {
+        rel = format!("music/{rel}");
+    }
+    if !(rel.ends_with(".s") || rel.ends_with(".asm")) {
+        rel.push_str(".s");
+    }
+    Ok(rel)
+}
+
+fn default_song_export_path(path: &str) -> Result<String, String> {
+    let name = path.rsplit('/').next().unwrap_or("song");
+    let stem = name
+        .strip_suffix(".song.json")
+        .or_else(|| name.rsplit_once('.').map(|(stem, _)| stem))
+        .unwrap_or(name)
+        .trim();
+    normalize_music_asm_path(if stem.is_empty() { "song" } else { stem })
 }
 
 fn rel_exists(root: &Path, rel: &str) -> bool {
@@ -1240,6 +1267,39 @@ fn patch_song_cell(app: &AppHandle, args: &Value) -> Result<Value, String> {
         "channel": channel_index,
         "changed": changed_fields,
         "cell": patched_cell,
+    }))
+}
+
+fn export_song(app: &AppHandle, args: &Value) -> Result<Value, String> {
+    let root = active_root(app)?;
+    let path = arg_str(args, "path")?;
+    let song_path = resolve(&root, path)?;
+    let text =
+        std::fs::read_to_string(&song_path).map_err(|e| format!("读取 {path} 失败: {e}"))?;
+    let song: Song = serde_json::from_str(&text).map_err(|e| format!("解析乐曲失败: {e}"))?;
+    let out_rel = match args.get("out").and_then(|v| v.as_str()).filter(|v| !v.trim().is_empty()) {
+        Some(out) => normalize_music_asm_path(out)?,
+        None => default_song_export_path(path)?,
+    };
+    let manifest = tracker::export_song_to_project(&root, &out_rel, &song)?;
+    let engine_rel = "music/fc_player.s";
+    emit_refresh(
+        app,
+        "song-export",
+        &["tree", "manifest", "music"],
+        json!({
+            "root": root.to_string_lossy(),
+            "path": path,
+            "out": out_rel,
+            "engine": engine_rel,
+            "kind": "music",
+        }),
+    );
+    Ok(json!({
+        "path": path,
+        "out": out_rel,
+        "engine": engine_rel,
+        "manifest": manifest,
     }))
 }
 

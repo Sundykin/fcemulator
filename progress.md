@@ -282,6 +282,20 @@
   - Read resources back through IDE MCP: source template exported `agent_logic_init/tick`, CHR had 4 tiles / 256 pixels, map was 6×5 with 30 tile cells, song had 12 Pattern rows, and `ide_get_state` reported counts source=2/chr=2/map=2/music=1 with no missing resources.
   - Inspected the visible Tauri state through the Tauri MCP: studio mode, active resource `music/agent_theme.song.json`, Tracker visible, manifest registered all created resources, and `ide_build` succeeded with `build/game.nes` and 0 diagnostics.
 
+### Phase 26: IDE MCP Semantic Tracker Export
+- **Status:** complete
+- Actions taken:
+  - Resumed in `/Users/sunmeng/workspace/fc-creative-mode` on `codex/creative-mode-simple-game`; git status was clean.
+  - Re-read planning files and confirmed the next useful slice is tracker export through the Tauri-hosted IDE MCP.
+  - Audited `ide_mcp.rs`, `tracker.rs`, `project.ts`, and docs; found frontend export exists but no `ide_export_song` MCP tool.
+  - Added reusable `tracker::export_song_to_project()` and kept the existing `tracker_export` Tauri command on the same helper.
+  - Added `ide_export_song` to the embedded IDE MCP tool list and dispatcher. The tool reads a project `.song.json`, exports ca65 song data, copies `music/fc_player.s`, registers both assembly inputs in `project.toml`, and emits `song-export`.
+  - Updated M1/M2 docs to steer programming agents toward `ide_export_song` after composing tracker JSON.
+  - Static verification passed: `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml`, `npm --prefix fc-tauri run build`, and `git diff --check`.
+  - Runtime verification used real `npm --prefix fc-tauri run tauri dev` plus `target/debug/fc ide-mcp` only. It created `/var/folders/.../SongExportGame`, created/patched `music/agent_theme.song.json`, exported `music/agent_theme.s` + `music/fc_player.s`, and confirmed manifest/tree/resource radar updated.
+  - Real Tauri store verification showed studio mode, `MCP 已更新：song-export`, the expected music file list, and tracker still focused on the semantic `.song.json`.
+  - Follow-up `ide_build` succeeded with `build/game.nes`, zero diagnostics, `output_status=current`, and the visible Build state on Health.
+
 ## Test Results
 | Test | Result |
 |------|--------|

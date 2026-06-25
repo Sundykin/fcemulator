@@ -209,6 +209,18 @@
 - The frontend needs only a small routing addition: treat `resource-create` like `resource-open`, reusing `openResource()` so Dockview, active-resource state, and editor focus stay on the normal path.
 - Runtime verification confirmed the tool can create all four resource classes in one live Tauri session, register them in manifest/resource radar, open the final music resource visibly, and still build the project successfully.
 
+## IDE MCP Semantic Tracker Export Findings
+- The visible Tracker panel already exports a song through `store.exportTracker()` -> `ide.trackerExport()` -> Rust `tracker_export`.
+- The Rust tracker backend has the right single-source-of-truth primitive: `export_ca65(&Song, Region::Ntsc)` derives the same per-frame APU register stream used by preview rendering.
+- `tracker_export` currently writes `music/<name>.s`, copies `music/fc_player.s`, and registers both files in `project.toml`, but it is only exposed as a Tauri command for the frontend and does not emit IDE MCP IPC.
+- IDE MCP can create, write, and patch `.song.json`, but without a semantic export tool an agent still has to hand-write music assembly or rely on UI-only commands.
+- The conservative UI event should refresh tree/manifest/music without opening the exported `.s` as a tracker resource; the source `.song.json` can remain active in the visible music editor.
+- `ide_export_song` now reuses `tracker::export_song_to_project`, so the visible UI command and the IDE MCP share the same export/register behavior.
+- Default export path follows the UI convention: `music/agent_theme.song.json` -> `music/agent_theme.s`; explicit `out` values are normalized into `music/*.s`/`.asm` when needed.
+- Runtime verification through the real Tauri app and `target/debug/fc ide-mcp` created `music/agent_theme.song.json`, patched row 0/channel 0, exported `music/agent_theme.s` plus `music/fc_player.s`, and saw all three files in `ide_get_state.resources.music`.
+- Real Tauri store verification after the IPC event showed `status="MCP 已更新：song-export"`, `manifest.music=["music/agent_theme.song.json","music/agent_theme.s","music/fc_player.s"]`, and the active tracker still on the `.song.json` resource.
+- A follow-up MCP `ide_build` succeeded with `build/game.nes`, zero diagnostics, `output_status=current`, and the visible Build state switched to Health.
+
 ## Files To Inspect Next
 - `fc-tauri/src/ide/MapEditorPanel.vue` template/style sections
 - `fc-tauri/src/ide/ChrEditorPanel.vue` template/style sections
