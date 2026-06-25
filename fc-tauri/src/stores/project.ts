@@ -345,7 +345,8 @@ export const useProjectStore = defineStore("project", {
         if (reason === "project-new" || reason === "project-open") {
           await this.openPrimarySource();
         }
-        if (reason === "resource-focus" && extra?.path) {
+        const hasResourceTarget = changed.includes("resource") && extra?.path;
+        if (hasResourceTarget && (reason === "resource-focus" || reason === "chr-patch" || reason === "map-patch")) {
           await this.focusResource(extra.path, extra.kind, {
             line: typeof extra.line === "number" ? extra.line : undefined,
             tile: typeof extra.tile === "number" ? extra.tile : undefined,
@@ -363,10 +364,10 @@ export const useProjectStore = defineStore("project", {
             tab.saved = tab.content;
           }
         }
-        if (extra?.path && changed.includes("chr") && this.chr?.path === extra.path) {
+        if (extra?.path && changed.includes("chr") && this.chr?.path === extra.path && !hasResourceTarget) {
           await this.openChr(extra.path);
         }
-        if (extra?.path && changed.includes("map") && this.map?.path === extra.path) {
+        if (extra?.path && changed.includes("map") && this.map?.path === extra.path && !hasResourceTarget) {
           await this.openMap(extra.path);
         }
         if (extra?.path && changed.includes("music") && this.song?.path === extra.path) {

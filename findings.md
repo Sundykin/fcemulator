@@ -188,6 +188,13 @@
 - Map focus now has its own `mapCellFocus` signal with `path`, `x`, `y`, optional `layer`, and `seq`. The Map editor consumes it on signal changes, mount, and map path changes, then highlights/selects the target cell and scrolls it into view.
 - This keeps normal programming-agent work on the IDE MCP instead of requiring the Tauri DOM bridge to poke component-local state.
 
+## IDE MCP Granular Resource Patch Findings
+- Before this slice, a creative agent could write CHR and map resources only by sending a whole decoded CHR sheet or a whole decoded map object.
+- `ide_patch_chr_tile` now reads an existing `.chr`, replaces exactly one 64-pixel tile, writes the same NES 2bpp planar file format, registers the CHR if needed, and emits an IPC event that focuses the patched tile.
+- `ide_patch_map_cells` now reads an existing `.bin` map, patches one or more cells in the tile, attr, or collision layer, writes the same map binary format, registers the map if needed, and emits an IPC event that focuses the first patched cell.
+- Attribute patches follow the Map editor's existing semantics: `x/y` is a map coordinate, and the backend writes the corresponding 2x2 attribute byte.
+- The project store treats `chr-patch` and `map-patch` as resource-targeted events, using `focusResource()` so the visible editor refreshes and lands on the patched tile/cell instead of requiring DOM bridge state pokes.
+
 ## Files To Inspect Next
 - `fc-tauri/src/ide/MapEditorPanel.vue` template/style sections
 - `fc-tauri/src/ide/ChrEditorPanel.vue` template/style sections

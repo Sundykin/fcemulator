@@ -4,7 +4,7 @@
 Evolve the fc-tauri studio into a mature NES game-development IDE engine. The target experience is continuous project/resource/map/music workflows, comfortable editing controls, and editors that fill their available workspace instead of using tiny native-pixel canvases.
 
 ## Current Phase
-Phase 22: IDE MCP Semantic Resource Focus
+Phase 23: IDE MCP Granular Resource Patching
 
 ## Phases
 
@@ -168,6 +168,14 @@ Phase 22: IDE MCP Semantic Resource Focus
 - [x] Verify the real Tauri IDE responds to `ide_focus_resource` for source, CHR, and map resources
 - **Status:** complete
 
+### Phase 23: IDE MCP Granular Resource Patching
+- [x] Audit whether agents must rewrite whole CHR sheets or maps for small edits
+- [x] Add `ide_patch_chr_tile` for in-place 64-pixel CHR tile updates
+- [x] Add `ide_patch_map_cells` for in-place tile/attribute/collision map cell updates
+- [x] Route patch events through Pinia and preserve focus on the patched tile/cell
+- [x] Verify patch tools in the real Tauri IDE and confirm disk/resource state changed
+- **Status:** complete
+
 ## Key Questions
 1. Which editor currently wastes the most available panel area or forces tiny pixel editing?
 2. Where is map-to-CHR binding surfaced, and does opening a map automatically load/show the right CHR resource?
@@ -198,6 +206,7 @@ Phase 22: IDE MCP Semantic Resource Focus
 | `ide_get_state` should be the agent's project radar | Programming agents need one semantic MCP call for resources, bindings, missing files, build diagnostics, source-map counts, and stale/current ROM status instead of scraping the Tauri DOM |
 | Map→CHR navigation should preserve tile context | Opening a bound CHR from the Map editor should land on the tile the user is painting, so pixel editing continues from the map context instead of resetting to tile 0 |
 | IDE MCP should support semantic resource focus | A programming agent writing a game needs to show the exact source line, CHR tile, or map cell it just changed without using the Tauri DOM bridge for normal creative control |
+| IDE MCP should patch resources at creative granularity | Agents should not have to round-trip whole CHR sheets or maps for small edits; tile/cell patch tools make iterative game creation safer and faster |
 
 ## Errors Encountered
 | Error | Attempt | Resolution |

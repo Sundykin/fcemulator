@@ -239,6 +239,16 @@
   - Updated M1/M2 docs to document `ide_focus_resource` as the semantic, non-DOM way to focus exact resource locations.
   - Runtime verified in the real Tauri app with `target/debug/fc ide-mcp`: `src/main.s:12` focused CodeMirror line 12, `chr/sprites.chr` selected tile 13, and `map/room.bin` focused cell `9,6` on the collision layer.
 
+### Phase 23: IDE MCP Granular Resource Patching
+- **Status:** complete
+- Actions taken:
+  - Audited `fc-tauri/src-tauri/src/ide_mcp.rs` and found agents still had to send full CHR pixel arrays or full map objects for small resource edits.
+  - Added `ide_patch_chr_tile` to patch exactly one CHR tile from 64 palette-index pixels while preserving the existing `.chr` planar encoding.
+  - Added `ide_patch_map_cells` to patch tile, attr, or collision layer cells in-place while preserving the existing `map/*.bin` layout.
+  - Made both patch tools emit resource-targeted IPC payloads with tile/cell focus metadata.
+  - Updated the project store so `chr-patch` and `map-patch` refresh visible resources through `focusResource()` and land on the patched tile/cell.
+  - Runtime verified with the real Tauri app and `target/debug/fc ide-mcp`: CHR tile 22 focused in the visible CHR editor, map tile/collision/attr patches focused the visible Map editor, and disk readback matched the patched values.
+
 ## Test Results
 | Test | Result |
 |------|--------|
@@ -347,6 +357,13 @@
 | Real Tauri `ide_focus_resource` source line | PASS; visible editor focused `src/main.s`, CodeMirror content focused, DOM selection on line 12 |
 | Real Tauri `ide_focus_resource` CHR tile | PASS; visible CHR editor selected `图块 13 / 511` |
 | Real Tauri `ide_focus_resource` map cell | PASS; visible Map editor focused `map/room.bin`, layer `collision`, hover/selection at `9,6` |
+| `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml` after granular patch tools | PASS |
+| `npm --prefix fc-tauri run build` after granular patch tools | PASS, with existing Vite large chunk warning |
+| `git diff --check` after granular patch tools | PASS |
+| Real Tauri `ide_patch_chr_tile` | PASS; visible CHR editor selected `图块 22 / 511`, Pinia pixels and disk planar decode matched the requested tile |
+| Real Tauri `ide_patch_map_cells` tile layer | PASS; map tile at `4,5` became `21` in visible Pinia state and disk `map/room.bin` |
+| Real Tauri `ide_patch_map_cells` collision layer | PASS; map collision at `5,5` became `1` in visible Pinia state and disk `map/room.bin` |
+| Real Tauri `ide_patch_map_cells` attr layer | PASS; map attr for `6,5` became `3`, and visible Map editor focused `6,5` on `attr` layer |
 | `fc-tauri/node_modules/.bin/vue-tsc --noEmit` | NOT RUN; local project has no `vue-tsc` binary |
 | `cd fc-tauri && npx vue-tsc --noEmit` | BLOCKED by restricted network; `npx` attempted `registry.npmmirror.com/vue-tsc` and failed DNS |
 

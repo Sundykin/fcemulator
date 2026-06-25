@@ -21,6 +21,7 @@ use tauri::{AppHandle, Emitter, Manager};
 
 pub const SOCKET_PATH: &str = "/tmp/fc-tauri-ide-mcp.sock";
 const PROTOCOL_VERSION: &str = "2024-11-05";
+const CHR_TILE_PIXELS: usize = 64;
 
 struct Tool {
     name: &'static str,
@@ -65,6 +66,11 @@ const TOOLS: &[Tool] = &[
         schema: r#"{"type":"object","properties":{"path":{"type":"string"},"pixels":{"type":"array","items":{"type":"integer"}}},"required":["path","pixels"]}"#,
     },
     Tool {
+        name: "ide_patch_chr_tile",
+        description: "Patch one CHR tile in-place with 64 palette pixels and focus that tile in the visible CHR editor.",
+        schema: r#"{"type":"object","properties":{"path":{"type":"string"},"tile":{"type":"integer","minimum":0},"pixels":{"type":"array","items":{"type":"integer"},"minItems":64,"maxItems":64}},"required":["path","tile","pixels"]}"#,
+    },
+    Tool {
         name: "ide_read_map",
         description: "Read a project map .bin as tiles/attributes/collision arrays.",
         schema: r#"{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}"#,
@@ -73,6 +79,11 @@ const TOOLS: &[Tool] = &[
         name: "ide_write_map",
         description: "Write a project map .bin and register it in project.toml.",
         schema: r#"{"type":"object","properties":{"path":{"type":"string"},"map":{"type":"object"}},"required":["path","map"]}"#,
+    },
+    Tool {
+        name: "ide_patch_map_cells",
+        description: "Patch map cells in-place on tiles, attr, or collision layers and focus the first patched cell in the visible Map editor.",
+        schema: r#"{"type":"object","properties":{"path":{"type":"string"},"layer":{"type":"string","enum":["tiles","attr","collision"],"default":"tiles"},"cells":{"type":"array","items":{"type":"object","properties":{"x":{"type":"integer","minimum":0},"y":{"type":"integer","minimum":0},"value":{"type":"integer"}},"required":["x","y","value"]},"minItems":1}},"required":["path","cells"]}"#,
     },
     Tool {
         name: "ide_bind_map_chr",
@@ -128,7 +139,10 @@ pub fn start(app: AppHandle) {
         let listener = match UnixListener::bind(&socket) {
             Ok(listener) => listener,
             Err(e) => {
-                let _ = app.emit("ide-mcp-status", json!({"ok": false, "error": e.to_string()}));
+                let _ = app.emit(
+                    "ide-mcp-status",
+                    json!({"ok": false, "error": e.to_string()}),
+                );
                 return;
             }
         };
@@ -137,7 +151,10 @@ pub fn start(app: AppHandle) {
             match stream {
                 Ok(stream) => handle_client(app.clone(), stream),
                 Err(e) => {
-                    let _ = app.emit("ide-mcp-status", json!({"ok": false, "error": e.to_string()}));
+                    let _ = app.emit(
+                        "ide-mcp-status",
+                        json!({"ok": false, "error": e.to_string()}),
+                    );
                 }
             }
         }
@@ -159,7 +176,11 @@ fn handle_client(app: AppHandle, stream: UnixStream) {
         let req: Value = match serde_json::from_str(&line) {
             Ok(v) => v,
             Err(e) => {
-                let _ = writeln!(writer, "{}", error_response(Value::Null, -32700, &format!("parse error: {e}")));
+                let _ = writeln!(
+                    writer,
+                    "{}",
+                    error_response(Value::Null, -32700, &format!("parse error: {e}"))
+                );
                 let _ = writer.flush();
                 continue;
             }
@@ -202,11 +223,20 @@ fn handle_request(app: &AppHandle, method: &str, params: Value, id: Value) -> Op
         }
         "tools/call" => {
             let name = params.get("name").and_then(|v| v.as_str()).unwrap_or("");
-            let args = params.get("arguments").cloned().unwrap_or_else(|| json!({}));
+            let args = params
+                .get("arguments")
+                .cloned()
+                .unwrap_or_else(|| json!({}));
             let tool_result = call_tool(app, name, &args);
             json!({"content": [{"type": "text", "text": serde_json::to_string_pretty(&tool_result).unwrap_or_default()}]})
         }
-        other => return Some(error_response(id, -32601, &format!("method not found: {other}"))),
+        other => {
+            return Some(error_response(
+                id,
+                -32601,
+                &format!("method not found: {other}"),
+            ))
+        }
     };
     Some(ok_response(id, result))
 }
@@ -228,8 +258,10 @@ fn call_tool(app: &AppHandle, name: &str, args: &Value) -> Value {
         "ide_write_file" => with_result(|| write_file(app, args)),
         "ide_read_chr" => with_result(|| read_chr(app, args)),
         "ide_write_chr" => with_result(|| write_chr(app, args)),
+        "ide_patch_chr_tile" => with_result(|| patch_chr_tile(app, args)),
         "ide_read_map" => with_result(|| read_map(app, args)),
         "ide_write_map" => with_result(|| write_map(app, args)),
+        "ide_patch_map_cells" => with_result(|| patch_map_cells(app, args)),
         "ide_bind_map_chr" => with_result(|| bind_map_chr(app, args)),
         "ide_read_song" => with_result(|| read_song(app, args)),
         "ide_write_song" => with_result(|| write_song(app, args)),
@@ -273,7 +305,11 @@ fn active_root(app: &AppHandle) -> Result<PathBuf, String> {
 
 fn resolve(root: &Path, rel: &str) -> Result<PathBuf, String> {
     let rel_path = Path::new(rel);
-    if rel_path.is_absolute() || rel_path.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
+    if rel_path.is_absolute()
+        || rel_path
+            .components()
+            .any(|c| matches!(c, std::path::Component::ParentDir))
+    {
         return Err("路径必须相对工程根且不得越界".into());
     }
     Ok(root.join(rel_path))
@@ -290,14 +326,34 @@ fn arg_u64(args: &Value, key: &str, default: u64) -> u64 {
     args.get(key).and_then(|v| v.as_u64()).unwrap_or(default)
 }
 
-fn infer_resource_kind(path: &str, manifest: &project::ProjectManifest, requested: Option<&str>) -> Result<&'static str, String> {
+fn arg_required_u64(args: &Value, key: &str) -> Result<u64, String> {
+    args.get(key)
+        .and_then(|v| v.as_u64())
+        .ok_or_else(|| format!("缺少参数 {key}"))
+}
+
+fn arg_array<'a>(args: &'a Value, key: &str) -> Result<&'a Vec<Value>, String> {
+    args.get(key)
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| format!("{key} 必须是数组"))
+}
+
+fn infer_resource_kind(
+    path: &str,
+    manifest: &project::ProjectManifest,
+    requested: Option<&str>,
+) -> Result<&'static str, String> {
     match requested.unwrap_or("auto") {
         "auto" => {
-            if manifest.sources.iter().any(|p| p == path) || (path.starts_with("src/") && (path.ends_with(".s") || path.ends_with(".asm"))) {
+            if manifest.sources.iter().any(|p| p == path)
+                || (path.starts_with("src/") && (path.ends_with(".s") || path.ends_with(".asm")))
+            {
                 Ok("source")
             } else if manifest.chr.iter().any(|p| p == path) || path.ends_with(".chr") {
                 Ok("chr")
-            } else if manifest.maps.iter().any(|p| p == path) || path.starts_with("map/") && path.ends_with(".bin") {
+            } else if manifest.maps.iter().any(|p| p == path)
+                || path.starts_with("map/") && path.ends_with(".bin")
+            {
                 Ok("map")
             } else if manifest.music.iter().any(|p| p == path) || path.ends_with(".song.json") {
                 Ok("music")
@@ -328,7 +384,12 @@ fn rel_exists(root: &Path, rel: &str) -> bool {
     resolve(root, rel).map(|p| p.is_file()).unwrap_or(false)
 }
 
-fn resource_entries(root: &Path, paths: &[String], kind: &str, bindings: &BTreeMap<String, String>) -> Vec<Value> {
+fn resource_entries(
+    root: &Path,
+    paths: &[String],
+    kind: &str,
+    bindings: &BTreeMap<String, String>,
+) -> Vec<Value> {
     paths
         .iter()
         .map(|path| {
@@ -358,14 +419,39 @@ fn resource_entries(root: &Path, paths: &[String], kind: &str, bindings: &BTreeM
 
 fn resource_summary(root: &Path, manifest: &project::ProjectManifest) -> Value {
     let mut all = Vec::new();
-    all.extend(resource_entries(root, &manifest.sources, "source", &manifest.map_chr));
-    all.extend(resource_entries(root, &manifest.chr, "chr", &manifest.map_chr));
-    all.extend(resource_entries(root, &manifest.maps, "map", &manifest.map_chr));
-    all.extend(resource_entries(root, &manifest.music, "music", &manifest.map_chr));
+    all.extend(resource_entries(
+        root,
+        &manifest.sources,
+        "source",
+        &manifest.map_chr,
+    ));
+    all.extend(resource_entries(
+        root,
+        &manifest.chr,
+        "chr",
+        &manifest.map_chr,
+    ));
+    all.extend(resource_entries(
+        root,
+        &manifest.maps,
+        "map",
+        &manifest.map_chr,
+    ));
+    all.extend(resource_entries(
+        root,
+        &manifest.music,
+        "music",
+        &manifest.map_chr,
+    ));
 
     let missing: Vec<Value> = all
         .iter()
-        .filter(|entry| !entry.get("exists").and_then(|v| v.as_bool()).unwrap_or(false))
+        .filter(|entry| {
+            !entry
+                .get("exists")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false)
+        })
         .cloned()
         .collect();
     let unbound_maps: Vec<String> = manifest
@@ -405,7 +491,11 @@ fn resource_summary(root: &Path, manifest: &project::ProjectManifest) -> Value {
     })
 }
 
-fn build_summary(root: Option<&Path>, manifest: Option<&project::ProjectManifest>, last: Option<BuildResult>) -> Value {
+fn build_summary(
+    root: Option<&Path>,
+    manifest: Option<&project::ProjectManifest>,
+    last: Option<BuildResult>,
+) -> Value {
     let output = last
         .as_ref()
         .and_then(|r| r.output.clone())
@@ -457,7 +547,11 @@ fn ide_state(app: &AppHandle) -> Result<Value, String> {
         .as_ref()
         .zip(manifest.as_ref())
         .map(|(r, m)| resource_summary(r, m));
-    let build = build_summary(root.as_deref(), manifest.as_ref(), build_state(app).last_result());
+    let build = build_summary(
+        root.as_deref(),
+        manifest.as_ref(),
+        build_state(app).last_result(),
+    );
     let ready = json!({
         "has_project": root.is_some(),
         "has_sources": manifest.as_ref().is_some_and(|m| !m.sources.is_empty()),
@@ -479,7 +573,10 @@ fn ide_state(app: &AppHandle) -> Result<Value, String> {
 fn new_project(app: &AppHandle, args: &Value) -> Result<Value, String> {
     let dir = PathBuf::from(arg_str(args, "dir")?);
     let name = arg_str(args, "name")?;
-    let template = args.get("template").and_then(|v| v.as_str()).unwrap_or("demo");
+    let template = args
+        .get("template")
+        .and_then(|v| v.as_str())
+        .unwrap_or("demo");
     let manifest = project::create_from_template(&dir, name, template)?;
     project_state(app).set_active_root(dir.clone());
     emit_refresh(
@@ -553,15 +650,21 @@ fn write_file(app: &AppHandle, args: &Value) -> Result<Value, String> {
         &changed,
         json!({"path": path, "registered": registered, "resource": resource_kind}),
     );
-    Ok(json!({"path": path, "bytes": content.len(), "registered": registered, "resource": resource_kind}))
+    Ok(
+        json!({"path": path, "bytes": content.len(), "registered": registered, "resource": resource_kind}),
+    )
 }
 
 fn read_chr(app: &AppHandle, args: &Value) -> Result<Value, String> {
     let root = active_root(app)?;
     let path = arg_str(args, "path")?;
-    let bytes = std::fs::read(resolve(&root, path)?).map_err(|e| format!("读取 {path} 失败: {e}"))?;
+    let bytes =
+        std::fs::read(resolve(&root, path)?).map_err(|e| format!("读取 {path} 失败: {e}"))?;
     if bytes.len() % 16 != 0 {
-        return Err(format!("{path} 长度 {} 不是 16 的倍数,不是合法 CHR", bytes.len()));
+        return Err(format!(
+            "{path} 长度 {} 不是 16 的倍数,不是合法 CHR",
+            bytes.len()
+        ));
     }
     let pixels = decode_sheet(&bytes);
     Ok(json!({"path": path, "tiles": bytes.len() / 16, "pixels": pixels}))
@@ -570,8 +673,14 @@ fn read_chr(app: &AppHandle, args: &Value) -> Result<Value, String> {
 fn write_chr(app: &AppHandle, args: &Value) -> Result<Value, String> {
     let root = active_root(app)?;
     let path = arg_str(args, "path")?;
-    let pixels_value = args.get("pixels").and_then(|v| v.as_array()).ok_or("pixels 必须是数组")?;
-    let pixels: Vec<u8> = pixels_value.iter().map(|v| v.as_u64().unwrap_or(0) as u8 & 3).collect();
+    let pixels_value = args
+        .get("pixels")
+        .and_then(|v| v.as_array())
+        .ok_or("pixels 必须是数组")?;
+    let pixels: Vec<u8> = pixels_value
+        .iter()
+        .map(|v| v.as_u64().unwrap_or(0) as u8 & 3)
+        .collect();
     if pixels.len() % 64 != 0 {
         return Err(format!("像素数 {} 不是 64 的倍数", pixels.len()));
     }
@@ -585,14 +694,65 @@ fn write_chr(app: &AppHandle, args: &Value) -> Result<Value, String> {
         manifest.chr.push(path.to_string());
         project::save_manifest(&root, &manifest)?;
     }
-    emit_refresh(app, "chr-write", &["tree", "manifest", "chr"], json!({"path": path}));
+    emit_refresh(
+        app,
+        "chr-write",
+        &["tree", "manifest", "chr"],
+        json!({"path": path}),
+    );
     Ok(json!({"path": path, "tiles": pixels.len() / 64}))
+}
+
+fn patch_chr_tile(app: &AppHandle, args: &Value) -> Result<Value, String> {
+    let root = active_root(app)?;
+    let path = arg_str(args, "path")?;
+    let tile = arg_required_u64(args, "tile")? as usize;
+    let tile_pixels_value = arg_array(args, "pixels")?;
+    if tile_pixels_value.len() != CHR_TILE_PIXELS {
+        return Err(format!(
+            "pixels 必须正好 64 个,实 {}",
+            tile_pixels_value.len()
+        ));
+    }
+    let tile_pixels: Vec<u8> = tile_pixels_value
+        .iter()
+        .map(|v| v.as_u64().unwrap_or(0) as u8 & 3)
+        .collect();
+    let dst = resolve(&root, path)?;
+    let bytes = std::fs::read(&dst).map_err(|e| format!("读取 {path} 失败: {e}"))?;
+    if bytes.len() % 16 != 0 {
+        return Err(format!(
+            "{path} 长度 {} 不是 16 的倍数,不是合法 CHR",
+            bytes.len()
+        ));
+    }
+    let mut pixels = decode_sheet(&bytes);
+    let tiles = pixels.len() / CHR_TILE_PIXELS;
+    if tile >= tiles {
+        return Err(format!("tile {tile} 越界,图块数 {tiles}"));
+    }
+    let start = tile * CHR_TILE_PIXELS;
+    pixels[start..start + CHR_TILE_PIXELS].copy_from_slice(&tile_pixels);
+    std::fs::write(&dst, encode_sheet(&pixels)).map_err(|e| format!("写入 {path} 失败: {e}"))?;
+    let mut manifest = project::load_manifest(&root)?;
+    if !manifest.chr.contains(&path.to_string()) {
+        manifest.chr.push(path.to_string());
+        project::save_manifest(&root, &manifest)?;
+    }
+    emit_refresh(
+        app,
+        "chr-patch",
+        &["tree", "manifest", "chr", "resource"],
+        json!({"root": root.to_string_lossy(), "path": path, "kind": "chr", "tile": tile}),
+    );
+    Ok(json!({"path": path, "tile": tile, "tiles": tiles}))
 }
 
 fn read_map(app: &AppHandle, args: &Value) -> Result<Value, String> {
     let root = active_root(app)?;
     let path = arg_str(args, "path")?;
-    let bytes = std::fs::read(resolve(&root, path)?).map_err(|e| format!("读取 {path} 失败: {e}"))?;
+    let bytes =
+        std::fs::read(resolve(&root, path)?).map_err(|e| format!("读取 {path} 失败: {e}"))?;
     let map = MapData::decode(&bytes)?;
     Ok(json!({"path": path, "map": map}))
 }
@@ -601,7 +761,8 @@ fn write_map(app: &AppHandle, args: &Value) -> Result<Value, String> {
     let root = active_root(app)?;
     let path = arg_str(args, "path")?;
     let map_value = args.get("map").cloned().ok_or("缺少 map")?;
-    let map: MapData = serde_json::from_value(map_value).map_err(|e| format!("解析 map 失败: {e}"))?;
+    let map: MapData =
+        serde_json::from_value(map_value).map_err(|e| format!("解析 map 失败: {e}"))?;
     map.validate()?;
     let dst = resolve(&root, path)?;
     if let Some(parent) = dst.parent() {
@@ -613,8 +774,119 @@ fn write_map(app: &AppHandle, args: &Value) -> Result<Value, String> {
         manifest.maps.push(path.to_string());
         project::save_manifest(&root, &manifest)?;
     }
-    emit_refresh(app, "map-write", &["tree", "manifest", "map"], json!({"path": path}));
+    emit_refresh(
+        app,
+        "map-write",
+        &["tree", "manifest", "map"],
+        json!({"path": path}),
+    );
     Ok(json!({"path": path, "w": map.w, "h": map.h}))
+}
+
+fn attr_index(map: &MapData, x: u32, y: u32) -> usize {
+    let aw = (map.w + 1) / 2;
+    ((y / 2) * aw + (x / 2)) as usize
+}
+
+fn patch_map_cells(app: &AppHandle, args: &Value) -> Result<Value, String> {
+    let root = active_root(app)?;
+    let path = arg_str(args, "path")?;
+    let layer = args
+        .get("layer")
+        .and_then(|v| v.as_str())
+        .unwrap_or("tiles");
+    if !matches!(layer, "tiles" | "attr" | "collision") {
+        return Err(format!("未知地图层 {layer}"));
+    }
+    let cells = arg_array(args, "cells")?;
+    if cells.is_empty() {
+        return Err("cells 不能为空".into());
+    }
+    let dst = resolve(&root, path)?;
+    let bytes = std::fs::read(&dst).map_err(|e| format!("读取 {path} 失败: {e}"))?;
+    let mut map = MapData::decode(&bytes)?;
+    let mut changed = 0usize;
+    let mut first: Option<(u32, u32)> = None;
+    for cell in cells {
+        let x = cell
+            .get("x")
+            .and_then(|v| v.as_u64())
+            .ok_or("cell.x 必须是整数")? as u32;
+        let y = cell
+            .get("y")
+            .and_then(|v| v.as_u64())
+            .ok_or("cell.y 必须是整数")? as u32;
+        let value = cell
+            .get("value")
+            .and_then(|v| v.as_i64())
+            .ok_or("cell.value 必须是整数")?;
+        if x >= map.w || y >= map.h {
+            return Err(format!("地图格 {x},{y} 越界,尺寸 {}x{}", map.w, map.h));
+        }
+        if first.is_none() {
+            first = Some((x, y));
+        }
+        let did_change = match layer {
+            "tiles" => {
+                let idx = (y * map.w + x) as usize;
+                let next = value.rem_euclid(256) as u8;
+                if map.tiles[idx] == next {
+                    false
+                } else {
+                    map.tiles[idx] = next;
+                    true
+                }
+            }
+            "attr" => {
+                let idx = attr_index(&map, x, y);
+                let next = (value as u8) & 3;
+                if map.attrs[idx] == next {
+                    false
+                } else {
+                    map.attrs[idx] = next;
+                    true
+                }
+            }
+            "collision" => {
+                let idx = (y * map.w + x) as usize;
+                let next = if value == 0 { 0 } else { 1 };
+                if map.collision[idx] == next {
+                    false
+                } else {
+                    map.collision[idx] = next;
+                    true
+                }
+            }
+            _ => false,
+        };
+        if did_change {
+            changed += 1;
+        }
+    }
+    map.validate()?;
+    std::fs::write(&dst, map.encode()).map_err(|e| format!("写入 {path} 失败: {e}"))?;
+    let mut manifest = project::load_manifest(&root)?;
+    if !manifest.maps.contains(&path.to_string()) {
+        manifest.maps.push(path.to_string());
+        project::save_manifest(&root, &manifest)?;
+    }
+    let (focus_x, focus_y) = first.unwrap_or((0, 0));
+    emit_refresh(
+        app,
+        "map-patch",
+        &["tree", "manifest", "map", "resource"],
+        json!({
+            "root": root.to_string_lossy(),
+            "path": path,
+            "kind": "map",
+            "x": focus_x,
+            "y": focus_y,
+            "layer": layer,
+        }),
+    );
+    Ok(
+        json!({"path": path, "layer": layer, "changed": changed, "cells": cells.len(), "x": focus_x, "y": focus_y, "w": map.w, "h": map.h}),
+    )
 }
 
 fn bind_map_chr(app: &AppHandle, args: &Value) -> Result<Value, String> {
@@ -646,7 +918,8 @@ fn write_song(app: &AppHandle, args: &Value) -> Result<Value, String> {
     let root = active_root(app)?;
     let path = arg_str(args, "path")?;
     let song_value = args.get("song").cloned().ok_or("缺少 song")?;
-    let song: Song = serde_json::from_value(song_value).map_err(|e| format!("解析 song 失败: {e}"))?;
+    let song: Song =
+        serde_json::from_value(song_value).map_err(|e| format!("解析 song 失败: {e}"))?;
     let dst = resolve(&root, path)?;
     if let Some(parent) = dst.parent() {
         std::fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {e}"))?;
@@ -658,7 +931,12 @@ fn write_song(app: &AppHandle, args: &Value) -> Result<Value, String> {
         manifest.music.push(path.to_string());
         project::save_manifest(&root, &manifest)?;
     }
-    emit_refresh(app, "song-write", &["tree", "manifest", "music"], json!({"path": path}));
+    emit_refresh(
+        app,
+        "song-write",
+        &["tree", "manifest", "music"],
+        json!({"path": path}),
+    );
     Ok(json!({
         "path": path,
         "name": song.name,
@@ -715,7 +993,9 @@ fn focus_resource(app: &AppHandle, args: &Value) -> Result<Value, String> {
         "layer": layer,
     });
     emit_refresh(app, "resource-focus", &["project", "resource"], extra);
-    Ok(json!({"path": path, "kind": kind, "line": line, "tile": tile, "x": x, "y": y, "layer": layer}))
+    Ok(
+        json!({"path": path, "kind": kind, "line": line, "tile": tile, "x": x, "y": y, "layer": layer}),
+    )
 }
 
 fn build_project(app: &AppHandle) -> Result<Value, String> {
@@ -734,14 +1014,24 @@ fn build_project(app: &AppHandle) -> Result<Value, String> {
 
 fn run_project(app: &AppHandle, args: &Value) -> Result<Value, String> {
     let root = active_root(app)?;
-    let build_first = args.get("build_first").and_then(|v| v.as_bool()).unwrap_or(true);
+    let build_first = args
+        .get("build_first")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
     let build_output: Option<String> = if build_first {
         let result = build_project(app)?;
         let build = &result["result"];
-        if !build.get("success").and_then(|v| v.as_bool()).unwrap_or(false) {
+        if !build
+            .get("success")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+        {
             return Err("构建失败,未运行 ROM".into());
         }
-        build.get("output").and_then(|v| v.as_str()).map(str::to_string)
+        build
+            .get("output")
+            .and_then(|v| v.as_str())
+            .map(str::to_string)
     } else {
         None
     };
@@ -759,7 +1049,10 @@ fn run_project(app: &AppHandle, args: &Value) -> Result<Value, String> {
 }
 
 fn button_bits(args: &Value) -> Result<u8, String> {
-    let names = args.get("buttons").and_then(|v| v.as_array()).ok_or("buttons 必须是数组")?;
+    let names = args
+        .get("buttons")
+        .and_then(|v| v.as_array())
+        .ok_or("buttons 必须是数组")?;
     let mut bits = 0u8;
     for name in names {
         let label = name.as_str().unwrap_or("");
@@ -781,7 +1074,12 @@ fn press_buttons(app: &AppHandle, args: &Value) -> Result<Value, String> {
         std::thread::sleep(std::time::Duration::from_secs_f64(frames as f64 / 60.0));
         emu.set_controller_for_ide(port, 0);
     }
-    emit_refresh(app, "preview-input", &["preview"], json!({"port": port, "bits": bits, "frames": frames}));
+    emit_refresh(
+        app,
+        "preview-input",
+        &["preview"],
+        json!({"port": port, "bits": bits, "frames": frames}),
+    );
     Ok(json!({"port": port, "bits": bits, "frames": frames}))
 }
 
