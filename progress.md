@@ -1258,3 +1258,13 @@
   - `git diff --check`: PASS.
   - `cargo test -p fc-core`: PASS, 249/249.
   - `cargo test`: PASS, workspace tests.
+
+### Mapper Facade Split
+- Split the public mapper facade in `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs` by moving the `MapperOps` trait and `ChrAccess` enum into `/Users/sunmeng/workspace/fc/fc-core/src/mapper/ops.rs`, and the serialized `Mapper` enum into `/Users/sunmeng/workspace/fc/fc-core/src/mapper/kind.rs`.
+- Kept all public re-exports unchanged so existing `crate::mapper::MapperOps`, `crate::mapper::ChrAccess`, and `crate::mapper::Mapper` call sites keep compiling without behavior changes.
+- Verification:
+  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 67/67.
+  - `cargo test -p fc-core mapper::tests::behavior::long_tail_latch_multicarts_265_277_280_283_follow_reference_banking -- --nocapture`: PASS, 1/1.
+  - `cargo test -p fc-core mapper::tests::capability -- --nocapture`: PASS, 3/3.
+  - `cargo fmt --check`: PASS.
+  - `cargo test`: PASS, workspace tests.
