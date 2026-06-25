@@ -1427,6 +1427,311 @@ impl MapperOps for Mapper237 {
 }
 
 // ============================================================================
+// Mapper 265 — BMC-T-262 latch multicart
+//
+// References:
+// - FCEUmm `src/boards/265.c`
+// - Mesen2 `Core/NES/Mappers/Unlicensed/T262.h`
+// - Nestopia `source/core/board/NstBoardBmcT262.cpp`
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Mapper265 {
+    latch_addr: u16,
+    latch_data: u8,
+}
+
+impl Mapper265 {
+    pub(in crate::mapper) fn new() -> Self {
+        Mapper265 {
+            latch_addr: 0,
+            latch_data: 0,
+        }
+    }
+
+    fn bank(&self) -> usize {
+        (((self.latch_addr >> 3) & 0x60)
+            | ((self.latch_addr >> 2) & 0x18)
+            | ((self.latch_data as u16) & 0x07)) as usize
+    }
+}
+
+impl MapperOps for Mapper265 {
+    fn prg_index(&self, addr: u16) -> usize {
+        let bank = self.bank();
+        if self.latch_addr & 0x80 != 0 {
+            if bank == 0 {
+                (addr as usize) & 0x7FFF
+            } else {
+                bank * 0x4000 + (addr as usize & 0x3FFF)
+            }
+        } else {
+            let bank = if addr < 0xC000 { bank } else { bank | 0x07 };
+            bank * 0x4000 + (addr as usize & 0x3FFF)
+        }
+    }
+
+    fn chr_index(&self, addr: u16) -> usize {
+        addr as usize & 0x1FFF
+    }
+
+    fn write_register(&mut self, addr: u16, value: u8) {
+        if self.latch_addr & 0x2000 == 0 {
+            self.latch_addr = addr;
+        }
+        self.latch_data = value;
+    }
+
+    fn mirroring(&self) -> Mirroring {
+        if self.latch_addr & 0x02 != 0 {
+            Mirroring::Horizontal
+        } else {
+            Mirroring::Vertical
+        }
+    }
+
+    fn reset(&mut self, _soft: bool) {
+        self.latch_addr = 0;
+        self.latch_data = 0;
+    }
+}
+
+// ============================================================================
+// Mapper 277 — BMC 3-in-1 / latch-data multicart
+//
+// Reference:
+// - FCEUmm `src/boards/277.c`
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Mapper277 {
+    latch_data: u8,
+    header_mirroring: Mirroring,
+}
+
+impl Mapper277 {
+    pub(in crate::mapper) fn new(mirroring: Mirroring) -> Self {
+        Mapper277 {
+            latch_data: 0x08,
+            header_mirroring: mirroring,
+        }
+    }
+
+    fn prg16_bank(&self, addr: u16) -> usize {
+        let data = self.latch_data as usize;
+        if self.latch_data & 0x01 == 0 && self.latch_data & 0x08 != 0 {
+            (data & !1) | usize::from(addr >= 0xC000)
+        } else if self.latch_data & 0x08 != 0 {
+            data
+        } else if addr < 0xC000 {
+            data
+        } else {
+            data | 0x07
+        }
+    }
+}
+
+impl MapperOps for Mapper277 {
+    fn prg_index(&self, addr: u16) -> usize {
+        self.prg16_bank(addr) * 0x4000 + (addr as usize & 0x3FFF)
+    }
+
+    fn chr_index(&self, addr: u16) -> usize {
+        addr as usize & 0x1FFF
+    }
+
+    fn write_register(&mut self, _addr: u16, value: u8) {
+        if self.latch_data & 0x20 == 0 {
+            self.latch_data = value;
+        }
+    }
+
+    fn mirroring(&self) -> Mirroring {
+        if self.latch_data & 0x08 != 0 {
+            if self.latch_data & 0x10 != 0 {
+                Mirroring::Horizontal
+            } else {
+                Mirroring::Vertical
+            }
+        } else {
+            self.header_mirroring
+        }
+    }
+
+    fn reset(&mut self, _soft: bool) {
+        self.latch_data = 0x08;
+    }
+}
+
+// ============================================================================
+// Mapper 280 — BMC-WS latch multicart
+//
+// Reference:
+// - FCEUmm `src/boards/280.c`
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Mapper280 {
+    latch_addr: u16,
+    latch_data: u8,
+    mode: u8,
+    submapper: u8,
+    prg_16k: usize,
+}
+
+impl Mapper280 {
+    pub(in crate::mapper) fn new(prg_16k: usize, submapper: u8) -> Self {
+        Mapper280 {
+            latch_addr: 0,
+            latch_data: 0,
+            mode: 0,
+            submapper,
+            prg_16k: prg_16k.max(1),
+        }
+    }
+
+    fn mode0_bank(&self, addr: u16) -> usize {
+        if self.latch_addr & 0x01 != 0 {
+            let bank32 = ((self.latch_addr >> 3) & 0x0F) as usize;
+            (bank32 << 1) | usize::from(addr >= 0xC000)
+        } else {
+            let mut bank = ((self.latch_addr >> 2) & 0x1F) as usize;
+            if addr >= 0xC000 && self.latch_addr & 0x80 == 0 {
+                bank = 0;
+            }
+            bank
+        }
+    }
+
+    fn mode1_bank(&self, addr: u16) -> usize {
+        if addr < 0xC000 {
+            if self.submapper == 1 {
+                (((self.latch_addr >> 2) & 0x07) | 0x20) as usize
+            } else {
+                0x20 | ((self.latch_data & 0x07) as usize)
+            }
+        } else {
+            0x27
+        }
+    }
+}
+
+impl MapperOps for Mapper280 {
+    fn prg_index(&self, addr: u16) -> usize {
+        let bank = if self.mode & 1 != 0 {
+            self.mode1_bank(addr)
+        } else {
+            self.mode0_bank(addr)
+        };
+        bank * 0x4000 + (addr as usize & 0x3FFF)
+    }
+
+    fn chr_index(&self, addr: u16) -> usize {
+        addr as usize & 0x1FFF
+    }
+
+    fn chr_write(&mut self, _addr: u16, _value: u8) -> bool {
+        self.mode & 1 == 0 && self.latch_addr & 0x80 != 0
+    }
+
+    fn write_register(&mut self, addr: u16, value: u8) {
+        self.latch_addr = addr;
+        self.latch_data = value;
+    }
+
+    fn mirroring(&self) -> Mirroring {
+        if self.mode & 1 != 0 {
+            Mirroring::Vertical
+        } else if self.latch_addr & 0x02 != 0 {
+            Mirroring::Horizontal
+        } else {
+            Mirroring::Vertical
+        }
+    }
+
+    fn reset(&mut self, _soft: bool) {
+        if self.prg_16k > 32 {
+            self.mode ^= 1;
+        }
+        self.latch_addr = 0;
+        self.latch_data = 0;
+    }
+}
+
+// ============================================================================
+// Mapper 283 — BMC-GS-2004 low PRG-ROM + PRG32 latch
+//
+// References:
+// - FCEUmm `src/boards/283.c`
+// - Mesen2 `Core/NES/Mappers/Unlicensed/Gs2004.h`
+// - Nestopia `source/core/board/NstBoardRcm.cpp`
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Mapper283 {
+    prg_16k: usize,
+    reg: u8,
+    mirroring: Mirroring,
+}
+
+impl Mapper283 {
+    pub(in crate::mapper) fn new(prg_16k: usize, mirroring: Mirroring) -> Self {
+        let prg_16k = prg_16k.max(1);
+        Mapper283 {
+            prg_16k,
+            reg: Self::last_prg32(prg_16k),
+            mirroring,
+        }
+    }
+
+    fn low_bank8(&self) -> usize {
+        if self.prg_16k == 17 {
+            32
+        } else {
+            31
+        }
+    }
+
+    fn last_prg32(prg_16k: usize) -> u8 {
+        ((prg_16k / 2).saturating_sub(1).min(u8::MAX as usize)) as u8
+    }
+}
+
+impl MapperOps for Mapper283 {
+    fn prg_index(&self, addr: u16) -> usize {
+        (self.reg as usize) * 0x8000 + (addr as usize & 0x7FFF)
+    }
+
+    fn chr_index(&self, addr: u16) -> usize {
+        addr as usize & 0x1FFF
+    }
+
+    fn write_register(&mut self, _addr: u16, value: u8) {
+        self.reg = value;
+    }
+
+    fn low_prg_index(&self, addr: u16) -> Option<usize> {
+        Some(self.low_bank8() * 0x2000 + (addr as usize & 0x1FFF))
+    }
+
+    fn low_prg_ram_read_enabled(&self, _addr: u16) -> bool {
+        false
+    }
+
+    fn low_prg_ram_write_enabled(&self, _addr: u16) -> bool {
+        false
+    }
+
+    fn mirroring(&self) -> Mirroring {
+        self.mirroring
+    }
+
+    fn reset(&mut self, _soft: bool) {
+        self.reg = Self::last_prg32(self.prg_16k);
+    }
+}
+
+// ============================================================================
 // Mapper 301 — BMC 8157-style latch multicart
 //
 // Reference:
@@ -1685,6 +1990,110 @@ impl MapperOps for Mapper343 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mapper265_uses_t262_address_latch_and_lock() {
+        let mut mapper = Mapper265::new();
+
+        mapper.write_register(0x8082, 0x00);
+        assert_eq!(mapper.prg_index(0x8004), 0x0004);
+        assert_eq!(mapper.prg_index(0xC004), 0x4004);
+        assert_eq!(mapper.mirroring(), Mirroring::Horizontal);
+
+        mapper.write_register(0x8082, 0x05);
+        assert_eq!(mapper.prg_index(0x8004), 5 * 0x4000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 5 * 0x4000 + 4);
+
+        mapper.write_register(0xA102, 0x06);
+        assert_eq!(mapper.prg_index(0x8004), 0x26 * 0x4000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 0x27 * 0x4000 + 4);
+        mapper.write_register(0x8122, 0x03);
+        assert_eq!(mapper.prg_index(0x8004), 0x23 * 0x4000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 0x27 * 0x4000 + 4);
+
+        mapper.reset(true);
+        mapper.write_register(0xA102, 0x06);
+        assert_eq!(mapper.prg_index(0x8004), 0x26 * 0x4000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 0x27 * 0x4000 + 4);
+        mapper.write_register(0x8122, 0x03);
+        assert_eq!(mapper.prg_index(0x8004), 0x23 * 0x4000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 0x27 * 0x4000 + 4);
+    }
+
+    #[test]
+    fn mapper277_resets_to_nrom_pair_and_can_lock_writes() {
+        let mut mapper = Mapper277::new(Mirroring::Horizontal);
+
+        assert_eq!(mapper.prg_index(0x8004), 8 * 0x4000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 9 * 0x4000 + 4);
+        assert_eq!(mapper.mirroring(), Mirroring::Vertical);
+
+        mapper.write_register(0x8000, 0x1B);
+        assert_eq!(mapper.prg_index(0x8004), 0x1B * 0x4000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 0x1B * 0x4000 + 4);
+        assert_eq!(mapper.mirroring(), Mirroring::Horizontal);
+
+        mapper.write_register(0x8000, 0x06);
+        assert_eq!(mapper.prg_index(0x8004), 6 * 0x4000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 7 * 0x4000 + 4);
+        assert_eq!(mapper.mirroring(), Mirroring::Horizontal);
+
+        mapper.write_register(0x8000, 0x25);
+        assert_eq!(mapper.prg_index(0x8004), 0x25 * 0x4000 + 4);
+        mapper.write_register(0x8000, 0x02);
+        assert_eq!(mapper.prg_index(0x8004), 0x25 * 0x4000 + 4);
+        mapper.reset(true);
+        assert_eq!(mapper.prg_index(0x8004), 8 * 0x4000 + 4);
+    }
+
+    #[test]
+    fn mapper280_toggles_reset_mode_and_controls_chr_write_gate() {
+        let mut mapper = Mapper280::new(64, 0);
+
+        mapper.write_register(0x8083, 0x05);
+        assert_eq!(mapper.prg_index(0x8004), 0x0004);
+        assert_eq!(mapper.prg_index(0xC004), 0x4000 + 4);
+        assert_eq!(mapper.mirroring(), Mirroring::Horizontal);
+        assert!(mapper.chr_write(0x0010, 0x12));
+
+        mapper.write_register(0x8000, 0);
+        assert_eq!(mapper.prg_index(0x8004), 0x0004);
+        assert_eq!(mapper.prg_index(0xC004), 0x0004);
+        assert!(!mapper.chr_write(0x0010, 0x12));
+
+        mapper.reset(true);
+        assert_eq!(mapper.prg_index(0x8004), 0x20 * 0x4000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 0x27 * 0x4000 + 4);
+        assert_eq!(mapper.mirroring(), Mirroring::Vertical);
+
+        mapper.write_register(0x8000, 0x06);
+        assert_eq!(mapper.prg_index(0x8004), 0x26 * 0x4000 + 4);
+
+        let mut sub1 = Mapper280::new(64, 1);
+        sub1.reset(true);
+        sub1.write_register(0x801C, 0x01);
+        assert_eq!(sub1.prg_index(0x8004), 0x27 * 0x4000 + 4);
+    }
+
+    #[test]
+    fn mapper283_maps_low_prg_rom_and_high_prg32_latch() {
+        let mut mapper = Mapper283::new(16, Mirroring::Horizontal);
+
+        assert_eq!(mapper.low_prg_index(0x6004), Some(31 * 0x2000 + 4));
+        assert!(!mapper.low_prg_ram_read_enabled(0x6004));
+        assert!(!mapper.low_prg_ram_write_enabled(0x6004));
+        assert_eq!(mapper.prg_index(0x8004), 7 * 0x8000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 7 * 0x8000 + 0x4004);
+        assert_eq!(mapper.mirroring(), Mirroring::Horizontal);
+
+        mapper.write_register(0x8000, 3);
+        assert_eq!(mapper.prg_index(0x8004), 3 * 0x8000 + 4);
+        mapper.reset(true);
+        assert_eq!(mapper.prg_index(0x8004), 7 * 0x8000 + 4);
+
+        let odd_prg = Mapper283::new(17, Mirroring::Vertical);
+        assert_eq!(odd_prg.low_prg_index(0x6004), Some(32 * 0x2000 + 4));
+    }
 
     #[test]
     fn mapper228_decodes_action_enterprises_address_and_nibble_ram() {

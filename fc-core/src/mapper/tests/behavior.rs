@@ -119,6 +119,40 @@ fn mapper51_switches_multicart_bank_mode_and_low_prg_rom() {
 }
 
 #[test]
+fn long_tail_latch_multicarts_265_277_280_283_follow_reference_banking() {
+    let mut m265 = Mapper::new(265, 128, 0, Mirroring::Vertical, 0).expect("mapper 265");
+    m265.write_register(0xA102, 0x06);
+    assert_eq!(m265.prg_index(0x8004), 0x26 * 0x4000 + 4);
+    assert_eq!(m265.prg_index(0xC004), 0x27 * 0x4000 + 4);
+    m265.write_register(0x8122, 0x03);
+    assert_eq!(m265.prg_index(0x8004), 0x23 * 0x4000 + 4);
+    assert_eq!(m265.prg_index(0xC004), 0x27 * 0x4000 + 4);
+
+    let mut m277 = Mapper::new(277, 64, 0, Mirroring::Horizontal, 0).expect("mapper 277");
+    assert_eq!(m277.prg_index(0x8004), 8 * 0x4000 + 4);
+    assert_eq!(m277.prg_index(0xC004), 9 * 0x4000 + 4);
+    m277.write_register(0x8000, 0x06);
+    assert_eq!(m277.prg_index(0xC004), 7 * 0x4000 + 4);
+    assert_eq!(m277.mirroring(), Mirroring::Horizontal);
+    m277.write_register(0x8000, 0x25);
+    m277.write_register(0x8000, 0x02);
+    assert_eq!(m277.prg_index(0x8004), 0x25 * 0x4000 + 4);
+
+    let mut m280 = Mapper::new(280, 64, 0, Mirroring::Vertical, 1).expect("mapper 280");
+    m280.reset(true);
+    m280.write_register(0x801C, 0x01);
+    assert_eq!(m280.prg_index(0x8004), 0x27 * 0x4000 + 4);
+    assert_eq!(m280.prg_index(0xC004), 0x27 * 0x4000 + 4);
+    assert_eq!(m280.mirroring(), Mirroring::Vertical);
+
+    let mut m283 = Mapper::new(283, 16, 0, Mirroring::Vertical, 0).expect("mapper 283");
+    assert_eq!(m283.low_prg_index(0x6004), Some(31 * 0x2000 + 4));
+    assert_eq!(m283.prg_index(0x8004), 7 * 0x8000 + 4);
+    m283.write_register(0x8000, 3);
+    assert_eq!(m283.prg_index(0xC004), 3 * 0x8000 + 0x4004);
+}
+
+#[test]
 fn long_tail_latch_multicarts_301_340_341_343_follow_reference_banking() {
     let mut m301 = Mapper::new(301, 128, 0, Mirroring::Vertical, 0).expect("mapper 301");
     m301.write_register(0x8000, 0x05);

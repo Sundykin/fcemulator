@@ -1243,3 +1243,18 @@
   - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 138/138 mapper tests.
   - `cargo test -p fc-core`: PASS, 180/180 fc-core tests.
   - `cargo test`: PASS, workspace tests.
+
+### Mapper 265 / 277 / 280 / 283 Long-tail Latch Batch
+- Implemented mapper 265 / BMC-T-262 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/multicart.rs`: address/data latch, bit13 write lock, PRG16 fixed-high/same-bank modes, FCEUmm bank0 NROM32 compatibility branch, CHR8 fixed 0, mirroring from address bit1, and reset clear.
+- Implemented mapper 277 in `multicart.rs`: latch-data PRG mode matrix, reset default `0x08`, bit5 write lock, CHR8 fixed 0, mapper-controlled mirroring when bit3 is set, and header-mirroring fallback when bit3 is clear.
+- Implemented mapper 280 in `multicart.rs`: latch address/data, reset mode toggle for PRG sizes above 32 x 16KB, mode/submapper-dependent PRG banking, fixed vertical mirroring in mode 1, and CHR-RAM write-protect gate.
+- Implemented mapper 283 / BMC-GS-2004 in `multicart.rs`: `$6000-$7FFF` low PRG-ROM window, high PRG32 latch, CHR8 fixed 0, header mirroring, and reset to the last PRG32 bank following FCEUX/Mesen2/Nestopia.
+- Wired all four through `basic.rs`, `mapper.rs`, `dispatch.rs`, and `factory.rs`; added mapper-local tests plus mapper facade/capability tests.
+- Updated `/Users/sunmeng/workspace/fc/docs/Mapper-适配差距清单.md` and `/Users/sunmeng/workspace/fc/docs/Mapper-适配引用记录.md`; supported mapper count is now 233 and remaining four-reference union gap is 260.
+- Verification:
+  - `cargo test -p fc-core mapper::basic::multicart::tests -- --nocapture`: PASS, 11/11.
+  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 67/67.
+  - `cargo fmt --check`: PASS.
+  - `git diff --check`: PASS.
+  - `cargo test -p fc-core`: PASS, 249/249.
+  - `cargo test`: PASS, workspace tests.
