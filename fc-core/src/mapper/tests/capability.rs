@@ -214,6 +214,8 @@ fn watches_ppu_bus_matches_notify_a12_overrides() {
         (277, false),  // Mapper 277
         (280, false),  // Mapper 280
         (283, false),  // Mapper 283
+        (293, false),  // Mapper 293
+        (294, false),  // Mapper 294
         (301, false),  // Mapper 301
         (340, false),  // Mapper 340
         (341, false),  // Mapper 341
@@ -447,6 +449,8 @@ fn clocks_cpu_matches_cpu_clock_overrides() {
         (277, false),  // Mapper 277
         (280, false),  // Mapper 280
         (283, false),  // Mapper 283
+        (293, false),  // Mapper 293
+        (294, false),  // Mapper 294
         (301, false),  // Mapper 301
         (340, false),  // Mapper 340
         (341, false),  // Mapper 341
@@ -688,6 +692,8 @@ fn clocks_hblank_matches_hblank_clock_overrides() {
         (277, false),
         (280, false),
         (283, false),
+        (293, false),
+        (294, false),
         (301, false),
         (340, false),
         (341, false),

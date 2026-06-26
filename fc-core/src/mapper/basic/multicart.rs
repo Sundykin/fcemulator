@@ -1731,6 +1731,153 @@ impl MapperOps for Mapper283 {
 }
 
 // ============================================================================
+// Mapper 293 — NewStar 12-in-1 / 76-in-1 latch multicart
+//
+// Reference:
+// - FCEUmm `src/boards/293.c`
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Mapper293 {
+    regs: [u8; 2],
+}
+
+impl Mapper293 {
+    pub(in crate::mapper) fn new() -> Self {
+        Mapper293 { regs: [0; 2] }
+    }
+
+    fn mode(&self) -> u8 {
+        ((self.regs[0] >> 2) & 0x02) | ((self.regs[1] >> 6) & 0x01)
+    }
+
+    fn outer_bank(&self) -> usize {
+        (((self.regs[1] as usize) << 5) & 0x20) | (((self.regs[1] as usize) >> 1) & 0x18)
+    }
+
+    fn block(&self) -> usize {
+        (self.regs[0] & 0x07) as usize
+    }
+}
+
+impl MapperOps for Mapper293 {
+    fn prg_index(&self, addr: u16) -> usize {
+        let bank = self.outer_bank();
+        let block = self.block();
+        let bank = match self.mode() {
+            0 => {
+                if addr < 0xC000 {
+                    bank | block
+                } else {
+                    bank | 0x07
+                }
+            }
+            1 => {
+                if addr < 0xC000 {
+                    bank | (block & 0xFE)
+                } else {
+                    bank | 0x07
+                }
+            }
+            2 => bank | block,
+            _ => return ((bank | block) >> 1) * 0x8000 + (addr as usize & 0x7FFF),
+        };
+        bank * 0x4000 + (addr as usize & 0x3FFF)
+    }
+
+    fn chr_index(&self, addr: u16) -> usize {
+        addr as usize & 0x1FFF
+    }
+
+    fn write_register(&mut self, addr: u16, value: u8) {
+        match addr {
+            0x8000..=0x9FFF => self.regs = [value; 2],
+            0xA000..=0xBFFF => self.regs[1] = value,
+            0xC000..=0xDFFF => self.regs[0] = value,
+            _ => {}
+        }
+    }
+
+    fn mirroring(&self) -> Mirroring {
+        if self.regs[1] & 0x80 != 0 {
+            Mirroring::Vertical
+        } else {
+            Mirroring::Horizontal
+        }
+    }
+
+    fn reset(&mut self, _soft: bool) {
+        self.regs = [0; 2];
+    }
+}
+
+// ============================================================================
+// Mapper 294 — latch multicart with split inner/outer bank windows
+//
+// Reference:
+// - FCEUmm `src/boards/294.c`
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Mapper294 {
+    latch: u8,
+}
+
+impl Mapper294 {
+    pub(in crate::mapper) fn new() -> Self {
+        Mapper294 { latch: 0 }
+    }
+
+    fn write_outer(&mut self, addr: u16, value: u8) {
+        if addr & 0x0100 != 0 {
+            self.latch = (self.latch & 0x07) | value.wrapping_shl(3);
+        }
+    }
+}
+
+impl MapperOps for Mapper294 {
+    fn prg_index(&self, addr: u16) -> usize {
+        let bank = if addr < 0xC000 {
+            self.latch
+        } else {
+            self.latch | 0x07
+        };
+        (bank as usize) * 0x4000 + (addr as usize & 0x3FFF)
+    }
+
+    fn chr_index(&self, addr: u16) -> usize {
+        addr as usize & 0x1FFF
+    }
+
+    fn write_register(&mut self, _addr: u16, value: u8) {
+        self.latch = (self.latch & !0x07) | (value & 0x07);
+    }
+
+    fn write_expansion(&mut self, addr: u16, value: u8) {
+        if (0x4020..=0x5FFF).contains(&addr) {
+            self.write_outer(addr, value);
+        }
+    }
+
+    fn write_low_register(&mut self, addr: u16, value: u8) -> bool {
+        self.write_outer(addr, value);
+        true
+    }
+
+    fn mirroring(&self) -> Mirroring {
+        if self.latch & 0x80 != 0 {
+            Mirroring::Horizontal
+        } else {
+            Mirroring::Vertical
+        }
+    }
+
+    fn reset(&mut self, _soft: bool) {
+        self.latch = 0;
+    }
+}
+
+// ============================================================================
 // Mapper 301 — BMC 8157-style latch multicart
 //
 // Reference:
@@ -2092,6 +2239,70 @@ mod tests {
 
         let odd_prg = Mapper283::new(17, Mirroring::Vertical);
         assert_eq!(odd_prg.low_prg_index(0x6004), Some(32 * 0x2000 + 4));
+    }
+
+    #[test]
+    fn mapper293_selects_newstar_modes_and_mirroring() {
+        let mut mapper = Mapper293::new();
+
+        assert_eq!(mapper.prg_index(0x8004), 0x0004);
+        assert_eq!(mapper.prg_index(0xC004), 7 * 0x4000 + 4);
+        assert_eq!(mapper.mirroring(), Mirroring::Horizontal);
+
+        mapper.write_register(0x8000, 0x85);
+        assert_eq!(mapper.prg_index(0x8004), 0x25 * 0x4000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 0x27 * 0x4000 + 4);
+        assert_eq!(mapper.mirroring(), Mirroring::Vertical);
+
+        mapper.write_register(0xC000, 0x05);
+        mapper.write_register(0xA000, 0x40);
+        assert_eq!(mapper.prg_index(0x8004), 4 * 0x4000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 7 * 0x4000 + 4);
+
+        mapper.write_register(0xC000, 0x0B);
+        mapper.write_register(0xA000, 0x00);
+        assert_eq!(mapper.prg_index(0x8004), 3 * 0x4000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 3 * 0x4000 + 4);
+
+        mapper.write_register(0xA000, 0x40);
+        assert_eq!(mapper.prg_index(0x8004), 1 * 0x8000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 1 * 0x8000 + 0x4004);
+        mapper.write_register(0xE000, 0);
+        assert_eq!(mapper.prg_index(0xC004), 1 * 0x8000 + 0x4004);
+
+        mapper.reset(true);
+        assert_eq!(mapper.prg_index(0x8004), 0x0004);
+    }
+
+    #[test]
+    fn mapper294_splits_outer_and_inner_latches() {
+        let mut mapper = Mapper294::new();
+
+        assert_eq!(mapper.prg_index(0x8004), 0x0004);
+        assert_eq!(mapper.prg_index(0xC004), 7 * 0x4000 + 4);
+        assert_eq!(mapper.mirroring(), Mirroring::Vertical);
+
+        mapper.write_register(0x8000, 0x05);
+        assert_eq!(mapper.prg_index(0x8004), 5 * 0x4000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 7 * 0x4000 + 4);
+
+        mapper.write_expansion(0x4020, 0x10);
+        assert_eq!(mapper.prg_index(0x8004), 5 * 0x4000 + 4);
+        mapper.write_expansion(0x4120, 0x10);
+        assert_eq!(mapper.prg_index(0x8004), 0x85 * 0x4000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 0x87 * 0x4000 + 4);
+        assert_eq!(mapper.mirroring(), Mirroring::Horizontal);
+
+        mapper.write_register(0x8000, 0x02);
+        assert_eq!(mapper.prg_index(0x8004), 0x82 * 0x4000 + 4);
+        assert!(mapper.write_low_register(0x6000, 0x04));
+        assert_eq!(mapper.prg_index(0x8004), 0x82 * 0x4000 + 4);
+        assert!(mapper.write_low_register(0x6100, 0x04));
+        assert_eq!(mapper.prg_index(0x8004), 0x22 * 0x4000 + 4);
+        assert_eq!(mapper.mirroring(), Mirroring::Vertical);
+
+        mapper.reset(true);
+        assert_eq!(mapper.prg_index(0x8004), 0x0004);
     }
 
     #[test]

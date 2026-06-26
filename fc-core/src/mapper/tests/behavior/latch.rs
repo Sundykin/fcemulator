@@ -190,6 +190,33 @@ fn long_tail_latch_multicarts_301_340_341_343_follow_reference_banking() {
 }
 
 #[test]
+fn long_tail_latch_multicarts_293_294_follow_reference_banking() {
+    let mut m293 = Mapper::new(293, 128, 0, Mirroring::Vertical, 0).expect("mapper 293");
+    assert_eq!(m293.prg_index(0x8004), 0x0004);
+    assert_eq!(m293.prg_index(0xC004), 7 * 0x4000 + 4);
+    assert_eq!(m293.mirroring(), Mirroring::Horizontal);
+    m293.write_register(0x8000, 0x85);
+    assert_eq!(m293.prg_index(0x8004), 0x25 * 0x4000 + 4);
+    assert_eq!(m293.prg_index(0xC004), 0x27 * 0x4000 + 4);
+    assert_eq!(m293.mirroring(), Mirroring::Vertical);
+    m293.write_register(0xC000, 0x0B);
+    m293.write_register(0xA000, 0x40);
+    assert_eq!(m293.prg_index(0x8004), 1 * 0x8000 + 4);
+    assert_eq!(m293.prg_index(0xC004), 1 * 0x8000 + 0x4004);
+
+    let mut m294 = Mapper::new(294, 256, 0, Mirroring::Vertical, 0).expect("mapper 294");
+    m294.write_register(0x8000, 0x05);
+    assert_eq!(m294.prg_index(0x8004), 5 * 0x4000 + 4);
+    assert_eq!(m294.prg_index(0xC004), 7 * 0x4000 + 4);
+    m294.write_expansion(0x4120, 0x10);
+    assert_eq!(m294.prg_index(0x8004), 0x85 * 0x4000 + 4);
+    assert_eq!(m294.mirroring(), Mirroring::Horizontal);
+    assert!(m294.write_low_register(0x6100, 0x04));
+    assert_eq!(m294.prg_index(0x8004), 0x25 * 0x4000 + 4);
+    assert_eq!(m294.mirroring(), Mirroring::Vertical);
+}
+
+#[test]
 fn mapper81_uses_address_latch_for_prg16_and_data_latch_for_chr8() {
     let mut m81 = Mapper::new(81, 8, 4, Mirroring::Vertical, 0).expect("mapper 81");
     assert_eq!(m81.prg_index(0x8004), 0x0004);

@@ -317,3 +317,6 @@
 - Mapper 249 是 MMC3 security permutation 变体：`$5000` expansion register 只影响 PRG/CHR page number 置换，IRQ、mirroring 和标准 MMC3 register 写路径不变，继续说明 `Mmc3OuterBank` 能承载这类 clone board。
 - `fc-core/src/mapper/mmc3.rs` 的下一步扩展瓶颈已经从公开 facade 转为 MMC3 内部模块边界。将 MMC3 state enum / protection LUT 拆到 `mmc3/state.rs`、构造器拆到 `mmc3/constructors.rs`、行为测试拆到 `mmc3/tests.rs` 后，主文件保留热路径和行为实现，后续新增 MMC3 clone 时可以优先改构造器与 outer/state 定义，不必继续撑大单文件。
 - `MapperOps::write_register()` 现在有默认 no-op：无高区寄存器的板卡不再需要显式空实现，后续机械翻译 mapper 时只需实现真实解码窗口。现有 18 个空实现已删除，行为由 mapper 测试和全量测试覆盖保持不变。
+- Mapper 293 / NewStar 12-in-1/76-in-1 是低风险长尾 latch board：FCEUmm `src/boards/293.c:32-84` 只需要两个 register、高区三段写窗口、UNROM/NROM128/NROM256 PRG 模式、固定 CHR8 和 bit7 mirroring；现有 `write_register()` / `prg_index()` / `mirroring()` / `reset()` 足够表达。
+- Mapper 294 是 split inner/outer latch board：FCEUmm `src/boards/294.c:26-54` 的 `$8000-$FFFF` inner bank 写和 `$4020-$7FFF` outer bank 写可用现有 expansion + low-register hooks 表达。`$6000-$7FFF` handler 覆盖 PRG-RAM 写，因此本项目让 `write_low_register()` 返回 true 且不 fall through，保持参考窗口语义。
+- Mapper 293/294 说明当前 board compatibility layer 已能机械吸收一批纯 latch/multicart 长尾；下一步可继续优先挑 `258/264/266/268/269/270/271/272/273/281/282/285/288/295/297/298/308/310/319/321/326/330/334` 中无需 IRQ、低地址 PRG-ROM 或 register read side effect 的板卡。`267/291` 属 MMC3 outer 变体，适合作为后续 MMC3 batch，而不是和纯 latch batch 混在一起。

@@ -277,6 +277,8 @@ impl Mapper {
             277 => Mapper::Mapper277(Mapper277::new(mirroring)),
             280 => Mapper::Mapper280(Mapper280::new(prg_16k, submapper)),
             283 => Mapper::Mapper283(Mapper283::new(prg_16k, mirroring)),
+            293 => Mapper::Mapper293(Mapper293::new()),
+            294 => Mapper::Mapper294(Mapper294::new()),
             301 => Mapper::Mapper301(Mapper301::new()),
             340 => Mapper::Mapper340(Mapper340::new(submapper)),
             341 => Mapper::Mapper341(Mapper341::new(submapper)),

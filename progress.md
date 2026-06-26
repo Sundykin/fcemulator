@@ -1296,3 +1296,17 @@
   - `git diff --check`: PASS.
   - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 67/67.
   - `cargo test`: PASS, workspace tests.
+
+### Mapper 293 / 294 Long-tail Latch Batch
+- Implemented mapper 293 / NewStar 12-in-1 and 76-in-1 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/multicart.rs`: two register latches, `$8000-$9FFF` same-value writes, `$A000-$BFFF`/`$C000-$DFFF` split writes, UNROM/NROM128/NROM256 PRG modes, fixed CHR8, reset clear, and bit7 mirroring.
+- Implemented mapper 294 in `multicart.rs`: high-register low-3-bit inner bank writes, `$4020-$7FFF` outer bank writes gated by A8 through expansion/low hooks, no PRG-RAM fall-through for the low handler window, PRG16 fixed-high, fixed CHR8, reset clear, and latch bit7 mirroring.
+- Wired both through `basic.rs`, `mapper.rs`, `kind.rs`, `dispatch.rs`, and `factory.rs`; added mapper-local tests, facade latch tests, and capability guard rows.
+- Updated `/Users/sunmeng/workspace/fc/docs/Mapper-适配差距清单.md` and `/Users/sunmeng/workspace/fc/docs/Mapper-适配引用记录.md`; supported mapper count is now 235 and remaining four-reference union gap is 258.
+- Verification:
+  - `cargo test -p fc-core mapper::basic::multicart::tests -- --nocapture`: PASS, 13/13.
+  - `cargo test -p fc-core mapper::tests::behavior::latch::long_tail_latch_multicarts_293_294_follow_reference_banking -- --nocapture`: PASS, 1/1.
+  - `cargo test -p fc-core mapper::tests::capability -- --nocapture`: PASS, 3/3.
+  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 68/68.
+  - `cargo fmt --check`: PASS.
+  - `git diff --check`: PASS.
+  - `cargo test -p fc-core`: PASS, 252/252.
