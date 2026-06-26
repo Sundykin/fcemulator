@@ -211,6 +211,7 @@ fn watches_ppu_bus_matches_notify_a12_overrides() {
         (254, true),   // Mapper 254 MMC3 A12 IRQ
         (255, false),  // Mapper 255
         (258, true),   // Mapper 258 MMC3 A12 IRQ
+        (264, false),  // Mapper 264 Yoko-derived board has no PPU bus latch
         (265, false),  // Mapper 265
         (266, true),   // Mapper 266 MMC3 A12 IRQ
         (267, true),   // Mapper 267 MMC3 A12 IRQ
@@ -463,6 +464,7 @@ fn clocks_cpu_matches_cpu_clock_overrides() {
         (253, true),   // Mapper 253 IRQ counter clocks per CPU cycle
         (254, false),  // Mapper 254 uses PPU A12 edges
         (255, false),  // Mapper 255
+        (264, true),   // Mapper 264 can use CPU-cycle IRQ mode
         (265, false),  // Mapper 265
         (273, true),   // Mapper 273 IRQ counter clocks per CPU cycle
         (271, false),  // Mapper 271
@@ -720,6 +722,7 @@ fn clocks_hblank_matches_hblank_clock_overrides() {
         (253, false),
         (254, false),
         (255, false),
+        (264, true),
         (265, false),
         (273, false),
         (271, false),

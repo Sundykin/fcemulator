@@ -320,6 +320,8 @@
 - Mapper 293 / NewStar 12-in-1/76-in-1 是低风险长尾 latch board：FCEUmm `src/boards/293.c:32-84` 只需要两个 register、高区三段写窗口、UNROM/NROM128/NROM256 PRG 模式、固定 CHR8 和 bit7 mirroring；现有 `write_register()` / `prg_index()` / `mirroring()` / `reset()` 足够表达。
 - Mapper 294 是 split inner/outer latch board：FCEUmm `src/boards/294.c:26-54` 的 `$8000-$FFFF` inner bank 写和 `$4020-$7FFF` outer bank 写可用现有 expansion + low-register hooks 表达。`$6000-$7FFF` handler 覆盖 PRG-RAM 写，因此本项目让 `write_low_register()` 返回 true 且不 fall through，保持参考窗口语义。
 - Mapper 293/294 说明当前 board compatibility layer 已能机械吸收一批纯 latch/multicart 长尾；下一步可继续优先挑 `258/264/266/268/269/270/272/273/291/297/308/330` 中无需 IRQ、低地址 PRG-ROM 或复杂 register read side effect 的板卡。`267/291` 属 MMC3 outer 变体，适合作为后续 MMC3 batch，而不是和纯 latch batch 混在一起；`281/282/288/295/298/321/334` 已在后续批次补齐第一版。
+- Mapper 264 是 FCEUmm `83_264.c` 与 Mesen2 `Yoko.h` 覆盖的 YOKO-derived 变体，适合复用现有 `Mapper83` 而非新增独立 mapper。关键差异是 `prgAND=0x0F`、高地址写前先 `A = A >> 2 & ~0x3F | A & 0x3F`、CHR 固定为四个 2KB bank (`reg[8]`, `reg[9]`, `reg[14]`, `reg[15]`)、`$5000-$5FFF` pad/scratch read/write、`reg[7]` 的 `$6000-$7FFF` PRG8 映射，以及 IRQ 可以在 CPU-cycle 与 HBlank 八连 clock 间切换。
+- Mapper 264 也验证了当前扩展架构已经能承载“同芯片多变体”而不用继续加 trait：`Mapper83Variant` 分支、已有 `low_prg_index`、expansion read/write、CPU clock、HBlank clock、reset hook 和 capability 缓存足够表达第一版。
 
 ## Mapper 271/285/310/319/326 Long-tail Findings
 - Mapper 271 is a direct FCEUmm `datalatch.c:441-450` board: a single high-register latch selects PRG32 from high nibble, CHR8 from low nibble, and mirroring from bit5. It fits the optional high-write default and needs no new architecture.

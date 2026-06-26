@@ -1442,3 +1442,18 @@
   - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 74/74.
   - `cargo test -p fc-core`: PASS, 275/275.
   - `cargo test`: PASS, workspace tests.
+
+### Mapper 264 YOKO-derived Batch
+- Started: 2026-06-26.
+- Added mapper 264 as a `Mapper83` variant in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/unlicensed.rs`, reusing the existing YOKO mapper instead of adding a standalone clone.
+- Implemented the FCEUmm `83_264.c` differences: `prgAND=0x0F`, folded high-write address decode, four 2KB CHR banks through `reg[8]`, `reg[9]`, `reg[14]`, and `reg[15]`, mapper-owned `$5000-$5FFF` pad/scratch reads and writes, `$6000-$7FFF` PRG8 mapping via `reg[7]`, CPU-cycle IRQ mode, HBlank eight-clock IRQ mode, and soft-reset pad increment.
+- Kept save-state compatibility for old mapper 83 states by leaving the original 11-byte `regs` array intact and adding a defaulted `regs_ext` sidecar for mapper 264's `reg[11..15]`.
+- Wired mapper 264 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper/factory.rs`, added facade behavior tests and capability guard rows, and refreshed `/Users/sunmeng/workspace/fc/docs/Mapper-适配差距清单.md` plus `/Users/sunmeng/workspace/fc/docs/Mapper-适配引用记录.md`; supported mapper count is now 254 and remaining four-reference union gap is 239.
+- Verification so far:
+  - `cargo test -p fc-core mapper::tests::behavior::latch::unlicensed_mapper_batch_matches_reference_bank_and_irq_rules -- --nocapture`: PASS, 1/1.
+  - `cargo test -p fc-core mapper::tests::capability -- --nocapture`: PASS, 3/3.
+  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 74/74.
+  - `cargo test -p fc-core`: PASS, 275/275.
+  - `cargo fmt --check`: PASS.
+  - `git diff --check`: PASS.
+  - `cargo test`: PASS, workspace tests.

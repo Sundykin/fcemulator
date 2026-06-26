@@ -148,19 +148,29 @@ impl MapperOps for Mapper60 {
 }
 
 // ============================================================================
-// Mapper 83 — YOKO / 30-in-1 mapper
+// Mapper 83 / 264 — YOKO / 30-in-1 mapper family
 //
 // References:
 // - Mesen2 `Core/NES/Mappers/Unlicensed/Mapper83.h`
 // - FCEUX `src/boards/yoko.cpp`
-// - FCEUmm `src/boards/83_264.c` for newer submapper variants
+// - FCEUmm `src/boards/83_264.c` for mapper 264 and newer submapper variants
 // ============================================================================
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+enum Mapper83Variant {
+    Mapper83,
+    Mapper264,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Mapper83 {
+    #[serde(default = "Mapper83::default_variant")]
+    variant: Mapper83Variant,
     prg_8k_total: usize,
     chr_1k_total: usize,
     regs: [u8; 11],
+    #[serde(default)]
+    regs_ext: [u8; 5],
     ex_regs: [u8; 4],
     is_2k_bank: bool,
     is_not_2k_bank: bool,
@@ -169,15 +179,33 @@ pub struct Mapper83 {
     irq_counter: u16,
     irq_enabled: bool,
     irq_pending: bool,
+    #[serde(default)]
+    irq_hblank_mode: bool,
+    #[serde(default)]
+    pad: u8,
     mirroring: Mirroring,
 }
 
 impl Mapper83 {
+    fn default_variant() -> Mapper83Variant {
+        Mapper83Variant::Mapper83
+    }
+
     pub(in crate::mapper) fn new(prg_16k: usize, chr_8k: usize) -> Self {
-        Mapper83 {
+        Self::new_variant(prg_16k, chr_8k, Mapper83Variant::Mapper83)
+    }
+
+    pub(in crate::mapper) fn new_264(prg_16k: usize, chr_8k: usize) -> Self {
+        Self::new_variant(prg_16k, chr_8k, Mapper83Variant::Mapper264)
+    }
+
+    fn new_variant(prg_16k: usize, chr_8k: usize, variant: Mapper83Variant) -> Self {
+        let mut mapper = Mapper83 {
+            variant,
             prg_8k_total: (prg_16k * 2).max(4),
             chr_1k_total: (chr_8k * 8).max(8),
             regs: [0; 11],
+            regs_ext: [0; 5],
             ex_regs: [0; 4],
             is_2k_bank: false,
             is_not_2k_bank: false,
@@ -186,12 +214,103 @@ impl Mapper83 {
             irq_counter: 0,
             irq_enabled: false,
             irq_pending: false,
+            irq_hblank_mode: false,
+            pad: 0,
             mirroring: Mirroring::Vertical,
+        };
+        mapper.update_mirroring();
+        mapper
+    }
+
+    fn is_mapper264(&self) -> bool {
+        self.variant == Mapper83Variant::Mapper264
+    }
+
+    fn prg_and_mask(&self) -> usize {
+        if self.is_mapper264() {
+            0x0F
+        } else {
+            0x1F
+        }
+    }
+
+    fn reg(&self, index: usize) -> u8 {
+        if index < self.regs.len() {
+            self.regs[index]
+        } else {
+            self.regs_ext[index - self.regs.len()]
+        }
+    }
+
+    fn set_reg(&mut self, index: usize, value: u8) {
+        if index < self.regs.len() {
+            self.regs[index] = value;
+        } else {
+            self.regs_ext[index - self.regs.len()] = value;
+        }
+    }
+
+    fn fold_mapper264_addr(addr: u16) -> u16 {
+        ((addr >> 2) & !0x3F) | (addr & 0x3F)
+    }
+
+    fn write_mapper264_register(&mut self, addr: u16, value: u8) {
+        let addr = Self::fold_mapper264_addr(addr);
+        match addr & 0x0318 {
+            0x000 | 0x008 | 0x010 | 0x018 | 0x100 | 0x108 | 0x110 | 0x118 => {
+                self.set_reg(((addr >> 8) & 0x01) as usize, value);
+            }
+            0x200 | 0x208 | 0x210 | 0x218 => {
+                let slot = 2 + (addr & 0x01) as usize;
+                self.set_reg(slot, value);
+                self.irq_counter = (self.reg(2) as u16) | ((self.reg(3) as u16) << 8);
+                if addr & 0x01 != 0 {
+                    self.irq_enabled = self.reg(1) & 0x80 != 0;
+                } else {
+                    self.irq_pending = false;
+                }
+            }
+            0x300 | 0x308 => {
+                self.set_reg(4 + (addr & 0x03) as usize, value);
+            }
+            0x310 => {
+                self.set_reg(8 + (addr & 0x07) as usize, value);
+            }
+            0x318 => {
+                self.irq_hblank_mode = value & 0x40 != 0;
+            }
+            _ => {}
+        }
+        self.update_mirroring();
+    }
+
+    fn clock_mapper264_counter(&mut self) {
+        if !self.irq_enabled || self.irq_counter == 0 {
+            return;
+        }
+
+        if self.reg(1) & 0x40 != 0 {
+            self.irq_counter = self.irq_counter.wrapping_sub(1);
+        } else {
+            self.irq_counter = self.irq_counter.wrapping_add(1);
+        }
+
+        self.set_reg(2, self.irq_counter as u8);
+        self.set_reg(3, (self.irq_counter >> 8) as u8);
+
+        if self.irq_counter == 0 {
+            self.irq_enabled = false;
+            self.irq_pending = true;
         }
     }
 
     fn update_mirroring(&mut self) {
-        self.mirroring = match self.mode & 0x03 {
+        let mode = if self.is_mapper264() {
+            self.reg(1)
+        } else {
+            self.mode
+        };
+        self.mirroring = match mode & 0x03 {
             0 => Mirroring::Vertical,
             1 => Mirroring::Horizontal,
             2 => Mirroring::SingleScreenLow,
@@ -203,7 +322,30 @@ impl Mapper83 {
 impl MapperOps for Mapper83 {
     fn prg_index(&self, addr: u16) -> usize {
         let slot = ((addr - 0x8000) / 0x2000) as usize;
-        let bank = if self.mode & 0x40 != 0 {
+        let bank = if self.is_mapper264() {
+            let prg_and = self.prg_and_mask();
+            match self.reg(1) & 0x18 {
+                0x00 => {
+                    let bank_16k = if slot < 2 {
+                        self.reg(0) as usize
+                    } else {
+                        self.reg(0) as usize | (prg_and >> 1)
+                    };
+                    bank_16k * 2 + (slot & 1)
+                }
+                0x08 => (self.reg(0) as usize) * 2 + (slot & 1),
+                _ => {
+                    let outer = ((self.reg(0) as usize) << 1) & !prg_and;
+                    let inner = match slot {
+                        0 => self.reg(4) as usize,
+                        1 => self.reg(5) as usize,
+                        2 => self.reg(6) as usize,
+                        _ => 0xFF,
+                    } & prg_and;
+                    outer | inner
+                }
+            }
+        } else if self.mode & 0x40 != 0 {
             let bank_16k = (self.bank & 0x3F) as usize;
             let fixed_16k = ((self.bank & 0x30) | 0x0F) as usize;
             match slot {
@@ -224,7 +366,15 @@ impl MapperOps for Mapper83 {
 
     fn chr_index(&self, addr: u16) -> usize {
         let slot = ((addr & 0x1FFF) / 0x0400) as usize;
-        let bank = if self.is_2k_bank && !self.is_not_2k_bank {
+        let bank = if self.is_mapper264() {
+            let reg = match slot / 2 {
+                0 => self.reg(8),
+                1 => self.reg(9),
+                2 => self.reg(14),
+                _ => self.reg(15),
+            } as usize;
+            reg * 2 + (slot & 1)
+        } else if self.is_2k_bank && !self.is_not_2k_bank {
             let reg = match slot / 2 {
                 0 => self.regs[0],
                 1 => self.regs[1],
@@ -240,6 +390,11 @@ impl MapperOps for Mapper83 {
     }
 
     fn write_register(&mut self, addr: u16, value: u8) {
+        if self.is_mapper264() {
+            self.write_mapper264_register(addr, value);
+            return;
+        }
+
         if (0x8300..=0x8302).contains(&addr) {
             self.mode &= 0xBF;
             self.regs[(addr - 0x8300) as usize + 8] = value;
@@ -280,6 +435,17 @@ impl MapperOps for Mapper83 {
     }
 
     fn peek_expansion(&self, addr: u16) -> Option<u8> {
+        if self.is_mapper264() {
+            if !(0x5000..=0x5FFF).contains(&addr) {
+                return None;
+            }
+            return Some(if addr & 0x0400 != 0 {
+                self.ex_regs[(addr & 0x03) as usize]
+            } else {
+                self.pad
+            });
+        }
+
         match addr {
             0x5000 => Some(0),
             0x5100..=0x5103 => Some(self.ex_regs[(addr & 0x03) as usize]),
@@ -288,9 +454,24 @@ impl MapperOps for Mapper83 {
     }
 
     fn write_expansion(&mut self, addr: u16, value: u8) {
-        if (0x5100..=0x5103).contains(&addr) {
+        if self.is_mapper264() && (0x5000..=0x5FFF).contains(&addr) {
+            self.ex_regs[(addr & 0x03) as usize] = value;
+        } else if (0x5100..=0x5103).contains(&addr) {
             self.ex_regs[(addr & 0x03) as usize] = value;
         }
+    }
+
+    fn low_prg_index(&self, addr: u16) -> Option<usize> {
+        if self.is_mapper264() && (0x6000..=0x7FFF).contains(&addr) {
+            let bank = (self.reg(7) as usize) % self.prg_8k_total;
+            Some(bank * 0x2000 + (addr as usize & 0x1FFF))
+        } else {
+            None
+        }
+    }
+
+    fn low_prg_ram_write_enabled(&self, addr: u16) -> bool {
+        !(self.is_mapper264() && (0x6000..=0x7FFF).contains(&addr))
     }
 
     fn mirroring(&self) -> Mirroring {
@@ -298,6 +479,13 @@ impl MapperOps for Mapper83 {
     }
 
     fn cpu_clock(&mut self) {
+        if self.is_mapper264() {
+            if !self.irq_hblank_mode {
+                self.clock_mapper264_counter();
+            }
+            return;
+        }
+
         if self.irq_enabled && self.irq_counter != 0 {
             self.irq_counter -= 1;
             if self.irq_counter == 0 {
@@ -312,12 +500,39 @@ impl MapperOps for Mapper83 {
         true
     }
 
+    fn hblank_clock(&mut self, _scanline: u16, _dot: u16) {
+        if self.is_mapper264() && self.irq_hblank_mode {
+            for _ in 0..8 {
+                self.clock_mapper264_counter();
+            }
+        }
+    }
+
+    fn clocks_hblank(&self) -> bool {
+        self.is_mapper264()
+    }
+
     fn irq(&self) -> bool {
         self.irq_pending
     }
 
     fn clear_irq(&mut self) {
         self.irq_pending = false;
+    }
+
+    fn reset(&mut self, soft: bool) {
+        if self.is_mapper264() && soft {
+            self.regs = [0; 11];
+            self.regs_ext = [0; 5];
+            self.mode = 0;
+            self.bank = 0;
+            self.is_2k_bank = false;
+            self.is_not_2k_bank = false;
+            self.irq_counter = 0;
+            self.irq_pending = false;
+            self.pad = self.pad.wrapping_add(1);
+            self.update_mirroring();
+        }
     }
 }
 

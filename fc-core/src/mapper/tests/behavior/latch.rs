@@ -713,6 +713,50 @@ fn unlicensed_mapper_batch_matches_reference_bank_and_irq_rules() {
     m83.cpu_clock();
     assert!(m83.irq());
 
+    let mut m264 = Mapper::new(264, 64, 64, Mirroring::Horizontal, 0).expect("mapper 264");
+    m264.write_expansion(0x5402, 0xA5);
+    assert_eq!(m264.read_expansion(0x5002), Some(0x00));
+    assert_eq!(m264.read_expansion(0x5402), Some(0xA5));
+    m264.write_register(0x8800, 0x01); // folds to $200-range reg[2]
+    m264.write_register(0x8801, 0x80); // folds to $200-range reg[3], copies reg[1].7
+    assert!(!m264.irq());
+    m264.write_register(0x8400, 0xC3); // folds to reg[1]: IRQ enable, decrement, high nametable
+    assert_eq!(m264.mirroring(), Mirroring::SingleScreenHigh);
+    m264.write_register(0x8801, 0x00);
+    m264.cpu_clock();
+    assert!(m264.irq());
+    m264.clear_irq();
+    m264.write_register(0x8400, 0x52); // reg[1]: PRG8 mode, decrement, low nametable
+    m264.write_register(0x8C00, 0x03); // folds to reg[4]
+    m264.write_register(0x8C01, 0x04); // folds to reg[5]
+    m264.write_register(0x8C02, 0x05); // folds to reg[6]
+    m264.write_register(0x8C03, 0x06); // folds to reg[7]
+    assert_eq!(m264.prg_index(0x8004), 3 * 0x2000 + 4);
+    assert_eq!(m264.prg_index(0xA004), 4 * 0x2000 + 4);
+    assert_eq!(m264.prg_index(0xC004), 5 * 0x2000 + 4);
+    assert_eq!(m264.prg_index(0xE004), 15 * 0x2000 + 4);
+    assert_eq!(m264.low_prg_index(0x6004), Some(6 * 0x2000 + 4));
+    m264.write_register(0x8C10, 2); // folds to reg[8]
+    m264.write_register(0x8C11, 3); // folds to reg[9]
+    m264.write_register(0x8C16, 4); // folds to reg[14]
+    m264.write_register(0x8C17, 5); // folds to reg[15]
+    assert_eq!(m264.chr_index(0x0004), 4 * 0x0400 + 4);
+    assert_eq!(m264.chr_index(0x0804), 6 * 0x0400 + 4);
+    assert_eq!(m264.chr_index(0x1004), 8 * 0x0400 + 4);
+    assert_eq!(m264.chr_index(0x1804), 10 * 0x0400 + 4);
+    m264.write_register(0x8C18, 0x40); // HBlank IRQ mode
+    m264.write_register(0x8400, 0xD2); // keep IRQ enable while in HBlank mode
+    m264.write_register(0x8800, 8);
+    m264.write_register(0x8801, 0);
+    assert!(!m264.irq());
+    m264.cpu_clock();
+    assert!(!m264.irq());
+    m264.hblank_clock(0, 260);
+    assert!(m264.irq());
+    m264.reset(true);
+    assert_eq!(m264.read_expansion(0x5000), Some(1));
+    assert_eq!(m264.prg_index(0x8004), 4);
+
     let mut m106 = Mapper::new(106, 32, 32, Mirroring::Vertical, 0).expect("mapper 106");
     m106.write_register(0x8008, 3);
     m106.write_register(0x8009, 4);

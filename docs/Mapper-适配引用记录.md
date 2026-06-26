@@ -220,7 +220,9 @@
 | 68 | `latch/sunsoft.rs:1-159; mapper.rs:129-141; cartridge.rs:524-560` | `/Users/sunmeng/workspace/fc/nestopia/source/core/board/NstBoardSunsoft4.cpp` | 102-129 | `CTRL_CROM` nametable source 与 V/H/单屏 page select cross-check |
 | 83 | `unlicensed.rs:165-337` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Unlicensed/Mapper83.h` | 18-23, 57-68, 71-108, 111-156 | YOKO/30-in-1 PRG/CHR 模式、低寄存器、CPU IRQ |
 | 83 | `unlicensed.rs:165-337` | `/Users/sunmeng/workspace/fc/fceux/src/boards/yoko.cpp` | 73-99, 118-139, 164-176, 197-204 | FCEUX 旧 mapper 83 译码和 IRQ cross-check |
-| 83 | `unlicensed.rs:165-337` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/83_264.c` | 41-117, 130-157, 159-189, 219-231 | 新 submapper 设计参考；当前仅落地基础 mapper 83 行为 |
+| 83 | `unlicensed.rs:165-337` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/83_264.c` | 41-117, 130-157, 159-189, 219-231 | 新 submapper 设计参考；mapper 83 基础行为仍走旧 YOKO 分支 |
+| 264 | `unlicensed.rs:159-537; factory.rs:277; tests/capability.rs:214,467,724; tests/behavior/latch.rs:716-758` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/83_264.c` | 41-70, 73-117, 119-128, 130-157, 159-189, 192-211, 234-240 | Mapper 264 / YOKO-derived：复用 Mapper83 variant，覆盖 `prgAND=0x0F`、固定 2KB CHR layout、`$5000-$5FFF` pad/scratch read/write、高地址折叠写协议、CPU/HBlank 双 IRQ 模式与 soft reset pad 递增 |
+| 264 | `unlicensed.rs:159-537; factory.rs:277; tests/behavior/latch.rs:716-758` | `/Users/sunmeng/workspace/fc/Mesen2/Core/NES/Mappers/Unlicensed/Yoko.h` | 18-24, 75-105, 107-132 | YOKO DIP/scratch register read、2KB CHR page size、CPU clock IRQ 和 register decode cross-check；Mesen2 `MapperFactory.cpp:531` 将 mapper 264 绑定到 `Yoko` |
 | 72 | `latch/discrete.rs` | `/Users/sunmeng/workspace/fc/fceux/src/boards/72.cpp` | 36-53, 66-72 | Jaleco mapper 72 PRG fixed-high/CHR latch 写位 |
 | 72 | `latch/discrete.rs` | `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/72.c` | 35-53, 59-64 | mapper 72 `$6000-$FFFF` 写窗口 cross-check |
 | 75 | `konami.rs:1-74` | `/Users/sunmeng/workspace/fc/fceux/src/boards/vrc1.cpp` | 35-52, 66-70 | VRC1 PRG8/CHR4/mode/mirroring |
