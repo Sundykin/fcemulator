@@ -63,6 +63,9 @@ pub enum JyAsicVariant {
     Mapper90,
     Mapper209,
     Mapper211,
+    Mapper281,
+    Mapper282,
+    Mapper295,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -132,13 +135,19 @@ impl JyAsic {
             | ((value >> 6) & 0x01)
     }
 
-    fn prg_outer_or(&self) -> usize {
-        ((self.mode[3] as usize) << 5) & !0x3F
+    fn prg_and_or(&self) -> (usize, usize) {
+        match self.variant {
+            JyAsicVariant::Mapper281 => (0x1F, (self.mode[3] as usize) << 5),
+            JyAsicVariant::Mapper282 => (0x1F, ((self.mode[3] as usize) << 4) & !0x1F),
+            JyAsicVariant::Mapper295 => (0x0F, (self.mode[3] as usize) << 4),
+            JyAsicVariant::Mapper90 | JyAsicVariant::Mapper209 | JyAsicVariant::Mapper211 => {
+                (0x3F, ((self.mode[3] as usize) << 5) & !0x3F)
+            }
+        }
     }
 
     fn prg_page(&self, slot: usize) -> usize {
-        let and_mask = 0x3Fusize;
-        let or_mask = self.prg_outer_or();
+        let (and_mask, or_mask) = self.prg_and_or();
         let fixed = if self.mode[0] & 0x04 != 0 {
             self.prg[3]
         } else {
@@ -174,8 +183,7 @@ impl JyAsic {
         if self.mode[0] & 0x80 == 0 {
             return None;
         }
-        let and_mask = 0x3Fusize;
-        let or_mask = self.prg_outer_or();
+        let (and_mask, or_mask) = self.prg_and_or();
         let page = match self.mode[0] & 0x03 {
             0 => ((self.prg[3] as usize) << 2) | 3,
             1 => ((self.prg[3] as usize) << 1) | 1,
@@ -186,13 +194,31 @@ impl JyAsic {
     }
 
     fn chr_and_or(&self) -> (usize, usize) {
-        if self.mode[3] & 0x20 != 0 {
-            (0x1FF, ((self.mode[3] as usize) << 6) & 0x600)
-        } else {
-            (
-                0x0FF,
-                (((self.mode[3] as usize) << 8) & 0x100) | (((self.mode[3] as usize) << 6) & 0x600),
-            )
+        match self.variant {
+            JyAsicVariant::Mapper281 => (0x0FF, (self.mode[3] as usize) << 8),
+            JyAsicVariant::Mapper282 => {
+                if self.mode[3] & 0x20 != 0 {
+                    (0x1FF, ((self.mode[3] as usize) << 6) & 0x600)
+                } else {
+                    (
+                        0x0FF,
+                        (((self.mode[3] as usize) << 8) & 0x100)
+                            | (((self.mode[3] as usize) << 6) & 0x600),
+                    )
+                }
+            }
+            JyAsicVariant::Mapper295 => (0x07F, (self.mode[3] as usize) << 7),
+            JyAsicVariant::Mapper90 | JyAsicVariant::Mapper209 | JyAsicVariant::Mapper211 => {
+                if self.mode[3] & 0x20 != 0 {
+                    (0x1FF, ((self.mode[3] as usize) << 6) & 0x600)
+                } else {
+                    (
+                        0x0FF,
+                        (((self.mode[3] as usize) << 8) & 0x100)
+                            | (((self.mode[3] as usize) << 6) & 0x600),
+                    )
+                }
+            }
         }
     }
 

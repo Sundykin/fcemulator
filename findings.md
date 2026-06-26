@@ -319,7 +319,7 @@
 - `MapperOps::write_register()` 现在有默认 no-op：无高区寄存器的板卡不再需要显式空实现，后续机械翻译 mapper 时只需实现真实解码窗口。现有 18 个空实现已删除，行为由 mapper 测试和全量测试覆盖保持不变。
 - Mapper 293 / NewStar 12-in-1/76-in-1 是低风险长尾 latch board：FCEUmm `src/boards/293.c:32-84` 只需要两个 register、高区三段写窗口、UNROM/NROM128/NROM256 PRG 模式、固定 CHR8 和 bit7 mirroring；现有 `write_register()` / `prg_index()` / `mirroring()` / `reset()` 足够表达。
 - Mapper 294 是 split inner/outer latch board：FCEUmm `src/boards/294.c:26-54` 的 `$8000-$FFFF` inner bank 写和 `$4020-$7FFF` outer bank 写可用现有 expansion + low-register hooks 表达。`$6000-$7FFF` handler 覆盖 PRG-RAM 写，因此本项目让 `write_low_register()` 返回 true 且不 fall through，保持参考窗口语义。
-- Mapper 293/294 说明当前 board compatibility layer 已能机械吸收一批纯 latch/multicart 长尾；下一步可继续优先挑 `258/264/266/268/269/270/272/273/281/282/288/295/297/298/308/321/330/334` 中无需 IRQ、低地址 PRG-ROM 或 register read side effect 的板卡。`267/291` 属 MMC3 outer 变体，适合作为后续 MMC3 batch，而不是和纯 latch batch 混在一起。
+- Mapper 293/294 说明当前 board compatibility layer 已能机械吸收一批纯 latch/multicart 长尾；下一步可继续优先挑 `258/264/266/268/269/270/272/273/291/297/308/330` 中无需 IRQ、低地址 PRG-ROM 或复杂 register read side effect 的板卡。`267/291` 属 MMC3 outer 变体，适合作为后续 MMC3 batch，而不是和纯 latch batch 混在一起；`281/282/288/295/298/321/334` 已在后续批次补齐第一版。
 
 ## Mapper 271/285/310/319/326 Long-tail Findings
 - Mapper 271 is a direct FCEUmm `datalatch.c:441-450` board: a single high-register latch selects PRG32 from high nibble, CHR8 from low nibble, and mirroring from bit5. It fits the optional high-write default and needs no new architecture.
@@ -334,3 +334,9 @@
 - Mapper 321 is a thin AX5202P-style MMC3 clone from FCEUmm `321.c:26-56`: one low-register outer bank, normal MMC3 IRQ/mirroring, and a forced PRG32 mode when bit3 is set. It belongs in `Mmc3OuterBank`, not as a separate mapper, because PRG/CHR wrapping is the only active difference.
 - Mapper 321 needs AX5202P WRAM fall-through behavior; FCEUmm `asic_mmc3.c:71-82` shows AX5202P keeps WRAM reads/writes active. Reusing `low_register_write_falls_through()` preserves PRG-RAM writes after the mapper register latch.
 - Mapper 334 is another thin MMC3 clone from FCEUmm `334.c:26-64`: `EXPREGS[0] >> 1` selects PRG32, only even low writes update it, low reads return CPU open bus with DIP bit on `addr & 2`, and reset increments the DIP and clears MMC3 regs. Existing open-bus-aware low read hooks cover this without new Cartridge API.
+
+## Mapper 281/282/288/295 Long-tail Findings
+- Mapper 281/282/295 are JY ASIC multicart variants in FCEUmm `jyasic.c:514-565`, not separate mapper cores. The existing JY register, IRQ, ALU, latch, and nametable machinery can stay shared if PRG and CHR/NT outer mask formulas move behind `JyAsicVariant` helpers.
+- Mapper 281 uses PRG AND `0x1F` with OR `mode[3] << 5`, and CHR/NT AND `0xFF` with OR `mode[3] << 8`; mapper 295 uses the smaller PRG AND `0x0F` / CHR AND `0x7F` masks with OR shifts `<<4` and `<<7`; mapper 282 matches the previously hardcoded CHR/NT mask behavior but uses PRG OR `(mode[3] << 4) & ~0x1F`.
+- Mapper 288 / GKCX1 is mostly a simple address-latch PRG32/CHR8 board, but FCEUmm `addrlatch.c:562-565` has an unusual high-read path: under a latch condition, the reset DIP is ORed into the CPU read address before reading PRG-ROM. That cannot be represented by post-read data hooks, so `MapperOps::map_cpu_read_addr()` is the right minimal architecture lever for this and future read-address side effects.
+- Mesen2 `Gkcx1.h:5-21` only models the PRG32/CHR8 address latch and does not include the DIP read behavior, so the current implementation follows FCEUmm for the read side effect and uses Mesen2 as a simple banking cross-check.

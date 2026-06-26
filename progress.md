@@ -1347,3 +1347,18 @@
   - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 71/71.
   - `cargo test -p fc-core`: PASS, 264/264.
   - `cargo test`: PASS, workspace tests.
+
+### Mapper 281 / 282 / 288 / 295 JY and GKCX1 Batch
+- Extended `/Users/sunmeng/workspace/fc/fc-core/src/mapper/ops.rs` with `MapperOps::map_cpu_read_addr()` and routed it through `/Users/sunmeng/workspace/fc/fc-core/src/mapper/dispatch.rs` plus `/Users/sunmeng/workspace/fc/fc-core/src/cartridge.rs`, allowing high-register CPU reads to remap PRG-ROM address lines before the PRG byte is fetched.
+- Added JY ASIC variants 281 / 282 / 295 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/jy.rs` by refactoring PRG and CHR/nametable outer masks into variant helpers while keeping existing mapper 90/209/211 behavior covered by the same tests.
+- Added mapper 288 / GKCX1 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/multicart.rs`: address-latched PRG32, CHR8, bit5 mirroring, reset-cycled low-4-bit DIP, and FCEUmm-style DIP read address remap.
+- Wired all four through `/Users/sunmeng/workspace/fc/fc-core/src/mapper/factory.rs`, added facade behavior tests and capability guard rows, and refreshed `/Users/sunmeng/workspace/fc/docs/Mapper-适配差距清单.md` plus `/Users/sunmeng/workspace/fc/docs/Mapper-适配引用记录.md`; supported mapper count is now 247 and remaining four-reference union gap is 246.
+- Verification so far:
+  - `cargo fmt --check`: PASS.
+  - `cargo test -p fc-core mapper::tests::behavior::asic::jy_asic_mappers_switch_prg_chr_alu_nametable_and_irq -- --nocapture`: PASS, 1/1.
+  - `cargo test -p fc-core mapper::tests::behavior::latch::address_latch_compatibility_batch_decodes_reference_bits -- --nocapture`: PASS, 1/1.
+  - `cargo test -p fc-core mapper::tests::behavior::latch::mapper288_reset_dip_remaps_high_read_address -- --nocapture`: PASS, 1/1.
+  - `cargo test -p fc-core mapper::tests::capability -- --nocapture`: PASS, 3/3.
+  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 72/72.
+  - `cargo test -p fc-core`: PASS, 265/265.
+  - `cargo test`: PASS, workspace tests.

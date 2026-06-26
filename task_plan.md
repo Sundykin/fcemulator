@@ -152,6 +152,7 @@ Phase 17: Mapper compatibility gap closure
 - [x] Add long-tail latch mapper batch 293 / 294
 - [x] Add long-tail mapper batch 271 / 285 / 310 / 319 / 326
 - [x] Add long-tail ASIC/MMC3 mapper batch 298 / 321 / 334
+- [x] Add JY/GKCX1 long-tail mapper batch 281 / 282 / 288 / 295
 - **Status:** in_progress
 
 ### Phase 18: Mapper board compatibility layer
@@ -161,6 +162,7 @@ Phase 17: Mapper compatibility gap closure
 - [x] Add CPU address handler helpers for expansion, low, and high mapper ranges
 - [x] Split MMC3 state, constructors, and behavior tests into focused modules
 - [x] Make high-register writes optional in `MapperOps` and remove no-op mapper boilerplate
+- [x] Add high-read address remap hook for mapper read-address side effects
 - [ ] Extract reusable IRQ units: MMC3 A12, CPU counter, HBlank, VRC/RAMBO-style counters
 - [ ] Standardize reset/power hooks, mapper register reads, side effects, and open-bus paths
 - [ ] Route expansion audio boards through a shared mapper audio interface

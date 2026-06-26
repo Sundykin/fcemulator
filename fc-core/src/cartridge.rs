@@ -473,7 +473,7 @@ impl Cartridge {
     }
 
     fn cpu_read_high_with_open_bus(&mut self, addr: u16, open_bus: u8) -> u8 {
-        let prg_value = self.high_prg_rom_value(addr);
+        let prg_value = self.high_prg_rom_value(self.mapper.map_cpu_read_addr(addr));
         let value = self
             .mapper
             .read_register_with_open_bus(addr, prg_value, open_bus)
@@ -482,7 +482,7 @@ impl Cartridge {
     }
 
     fn cpu_peek_high_with_open_bus(&self, addr: u16, open_bus: u8) -> u8 {
-        let prg_value = self.high_prg_rom_value(addr);
+        let prg_value = self.high_prg_rom_value(self.mapper.map_cpu_read_addr(addr));
         let value = self
             .mapper
             .peek_register_with_open_bus(addr, prg_value, open_bus)

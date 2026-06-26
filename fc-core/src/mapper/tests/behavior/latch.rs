@@ -1,4 +1,5 @@
 use super::*;
+use crate::cartridge::Cartridge;
 
 #[test]
 fn mapper34_bnrom_switches_32k_prg_bank() {
@@ -550,6 +551,35 @@ fn address_latch_compatibility_batch_decodes_reference_bits() {
     assert_eq!(m217.prg_index(0xC000), 7 * 0x4000);
     assert_eq!(m217.chr_index(0x0004), 15 * 0x2000 + 4);
     assert_eq!(m217.mirroring(), Mirroring::Vertical);
+
+    let mut m288 = Mapper::new(288, 8, 8, Mirroring::Vertical, 0).expect("mapper 288");
+    m288.write_register(0x812D, 0);
+    assert_eq!(m288.prg_index(0x8004), 1 * 0x8000 + 4);
+    assert_eq!(m288.chr_index(0x0004), 5 * 0x2000 + 4);
+    assert_eq!(m288.mirroring(), Mirroring::Horizontal);
+}
+
+#[test]
+fn mapper288_reset_dip_remaps_high_read_address() {
+    let mut rom = vec![0u8; 16 + 4 * 0x4000 + 0x2000];
+    rom[0..4].copy_from_slice(b"NES\x1A");
+    rom[4] = 4;
+    rom[5] = 1;
+    rom[6] = 0x00;
+    rom[7] = 0x28;
+    rom[8] = 0x01;
+    for i in 0..4 * 0x4000 {
+        rom[16 + i] = (i & 0xFF) as u8;
+    }
+
+    let mut cart = Cartridge::from_bytes(&rom).expect("mapper 288 cart");
+    cart.mapper.write_register(0x8100, 0);
+    assert_eq!(cart.cpu_peek(0x8004), 0x04);
+    cart.reset_mapper(true);
+    cart.mapper.write_register(0x8100, 0);
+    assert_eq!(cart.cpu_peek(0x8004), 0x05);
+    cart.mapper.write_register(0x8110, 0);
+    assert_eq!(cart.cpu_peek(0x8004), 0x04);
 }
 
 #[test]

@@ -159,6 +159,9 @@ impl MapperOps for Mapper {
     fn prg_index(&self, addr: u16) -> usize {
         dispatch!(self, m => m.prg_index(addr))
     }
+    fn map_cpu_read_addr(&self, addr: u16) -> u16 {
+        dispatch!(self, m => m.map_cpu_read_addr(addr))
+    }
     fn chr_index(&self, addr: u16) -> usize {
         dispatch!(self, m => m.chr_index(addr))
     }

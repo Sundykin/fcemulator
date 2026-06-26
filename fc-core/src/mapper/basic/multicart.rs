@@ -415,6 +415,8 @@ pub struct AddrLatch16k {
     prg_latch: usize,
     #[serde(default)]
     mapper59_zero_reads: bool,
+    #[serde(default)]
+    mapper288_dip: u8,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -440,6 +442,7 @@ pub enum AddrLatchVariant {
     Mapper217,
     Mapper221 { submapper: u8 },
     Mapper255,
+    Mapper288,
 }
 
 impl AddrLatch16k {
@@ -460,6 +463,7 @@ impl AddrLatch16k {
             mode_latch: 0,
             prg_latch: 0,
             mapper59_zero_reads: false,
+            mapper288_dip: 0,
         }
     }
 
@@ -470,6 +474,9 @@ impl AddrLatch16k {
     }
 
     fn set_from_addr(&mut self, addr: u16, value: u8) {
+        if matches!(self.variant, AddrLatchVariant::Mapper288) {
+            self.mode_latch = addr;
+        }
         match self.variant {
             AddrLatchVariant::Mapper58 => {
                 let bank = (addr & 0x07) as usize;
@@ -732,6 +739,17 @@ impl AddrLatch16k {
                 };
                 return;
             }
+            AddrLatchVariant::Mapper288 => {
+                let bank = ((addr >> 3) & 0x03) as usize;
+                self.prg_pages = [bank * 2, bank * 2 + 1];
+                self.chr_bank = (addr & 0x07) as usize;
+                self.mirroring = if addr & 0x20 != 0 {
+                    Mirroring::Horizontal
+                } else {
+                    Mirroring::Vertical
+                };
+                return;
+            }
         }
         self.mirroring = if addr & 0x80 != 0 {
             Mirroring::Horizontal
@@ -745,6 +763,16 @@ impl MapperOps for AddrLatch16k {
     fn prg_index(&self, addr: u16) -> usize {
         let slot = if addr < 0xC000 { 0 } else { 1 };
         self.prg_pages[slot] * 0x4000 + (addr as usize & 0x3FFF)
+    }
+    fn map_cpu_read_addr(&self, addr: u16) -> u16 {
+        if matches!(self.variant, AddrLatchVariant::Mapper288)
+            && self.mode_latch & 0x120 != 0
+            && self.mode_latch & 0x10 == 0
+        {
+            addr | self.mapper288_dip as u16
+        } else {
+            addr
+        }
     }
     fn chr_index(&self, addr: u16) -> usize {
         self.chr_bank * 0x2000 + (addr & 0x1FFF) as usize
@@ -797,6 +825,16 @@ impl MapperOps for AddrLatch16k {
     }
     fn mirroring(&self) -> Mirroring {
         self.mirroring
+    }
+
+    fn reset(&mut self, soft: bool) {
+        if matches!(self.variant, AddrLatchVariant::Mapper288) {
+            if soft {
+                self.mapper288_dip = self.mapper288_dip.wrapping_add(1) & 0x0F;
+            }
+            self.mode_latch = 0;
+            self.set_from_addr(0, 0);
+        }
     }
 }
 

@@ -322,6 +322,37 @@ fn jy_asic_mappers_switch_prg_chr_alu_nametable_and_irq() {
     m211.write_register(0xD000, 0x40);
     m211.write_register(0xB001, 0x03);
     assert_eq!(m211.nametable_chr_index(0x2404), Some(3 * 0x0400 + 4));
+
+    let mut m281 = Mapper::new(281, 128, 512, Mirroring::Vertical, 0).expect("mapper 281");
+    assert!(m281.has_nametable_chr_mapping());
+    m281.write_register(0xD000, 0x1A);
+    m281.write_register(0x8000, 0x1A);
+    m281.write_register(0xD003, 0x03);
+    assert_eq!(m281.prg_index(0x8004), 0x7A * 0x2000 + 4);
+    m281.write_register(0x9000, 0xF5);
+    assert_eq!(m281.chr_index(0x0004), 0x3F5 * 0x0400 + 4);
+    m281.write_register(0xD000, 0x60);
+    m281.write_register(0xB000, 0x12);
+    assert_eq!(m281.nametable_chr_index(0x2004), Some(0x312 * 0x0400 + 4));
+
+    let mut m282 = Mapper::new(282, 512, 512, Mirroring::Vertical, 0).expect("mapper 282");
+    m282.write_register(0xD000, 0x1A);
+    m282.write_register(0x8000, 0x1A);
+    m282.write_register(0xD003, 0x28);
+    assert_eq!(m282.prg_index(0x8004), 0x29A * 0x2000 + 4);
+    m282.write_register(0x9000, 0xF5);
+    assert_eq!(m282.chr_index(0x0004), 0x2F5 * 0x0400 + 4);
+
+    let mut m295 = Mapper::new(295, 64, 512, Mirroring::Vertical, 0).expect("mapper 295");
+    m295.write_register(0xD000, 0x1A);
+    m295.write_register(0x8000, 0x1A);
+    m295.write_register(0xD003, 0x05);
+    assert_eq!(m295.prg_index(0x8004), 0x5A * 0x2000 + 4);
+    m295.write_register(0x9000, 0xF5);
+    assert_eq!(m295.chr_index(0x0004), 0x2F5 * 0x0400 + 4);
+    m295.write_register(0xD000, 0x60);
+    m295.write_register(0xB000, 0x92);
+    assert_eq!(m295.nametable_chr_index(0x2004), Some(0x292 * 0x0400 + 4));
 }
 
 #[test]

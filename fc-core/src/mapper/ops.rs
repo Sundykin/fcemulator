@@ -11,6 +11,11 @@ pub enum ChrAccess {
 pub trait MapperOps {
     /// Translate a CPU read/peek of `$8000..=$FFFF` to a PRG-ROM byte index.
     fn prg_index(&self, addr: u16) -> usize;
+    /// Optional pre-PRG-read CPU address remap for boards whose high reads
+    /// alter the ROM address lines before the byte is fetched.
+    fn map_cpu_read_addr(&self, addr: u16) -> u16 {
+        addr
+    }
     /// Translate a PPU access of `$0000..=$1FFF` to a CHR byte index.
     fn chr_index(&self, addr: u16) -> usize;
     /// Mapper-owned CHR-RAM read. Returns `Some(byte)` when this CHR access maps
