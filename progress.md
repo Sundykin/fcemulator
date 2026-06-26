@@ -1362,3 +1362,19 @@
   - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 72/72.
   - `cargo test -p fc-core`: PASS, 265/265.
   - `cargo test`: PASS, workspace tests.
+
+### Mapper 267 / 291 MMC3 Long-tail Batch
+- Added mapper 267 / JY-119 as an MMC3 outer-bank variant in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs`: FCEUmm-style outer bank formula, PRG8/CHR1 wrappers, low-register latch that stops updating after bit7 is set while still consuming writes, and standard MMC3 reset.
+- Added mapper 291 as an MMC3 outer-bank variant: low-register CHR bit8, normal MMC3 PRG mode with an outer bit, and bit5-forced PRG32 mode.
+- Wired both through `/Users/sunmeng/workspace/fc/fc-core/src/mapper/factory.rs`, added mapper-local tests, facade behavior coverage, and capability guard rows, and refreshed `/Users/sunmeng/workspace/fc/docs/Mapper-适配差距清单.md` plus `/Users/sunmeng/workspace/fc/docs/Mapper-适配引用记录.md`; supported mapper count is now 249 and remaining four-reference union gap is 244.
+- Verification:
+  - `cargo fmt --check`: PASS.
+  - `git diff --check`: PASS.
+  - `cargo test -p fc-core mapper::mmc3::tests::mapper267 -- --nocapture`: PASS, 1/1.
+  - `cargo test -p fc-core mapper::mmc3::tests::mapper291 -- --nocapture`: PASS, 1/1.
+  - `cargo test -p fc-core mapper::mmc3::tests -- --nocapture`: PASS, 51/51.
+  - `cargo test -p fc-core mapper::tests::behavior::asic::mmc3_long_tail_variants_267_291_321_334_use_outer_registers_and_dip_reads -- --nocapture`: PASS, 1/1.
+  - `cargo test -p fc-core mapper::tests::capability -- --nocapture`: PASS, 3/3.
+  - `cargo test -p fc-core`: PASS, 267/267.
+  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 72/72.
+  - `cargo test`: PASS, workspace tests.

@@ -115,6 +115,12 @@ pub(super) enum Mmc3OuterBank {
         unlocked: bool,
         xor_mask: u8,
     },
+    Mapper267 {
+        reg: u8,
+    },
+    Mapper291 {
+        reg: u8,
+    },
     Mapper321 {
         reg: u8,
     },

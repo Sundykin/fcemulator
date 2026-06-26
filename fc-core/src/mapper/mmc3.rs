@@ -676,6 +676,18 @@ impl Mmc3 {
             }
             Mmc3OuterBank::Mapper250 => bank,
             Mmc3OuterBank::Mapper254 { .. } => bank,
+            Mmc3OuterBank::Mapper267 { reg } => {
+                let outer = ((reg & 0x20) >> 2) | (reg & 0x06);
+                (bank & 0x1F) | ((outer as usize) << 4)
+            }
+            Mmc3OuterBank::Mapper291 { reg } => {
+                if reg & 0x20 != 0 {
+                    let prg32 = ((reg >> 1) & 0x03) | ((reg >> 4) & 0x04);
+                    ((prg32 as usize) << 2) | region as usize
+                } else {
+                    (bank & 0x0F) | (((reg >> 2) & 0x10) as usize)
+                }
+            }
             Mmc3OuterBank::Mapper321 { reg } => {
                 if reg & 0x08 != 0 {
                     (((reg & 0x04) | ((reg >> 4) & 0x03)) as usize) * 4 + region as usize
@@ -810,6 +822,11 @@ impl Mmc3 {
             }
             Mmc3OuterBank::Mapper250 => bank,
             Mmc3OuterBank::Mapper254 { .. } => bank,
+            Mmc3OuterBank::Mapper267 { reg } => {
+                let outer = ((reg & 0x20) >> 2) | (reg & 0x06);
+                (bank & 0x7F) | ((outer as usize) << 6)
+            }
+            Mmc3OuterBank::Mapper291 { reg } => bank | (((*reg as usize) << 2) & 0x100),
             Mmc3OuterBank::Mapper321 { reg } => (bank & 0x7F) | (((*reg as usize) << 5) & !0x7F),
             Mmc3OuterBank::Mapper334 { .. } => bank,
         }
@@ -1517,6 +1534,16 @@ impl MapperOps for Mmc3 {
                 *block = value & 0x03;
                 true
             }
+            Mmc3OuterBank::Mapper267 { reg } => {
+                if *reg & 0x80 == 0 {
+                    *reg = value;
+                }
+                true
+            }
+            Mmc3OuterBank::Mapper291 { reg } => {
+                *reg = value;
+                true
+            }
             Mmc3OuterBank::Mapper321 { reg } => {
                 *reg = value;
                 true
@@ -1916,6 +1943,10 @@ impl MapperOps for Mmc3 {
             Mmc3OuterBank::Mapper254 { unlocked, xor_mask } => {
                 *unlocked = false;
                 *xor_mask = 0;
+            }
+            Mmc3OuterBank::Mapper267 { reg } | Mmc3OuterBank::Mapper291 { reg } => {
+                *reg = 0;
+                reset_standard = true;
             }
             Mmc3OuterBank::Mapper321 { reg } => {
                 *reg = 0;

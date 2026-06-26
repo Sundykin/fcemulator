@@ -423,6 +423,20 @@ impl Mmc3 {
         m
     }
 
+    /// Mapper 267 — MMC3 clone with a one-shot JY-119 outer bank latch.
+    pub(in crate::mapper) fn new_267(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
+        let mut m = Mmc3::new(prg_16k, chr_8k, mirroring);
+        m.outer_bank = Mmc3OuterBank::Mapper267 { reg: 0 };
+        m
+    }
+
+    /// Mapper 291 — MMC3 clone with an external PRG32/MMC3 mode register.
+    pub(in crate::mapper) fn new_291(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
+        let mut m = Mmc3::new(prg_16k, chr_8k, mirroring);
+        m.outer_bank = Mmc3OuterBank::Mapper291 { reg: 0 };
+        m
+    }
+
     /// Mapper 321 — AX5202P-style MMC3 clone with one outer PRG/CHR register.
     pub(in crate::mapper) fn new_321(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
         let mut m = Mmc3::new(prg_16k, chr_8k, mirroring);

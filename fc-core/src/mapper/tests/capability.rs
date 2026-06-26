@@ -211,6 +211,7 @@ fn watches_ppu_bus_matches_notify_a12_overrides() {
         (254, true),   // Mapper 254 MMC3 A12 IRQ
         (255, false),  // Mapper 255
         (265, false),  // Mapper 265
+        (267, true),   // Mapper 267 MMC3 A12 IRQ
         (271, false),  // Mapper 271
         (277, false),  // Mapper 277
         (280, false),  // Mapper 280
@@ -219,6 +220,7 @@ fn watches_ppu_bus_matches_notify_a12_overrides() {
         (283, false),  // Mapper 283
         (285, false),  // Mapper 285
         (288, false),  // Mapper 288
+        (291, true),   // Mapper 291 MMC3 A12 IRQ
         (293, false),  // Mapper 293
         (294, false),  // Mapper 294
         (295, true),   // JY ASIC watches PPU bus for PPU-read IRQ / CHR latch

@@ -340,3 +340,8 @@
 - Mapper 281 uses PRG AND `0x1F` with OR `mode[3] << 5`, and CHR/NT AND `0xFF` with OR `mode[3] << 8`; mapper 295 uses the smaller PRG AND `0x0F` / CHR AND `0x7F` masks with OR shifts `<<4` and `<<7`; mapper 282 matches the previously hardcoded CHR/NT mask behavior but uses PRG OR `(mode[3] << 4) & ~0x1F`.
 - Mapper 288 / GKCX1 is mostly a simple address-latch PRG32/CHR8 board, but FCEUmm `addrlatch.c:562-565` has an unusual high-read path: under a latch condition, the reset DIP is ORed into the CPU read address before reading PRG-ROM. That cannot be represented by post-read data hooks, so `MapperOps::map_cpu_read_addr()` is the right minimal architecture lever for this and future read-address side effects.
 - Mesen2 `Gkcx1.h:5-21` only models the PRG32/CHR8 address latch and does not include the DIP read behavior, so the current implementation follows FCEUmm for the read side effect and uses Mesen2 as a simple banking cross-check.
+
+## Mapper 267/291 MMC3 Long-tail Findings
+- Mapper 267 / 8-in-1 JY-119 is a thin MMC3 outer-bank board in FCEUmm `267.c:26-62`: `OUTER_BANK=((reg & 0x20)>>2)|(reg & 0x06)`, PRG8 keeps low 5 bits, CHR1 keeps low 7 bits, and low-register writes are consumed but only update the register while bit7 is clear.
+- Mapper 291 is another FCEUmm-only MMC3 clone in local references (`291.c:24-59`): CHR1 ORs bit8 from `reg << 2`, PRG uses normal MMC3 low 4 bits plus one outer bit unless `reg.bit5` forces PRG32 bank `((reg >> 1) & 3) | ((reg >> 4) & 4)`.
+- Both mapper 267 and 291 fit `Mmc3OuterBank` without widening `MapperOps`: standard high-register writes, mirroring, and A12 IRQ remain normal MMC3, while low-register writes and PRG/CHR wrappers carry the board-specific behavior.

@@ -234,7 +234,25 @@ fn mapper35_switches_jy_banks_and_a12_irq() {
 }
 
 #[test]
-fn mmc3_long_tail_variants_321_334_use_outer_registers_and_dip_reads() {
+fn mmc3_long_tail_variants_267_291_321_334_use_outer_registers_and_dip_reads() {
+    let mut m267 = Mapper::new(267, 128, 256, Mirroring::Vertical, 0).expect("mapper 267");
+    assert!(m267.watches_ppu_bus());
+    m267.write_register(0x8000, 0x06);
+    m267.write_register(0x8001, 0x3F);
+    assert!(m267.write_low_register(0x6000, 0xA6));
+    assert_eq!(m267.prg_index(0x8004), 0xFF * 0x2000 + 4);
+    assert!(m267.write_low_register(0x6000, 0x00));
+    assert_eq!(m267.prg_index(0x8004), 0xFF * 0x2000 + 4);
+
+    let mut m291 = Mapper::new(291, 128, 512, Mirroring::Vertical, 0).expect("mapper 291");
+    assert!(m291.watches_ppu_bus());
+    m291.write_register(0x8000, 0x06);
+    m291.write_register(0x8001, 0x3E);
+    assert!(m291.write_low_register(0x6000, 0x40));
+    assert_eq!(m291.prg_index(0x8004), 0x1E * 0x2000 + 4);
+    assert!(m291.write_low_register(0x6000, 0x6A));
+    assert_eq!(m291.prg_index(0xE004), 0x17 * 0x2000 + 4);
+
     let mut m321 = Mapper::new(321, 128, 256, Mirroring::Vertical, 0).expect("mapper 321");
     assert!(m321.watches_ppu_bus());
     assert!(m321.write_low_register(0x6000, 0x20));
