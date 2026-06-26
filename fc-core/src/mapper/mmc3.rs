@@ -676,6 +676,14 @@ impl Mmc3 {
             }
             Mmc3OuterBank::Mapper250 => bank,
             Mmc3OuterBank::Mapper254 { .. } => bank,
+            Mmc3OuterBank::Mapper321 { reg } => {
+                if reg & 0x08 != 0 {
+                    (((reg & 0x04) | ((reg >> 4) & 0x03)) as usize) * 4 + region as usize
+                } else {
+                    (bank & 0x0F) | (((*reg as usize) << 2) & !0x0F)
+                }
+            }
+            Mmc3OuterBank::Mapper334 { reg, .. } => ((*reg as usize) >> 1) * 4 + region as usize,
         }
     }
 
@@ -802,6 +810,8 @@ impl Mmc3 {
             }
             Mmc3OuterBank::Mapper250 => bank,
             Mmc3OuterBank::Mapper254 { .. } => bank,
+            Mmc3OuterBank::Mapper321 { reg } => (bank & 0x7F) | (((*reg as usize) << 5) & !0x7F),
+            Mmc3OuterBank::Mapper334 { .. } => bank,
         }
     }
 
@@ -1507,6 +1517,16 @@ impl MapperOps for Mmc3 {
                 *block = value & 0x03;
                 true
             }
+            Mmc3OuterBank::Mapper321 { reg } => {
+                *reg = value;
+                true
+            }
+            Mmc3OuterBank::Mapper334 { reg, .. } => {
+                if addr & 1 == 0 {
+                    *reg = value;
+                }
+                true
+            }
             _ => false,
         }
     }
@@ -1519,6 +1539,7 @@ impl MapperOps for Mmc3 {
                 | Mmc3OuterBank::Mapper134 { .. }
                 | Mmc3OuterBank::Mapper182 { .. }
                 | Mmc3OuterBank::Mapper205 { .. }
+                | Mmc3OuterBank::Mapper321 { .. }
         )
     }
 
@@ -1552,6 +1573,31 @@ impl MapperOps for Mmc3 {
             }
         }
         self.peek_low_register(addr)
+    }
+
+    fn read_low_register_with_open_bus(
+        &mut self,
+        addr: u16,
+        prg_ram_value: u8,
+        open_bus: u8,
+    ) -> Option<u8> {
+        self.peek_low_register_with_open_bus(addr, prg_ram_value, open_bus)
+    }
+
+    fn peek_low_register_with_open_bus(
+        &self,
+        addr: u16,
+        prg_ram_value: u8,
+        open_bus: u8,
+    ) -> Option<u8> {
+        if let Mmc3OuterBank::Mapper334 { dip, .. } = &self.outer_bank {
+            return Some(if addr & 0x0002 != 0 {
+                (open_bus & 0xFE) | (dip & 1)
+            } else {
+                open_bus
+            });
+        }
+        self.peek_low_register_with_prg_ram(addr, prg_ram_value)
     }
 
     fn read_expansion(&mut self, addr: u16) -> Option<u8> {
@@ -1870,6 +1916,15 @@ impl MapperOps for Mmc3 {
             Mmc3OuterBank::Mapper254 { unlocked, xor_mask } => {
                 *unlocked = false;
                 *xor_mask = 0;
+            }
+            Mmc3OuterBank::Mapper321 { reg } => {
+                *reg = 0;
+                reset_standard = true;
+            }
+            Mmc3OuterBank::Mapper334 { reg, dip } => {
+                *dip = dip.wrapping_add(1);
+                *reg = 0;
+                reset_standard = true;
             }
             _ => {}
         }

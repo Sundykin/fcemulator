@@ -43,8 +43,8 @@ pub use basic::{
     Namco108Mapper206, Namco108Mapper95, Namco118, NanjingMapper, NanjingVariant, Nina01,
     Nina03_06, Nrom, Ntdec112, Sachen133, Sachen149, Sachen74Ls374N, Sachen74Ls374NVariant,
     Sachen8259, Sachen8259Variant, SachenSa0161m, Subor166, SuborVariant, Sunsoft184, Sunsoft4,
-    Sunsoft89, TaitoTc0190, TaitoX1005, TaitoX1017, TxcMapper, TxcVariant, UnlPci556, Unrom,
-    UnromVariant, UnromVariantMapper, Vrc1,
+    Sunsoft89, TaitoTc0190, TaitoX1005, TaitoX1017, Tf1201, TxcMapper, TxcVariant, UnlPci556,
+    Unrom, UnromVariant, UnromVariantMapper, Vrc1,
 };
 pub use expansion_mappers::{Fme7, Namco163, Vrc6, Vrc6Variant, Vrc7};
 pub use kind::Mapper;

@@ -115,6 +115,13 @@ pub(super) enum Mmc3OuterBank {
         unlocked: bool,
         xor_mask: u8,
     },
+    Mapper321 {
+        reg: u8,
+    },
+    Mapper334 {
+        reg: u8,
+        dip: u8,
+    },
 }
 
 pub(super) const MAPPER208_PROTECTION_LUT: [u8; 256] = [

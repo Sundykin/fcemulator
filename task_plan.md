@@ -151,6 +151,7 @@ Phase 17: Mapper compatibility gap closure
 - [x] Add long-tail latch mapper batch 265 / 277 / 280 / 283
 - [x] Add long-tail latch mapper batch 293 / 294
 - [x] Add long-tail mapper batch 271 / 285 / 310 / 319 / 326
+- [x] Add long-tail ASIC/MMC3 mapper batch 298 / 321 / 334
 - **Status:** in_progress
 
 ### Phase 18: Mapper board compatibility layer

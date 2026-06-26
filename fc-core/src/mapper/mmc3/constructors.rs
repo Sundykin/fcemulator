@@ -423,6 +423,20 @@ impl Mmc3 {
         m
     }
 
+    /// Mapper 321 — AX5202P-style MMC3 clone with one outer PRG/CHR register.
+    pub(in crate::mapper) fn new_321(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
+        let mut m = Mmc3::new(prg_16k, chr_8k, mirroring);
+        m.outer_bank = Mmc3OuterBank::Mapper321 { reg: 0 };
+        m
+    }
+
+    /// Mapper 334 — MMC3 clone with PRG32 latch and reset-cycled DIP read.
+    pub(in crate::mapper) fn new_334(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
+        let mut m = Mmc3::new(prg_16k, chr_8k, mirroring);
+        m.outer_bank = Mmc3OuterBank::Mapper334 { reg: 0, dip: 0 };
+        m
+    }
+
     /// Mapper 76 — Namco 109 / MMC3 command and IRQ core with custom CHR cwrap.
     pub(in crate::mapper) fn new_76(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
         let mut m = Mmc3::new(prg_16k, chr_8k, mirroring);

@@ -54,7 +54,7 @@ pub use multicart::{
 };
 pub use namco::{Namco108Mapper154, Namco108Mapper206, Namco108Mapper95, Namco118};
 pub use nanjing::{NanjingMapper, NanjingVariant};
-pub use ntdec::Ntdec112;
+pub use ntdec::{Ntdec112, Tf1201};
 pub use opencorp::Mapper156;
 pub use sl12::Mapper116;
 pub use special::{

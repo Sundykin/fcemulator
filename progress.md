@@ -1329,3 +1329,21 @@
   - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 69/69.
   - `cargo test -p fc-core`: PASS, 258/258.
   - `cargo test`: PASS, workspace tests.
+
+### Mapper 298 / 321 / 334 Long-tail ASIC Batch
+- Implemented mapper 298 / NTDEC UNL-TF1201 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/ntdec.rs`: two 8KB PRG registers, eight 1KB CHR nibble registers, mirroring, PRG swap mode, reset state, and CPU-clock prescaled IRQ based on the Mesen2/Nestopia independent TF1201 model.
+- Added mapper 321 as an MMC3 outer-bank variant: low-register outer latch, normal MMC3 PRG/CHR wrapping when bit3 is clear, forced PRG32 mode when bit3 is set, AX5202P-style low-write fall-through, and standard MMC3 reset.
+- Added mapper 334 as an MMC3 outer-bank variant: low-register PRG32 latch, odd low writes ignored but consumed, open-bus/DIP low reads, and reset-cycled DIP with standard MMC3 register reset.
+- Wired all three through `basic.rs`, `mapper.rs`, `kind.rs`, `dispatch.rs`, and `factory.rs`; added mapper-local tests, MMC3 variant tests, facade behavior tests, and capability guard rows.
+- Updated `/Users/sunmeng/workspace/fc/docs/Mapper-适配差距清单.md` and `/Users/sunmeng/workspace/fc/docs/Mapper-适配引用记录.md`; supported mapper count is now 243 and remaining four-reference union gap is 250.
+- Verification:
+  - `cargo test -p fc-core mapper::basic::ntdec::tests -- --nocapture`: PASS, 2/2.
+  - `cargo test -p fc-core mapper::mmc3::tests::mapper321 -- --nocapture`: PASS, 1/1.
+  - `cargo test -p fc-core mapper::mmc3::tests::mapper334 -- --nocapture`: PASS, 1/1.
+  - `cargo test -p fc-core mapper::tests::behavior::asic::ntdec_tf1201 -- --nocapture`: PASS, 1/1.
+  - `cargo test -p fc-core mapper::tests::behavior::asic::mmc3_long_tail_variants -- --nocapture`: PASS, 1/1.
+  - `cargo fmt --check`: PASS.
+  - `git diff --check`: PASS.
+  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 71/71.
+  - `cargo test -p fc-core`: PASS, 264/264.
+  - `cargo test`: PASS, workspace tests.

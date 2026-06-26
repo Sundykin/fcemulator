@@ -117,6 +117,7 @@ pub enum Mapper {
     Mapper285(Mapper285),
     Mapper293(Mapper293),
     Mapper294(Mapper294),
+    Tf1201(Tf1201),
     Mapper301(Mapper301),
     Mapper310(Mapper310),
     Mapper319(Mapper319),

@@ -100,6 +100,34 @@ fn ntdec112_uses_command_register_outer_chr_and_mirroring() {
 }
 
 #[test]
+fn ntdec_tf1201_switches_prg_chr_and_cpu_prescaled_irq() {
+    let mut m = Mapper::new(298, 16, 32, Mirroring::Vertical, 0).expect("mapper 298");
+    assert!(m.clocks_cpu());
+    assert!(!m.watches_ppu_bus());
+
+    m.write_register(0x8000, 3);
+    m.write_register(0xA000, 4);
+    assert_eq!(m.prg_index(0x8004), 3 * 0x2000 + 4);
+    assert_eq!(m.prg_index(0xA004), 4 * 0x2000 + 4);
+
+    m.write_register(0x9001, 1);
+    assert_eq!(m.prg_index(0x8004), 30 * 0x2000 + 4);
+    assert_eq!(m.prg_index(0xC004), 3 * 0x2000 + 4);
+
+    m.write_register(0xB000, 5);
+    m.write_register(0xB002, 6);
+    assert_eq!(m.chr_index(0x0004), 0x65 * 0x0400 + 4);
+
+    m.write_register(0xF000, 0xFF);
+    m.write_register(0xF002, 0x0F);
+    m.write_register(0xF001, 0x02);
+    for _ in 0..114 {
+        m.cpu_clock();
+    }
+    assert!(m.irq());
+}
+
+#[test]
 fn mapper151_selects_three_8k_prg_and_two_4k_chr_pages() {
     let mut m = Mapper::new(151, 8, 16, Mirroring::Horizontal, 0).expect("mapper 151");
     m.write_register(0x8000, 1);
@@ -203,6 +231,33 @@ fn mapper35_switches_jy_banks_and_a12_irq() {
     m35.notify_a12(0x0000, 25);
     m35.notify_a12(0x1000, 36);
     assert!(!m35.irq());
+}
+
+#[test]
+fn mmc3_long_tail_variants_321_334_use_outer_registers_and_dip_reads() {
+    let mut m321 = Mapper::new(321, 128, 256, Mirroring::Vertical, 0).expect("mapper 321");
+    assert!(m321.watches_ppu_bus());
+    assert!(m321.write_low_register(0x6000, 0x20));
+    m321.write_register(0x8000, 0x06);
+    m321.write_register(0x8001, 0x2A);
+    assert_eq!(m321.prg_index(0x8004), 0x8A * 0x2000 + 4);
+
+    assert!(m321.write_low_register(0x6000, 0x3D));
+    assert_eq!(m321.prg_index(0xE004), 0x1F * 0x2000 + 4);
+
+    let mut m334 = Mapper::new(334, 64, 32, Mirroring::Vertical, 0).expect("mapper 334");
+    assert!(m334.watches_ppu_bus());
+    assert!(m334.write_low_register(0x6000, 0x0A));
+    assert_eq!(m334.prg_index(0xE004), 0x17 * 0x2000 + 4);
+    assert_eq!(
+        m334.peek_low_register_with_open_bus(0x6002, 0x55, 0xA4),
+        Some(0xA4)
+    );
+    m334.reset(true);
+    assert_eq!(
+        m334.peek_low_register_with_open_bus(0x6002, 0x55, 0xA4),
+        Some(0xA5)
+    );
 }
 
 #[test]

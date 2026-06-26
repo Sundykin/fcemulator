@@ -218,10 +218,13 @@ fn watches_ppu_bus_matches_notify_a12_overrides() {
         (285, false),  // Mapper 285
         (293, false),  // Mapper 293
         (294, false),  // Mapper 294
+        (298, false),  // TF1201 IRQ is CPU-prescaled, not PPU-bus-clocked
         (301, false),  // Mapper 301
         (310, false),  // Mapper 310
         (319, false),  // Mapper 319
+        (321, true),   // Mapper 321 MMC3 A12 IRQ
         (326, false),  // Mapper 326
+        (334, true),   // Mapper 334 MMC3 A12 IRQ
         (340, false),  // Mapper 340
         (341, false),  // Mapper 341
         (343, false),  // Mapper 343
@@ -458,10 +461,13 @@ fn clocks_cpu_matches_cpu_clock_overrides() {
         (285, false),  // Mapper 285
         (293, false),  // Mapper 293
         (294, false),  // Mapper 294
+        (298, true),   // TF1201 IRQ counter clocks through CPU-cycle prescaler
         (301, false),  // Mapper 301
         (310, false),  // Mapper 310
         (319, false),  // Mapper 319
+        (321, false),  // Mapper 321 uses PPU A12 edges
         (326, false),  // Mapper 326
+        (334, false),  // Mapper 334 uses PPU A12 edges
         (340, false),  // Mapper 340
         (341, false),  // Mapper 341
         (343, false),  // Mapper 343
@@ -706,10 +712,13 @@ fn clocks_hblank_matches_hblank_clock_overrides() {
         (285, false),
         (293, false),
         (294, false),
+        (298, false),
         (301, false),
         (310, false),
         (319, false),
+        (321, false),
         (326, false),
+        (334, false),
         (340, false),
         (341, false),
         (343, false),

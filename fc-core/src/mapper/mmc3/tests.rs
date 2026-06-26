@@ -845,6 +845,63 @@ fn mapper254_xors_wram_reads_until_unlocked() {
 }
 
 #[test]
+fn mapper321_outer_reg_selects_mmc3_or_prg32_mode() {
+    let mut mapper = Mmc3::new_321(128, 256, Mirroring::Vertical);
+
+    mapper.write_register(0x8000, 0x06);
+    mapper.write_register(0x8001, 0x2A);
+    mapper.write_register(0x8000, 0x02);
+    mapper.write_register(0x8001, 0x55);
+
+    assert!(mapper.write_low_register(0x6000, 0x20));
+    assert!(mapper.low_register_write_falls_through(0x6000));
+    assert_eq!(mapper.prg_index(0x8004), 0x8A * 0x2000 + 4);
+    assert_eq!(mapper.prg_index(0xE004), 0x8F * 0x2000 + 4);
+    assert_eq!(mapper.chr_index(0x1004), 0x455 * 0x400 + 4);
+
+    assert!(mapper.write_low_register(0x6000, 0x3D));
+    assert_eq!(mapper.prg_index(0x8004), 0x1C * 0x2000 + 4);
+    assert_eq!(mapper.prg_index(0xA004), 0x1D * 0x2000 + 4);
+    assert_eq!(mapper.prg_index(0xC004), 0x1E * 0x2000 + 4);
+    assert_eq!(mapper.prg_index(0xE004), 0x1F * 0x2000 + 4);
+
+    mapper.reset(true);
+    assert_eq!(mapper.prg_index(0x8004), 4);
+}
+
+#[test]
+fn mapper334_prg32_latch_and_dip_open_bus_read() {
+    let mut mapper = Mmc3::new_334(64, 32, Mirroring::Vertical);
+
+    assert_eq!(mapper.prg_index(0x8004), 0x00 * 0x2000 + 4);
+    assert_eq!(mapper.prg_index(0xE004), 0x03 * 0x2000 + 4);
+
+    assert!(mapper.write_low_register(0x6000, 0x0A));
+    assert!(!mapper.low_register_write_falls_through(0x6000));
+    assert_eq!(mapper.prg_index(0x8004), 0x14 * 0x2000 + 4);
+    assert_eq!(mapper.prg_index(0xE004), 0x17 * 0x2000 + 4);
+
+    assert!(mapper.write_low_register(0x6001, 0x1E));
+    assert_eq!(mapper.prg_index(0x8004), 0x14 * 0x2000 + 4);
+
+    assert_eq!(
+        mapper.peek_low_register_with_open_bus(0x6000, 0x55, 0xA5),
+        Some(0xA5)
+    );
+    assert_eq!(
+        mapper.peek_low_register_with_open_bus(0x6002, 0x55, 0xA4),
+        Some(0xA4)
+    );
+
+    mapper.reset(true);
+    assert_eq!(mapper.prg_index(0x8004), 0x00 * 0x2000 + 4);
+    assert_eq!(
+        mapper.read_low_register_with_open_bus(0x6002, 0x55, 0xA4),
+        Some(0xA5)
+    );
+}
+
+#[test]
 fn mapper114_remaps_mmc3_writes_and_can_force_prg_banks() {
     let mut mapper = Mmc3::new_114(64, 64, Mirroring::Vertical);
 
