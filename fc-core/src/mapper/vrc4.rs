@@ -14,10 +14,25 @@ use serde::{Deserialize, Serialize};
 // ============================================================================
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+enum VrcIrqKind {
+    None,
+    Vrc4,
+    Mapper273,
+}
+
+impl Default for VrcIrqKind {
+    fn default() -> Self {
+        Self::None
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 struct Vrc24Config {
     a0_mask: u16,
     a1_mask: u16,
     is_vrc4: bool,
+    #[serde(default)]
+    irq_kind: VrcIrqKind,
     chr_shift: u8,
 }
 
@@ -37,6 +52,8 @@ pub struct Vrc4 {
     irq_enable_after_ack: bool,
     irq_cycle_mode: bool,
     irq_prescaler: u16,
+    #[serde(default)]
+    mapper273_irq_mask: u8,
     irq_pending: bool,
 }
 
@@ -58,41 +75,62 @@ impl Vrc4 {
             irq_enable_after_ack: false,
             irq_cycle_mode: false,
             irq_prescaler: 0,
+            mapper273_irq_mask: 0,
             irq_pending: false,
         }
     }
 
+    pub(super) fn new_273(prg_16k: usize, chr_8k: usize) -> Self {
+        let mut mapper = Self::new(23, prg_16k, chr_8k, 2);
+        mapper.config = Vrc24Config {
+            a0_mask: 0x04,
+            a1_mask: 0x08,
+            is_vrc4: false,
+            irq_kind: VrcIrqKind::Mapper273,
+            chr_shift: 0,
+        };
+        mapper
+    }
+
     fn config_for(mapper: u16, submapper: u8) -> Vrc24Config {
-        let (a0_mask, a1_mask, is_vrc4, chr_shift) = match mapper {
+        let (a0_mask, a1_mask, is_vrc4, irq_kind, chr_shift) = match mapper {
             // VRC4a: A1/A2, VRC4c: A6/A7. Submapper 0 accepts both.
             21 => match submapper {
-                1 => (0x02, 0x04, true, 0),
-                2 => (0x40, 0x80, true, 0),
-                _ => (0x42, 0x84, true, 0),
+                1 => (0x02, 0x04, true, VrcIrqKind::Vrc4, 0),
+                2 => (0x40, 0x80, true, VrcIrqKind::Vrc4, 0),
+                _ => (0x42, 0x84, true, VrcIrqKind::Vrc4, 0),
             },
             // VRC2a: CHR A10 is not controlled by the bank register, so bank
             // numbers effectively address 2KB pairs and are shifted right.
-            22 => (0x02, 0x01, false, 1),
+            22 => (0x02, 0x01, false, VrcIrqKind::None, 1),
             // VRC4f/VRC2b: A0/A1, VRC4e: A2/A3. Submapper 3 is definite VRC2b.
             23 => match submapper {
-                1 => (0x01, 0x02, true, 0),
-                2 => (0x04, 0x08, true, 0),
-                3 => (0x01, 0x02, false, 0),
-                _ => (0x05, 0x0A, true, 0),
+                1 => (0x01, 0x02, true, VrcIrqKind::Vrc4, 0),
+                2 => (0x04, 0x08, true, VrcIrqKind::Vrc4, 0),
+                3 => (0x01, 0x02, false, VrcIrqKind::None, 0),
+                _ => (0x05, 0x0A, true, VrcIrqKind::Vrc4, 0),
             },
             // VRC4b/VRC2c: A1/A0, VRC4d: A3/A2. Submapper 3 is definite VRC2c.
             _ => match submapper {
-                1 => (0x02, 0x01, true, 0),
-                2 => (0x08, 0x04, true, 0),
-                3 => (0x02, 0x01, false, 0),
-                _ => (0x0A, 0x05, true, 0),
+                1 => (0x02, 0x01, true, VrcIrqKind::Vrc4, 0),
+                2 => (0x08, 0x04, true, VrcIrqKind::Vrc4, 0),
+                3 => (0x02, 0x01, false, VrcIrqKind::None, 0),
+                _ => (0x0A, 0x05, true, VrcIrqKind::Vrc4, 0),
             },
         };
         Vrc24Config {
             a0_mask,
             a1_mask,
             is_vrc4,
+            irq_kind,
             chr_shift,
+        }
+    }
+
+    fn irq_kind(&self) -> VrcIrqKind {
+        match (self.config.irq_kind, self.config.is_vrc4) {
+            (VrcIrqKind::None, true) => VrcIrqKind::Vrc4,
+            (kind, _) => kind,
         }
     }
 
@@ -110,6 +148,35 @@ impl Vrc4 {
         } else {
             self.irq_counter += 1;
         }
+    }
+
+    fn write_mapper273_irq(&mut self, addr: u16, value: u8) {
+        if addr & 0x0008 == 0 {
+            self.irq_counter = value;
+            self.irq_pending = false;
+        } else {
+            self.irq_enable = value & 0x01 != 0;
+            if !self.irq_enable {
+                self.irq_prescaler = 0;
+                self.mapper273_irq_mask = 0x7F;
+                self.irq_pending = false;
+            }
+        }
+    }
+
+    fn clock_mapper273_irq(&mut self) {
+        if !self.irq_enable {
+            return;
+        }
+
+        self.irq_prescaler = self.irq_prescaler.wrapping_add(1);
+        if (self.irq_prescaler as u8) & self.mapper273_irq_mask != 0 {
+            return;
+        }
+
+        self.mapper273_irq_mask = 0xFF;
+        self.irq_counter = self.irq_counter.wrapping_add(1);
+        self.irq_pending = self.irq_counter == 0;
     }
 }
 
@@ -140,7 +207,7 @@ impl MapperOps for Vrc4 {
             0x8000 => self.prg[0] = value & 0x1F,
             0xA000 => self.prg[1] = value & 0x1F,
             0x9000 => {
-                if !self.config.is_vrc4 || sel < 2 {
+                if !matches!(self.irq_kind(), VrcIrqKind::Vrc4) || sel < 2 {
                     self.mirroring = match value & 0x03 {
                         0 => Mirroring::Vertical,
                         1 => Mirroring::Horizontal,
@@ -163,29 +230,33 @@ impl MapperOps for Vrc4 {
                 }
             }
             _ => {
-                if self.config.is_vrc4 {
-                    match sel {
-                        // $F000: IRQ latch low nibble
-                        0 => self.irq_latch = (self.irq_latch & 0xF0) | (value & 0x0F),
-                        // $F001: IRQ latch high nibble
-                        1 => self.irq_latch = (self.irq_latch & 0x0F) | ((value & 0x0F) << 4),
-                        // $F002: IRQ control
-                        2 => {
-                            self.irq_enable_after_ack = value & 0x01 != 0;
-                            self.irq_enable = value & 0x02 != 0;
-                            self.irq_cycle_mode = value & 0x04 != 0;
-                            if self.irq_enable {
-                                self.irq_counter = self.irq_latch;
-                                self.irq_prescaler = 0;
+                match self.irq_kind() {
+                    VrcIrqKind::None => {}
+                    VrcIrqKind::Vrc4 => {
+                        match sel {
+                            // $F000: IRQ latch low nibble
+                            0 => self.irq_latch = (self.irq_latch & 0xF0) | (value & 0x0F),
+                            // $F001: IRQ latch high nibble
+                            1 => self.irq_latch = (self.irq_latch & 0x0F) | ((value & 0x0F) << 4),
+                            // $F002: IRQ control
+                            2 => {
+                                self.irq_enable_after_ack = value & 0x01 != 0;
+                                self.irq_enable = value & 0x02 != 0;
+                                self.irq_cycle_mode = value & 0x04 != 0;
+                                if self.irq_enable {
+                                    self.irq_counter = self.irq_latch;
+                                    self.irq_prescaler = 0;
+                                }
+                                self.irq_pending = false;
                             }
-                            self.irq_pending = false;
-                        }
-                        // $F003: IRQ acknowledge
-                        _ => {
-                            self.irq_enable = self.irq_enable_after_ack;
-                            self.irq_pending = false;
+                            // $F003: IRQ acknowledge
+                            _ => {
+                                self.irq_enable = self.irq_enable_after_ack;
+                                self.irq_pending = false;
+                            }
                         }
                     }
+                    VrcIrqKind::Mapper273 => self.write_mapper273_irq(addr, value),
                 }
             }
         }
@@ -196,24 +267,30 @@ impl MapperOps for Vrc4 {
     }
 
     fn cpu_clock(&mut self) {
-        if !self.config.is_vrc4 || !self.irq_enable {
-            return;
-        }
-        if self.irq_cycle_mode {
-            self.clock_irq_counter();
-        } else {
-            // Scanline mode: a prescaler clocks the counter every 341 PPU dots
-            // (≈113.7 CPU cycles), i.e. once per scanline.
-            self.irq_prescaler += 3;
-            if self.irq_prescaler >= 341 {
-                self.irq_prescaler -= 341;
-                self.clock_irq_counter();
+        match self.irq_kind() {
+            VrcIrqKind::None => {}
+            VrcIrqKind::Vrc4 => {
+                if !self.irq_enable {
+                    return;
+                }
+                if self.irq_cycle_mode {
+                    self.clock_irq_counter();
+                } else {
+                    // Scanline mode: a prescaler clocks the counter every 341 PPU dots
+                    // (≈113.7 CPU cycles), i.e. once per scanline.
+                    self.irq_prescaler += 3;
+                    if self.irq_prescaler >= 341 {
+                        self.irq_prescaler -= 341;
+                        self.clock_irq_counter();
+                    }
+                }
             }
+            VrcIrqKind::Mapper273 => self.clock_mapper273_irq(),
         }
     }
 
     fn clocks_cpu(&self) -> bool {
-        self.config.is_vrc4
+        !matches!(self.irq_kind(), VrcIrqKind::None)
     }
 
     fn irq(&self) -> bool {
@@ -325,5 +402,59 @@ mod tests {
 
         assert!(vrc4.irq());
         assert!(vrc4.clocks_cpu());
+    }
+
+    #[test]
+    fn mapper_273_reuses_vrc2_banking_with_custom_address_lines() {
+        let mut mapper = Vrc4::new_273(16, 64);
+        assert!(mapper.clocks_cpu());
+
+        mapper.write_register(0x8000, 3);
+        mapper.write_register(0xA000, 5);
+        assert_eq!(mapper.prg_index(0x8004), 3 * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xA004), 5 * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 30 * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xE004), 31 * 0x2000 + 4);
+
+        mapper.write_register(0x9008, 0x02);
+        assert_eq!(mapper.mirroring(), Mirroring::SingleScreenLow);
+        assert_eq!(mapper.prg_index(0x8004), 3 * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 30 * 0x2000 + 4);
+
+        mapper.write_register(0xB000, 0x05);
+        mapper.write_register(0xB004, 0x12);
+        mapper.write_register(0xB008, 0x07);
+        mapper.write_register(0xB00C, 0x03);
+        assert_eq!(chr_bank(&mapper, 0), 0x125);
+        assert_eq!(chr_bank(&mapper, 1), 0x037);
+    }
+
+    #[test]
+    fn mapper_273_custom_irq_uses_reference_prescaler_phase() {
+        let mut mapper = Vrc4::new_273(16, 8);
+        mapper.write_register(0xF008, 0x00);
+        mapper.write_register(0xF000, 0xFE);
+        mapper.write_register(0xF008, 0x01);
+
+        for _ in 0..127 {
+            mapper.cpu_clock();
+        }
+        assert!(!mapper.irq());
+        mapper.cpu_clock();
+        assert!(!mapper.irq());
+
+        for _ in 0..127 {
+            mapper.cpu_clock();
+        }
+        assert!(!mapper.irq());
+        mapper.cpu_clock();
+        assert!(mapper.irq());
+
+        mapper.write_register(0xF008, 0x00);
+        assert!(!mapper.irq());
+        for _ in 0..512 {
+            mapper.cpu_clock();
+        }
+        assert!(!mapper.irq());
     }
 }

@@ -1410,3 +1410,19 @@
   - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 72/72.
   - `cargo test -p fc-core`: PASS, 269/269.
   - `cargo test`: PASS, workspace tests.
+
+### Mapper 273 VRC2 Custom IRQ Batch
+- Started: 2026-06-26 15:07:09.
+- Extended `/Users/sunmeng/workspace/fc/fc-core/src/mapper/vrc4.rs` with `VrcIrqKind` so VRC2/VRC4 boards can select no IRQ, standard VRC4 IRQ, or mapper 273's custom CPU-cycle IRQ without cloning PRG/CHR banking code.
+- Added mapper 273 / VRC2-derived custom IRQ board: VRC2 PRG8/CHR1/mirroring with address lines `0x04/0x08`, `$F000/$F008` IRQ writes, 8-bit prescaler mask phase, and CPU-cycle clock capability.
+- Preserved old VRC save-state compatibility by keeping `Vrc24Config::is_vrc4` and adding serde defaults for the new IRQ kind and mapper 273 IRQ mask field.
+- Wired mapper 273 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper/factory.rs`, added VRC-local/facade/capability tests, and refreshed `/Users/sunmeng/workspace/fc/docs/Mapper-适配差距清单.md` plus `/Users/sunmeng/workspace/fc/docs/Mapper-适配引用记录.md`; supported mapper count is now 252 and remaining four-reference union gap is 241.
+- Verification:
+  - `cargo fmt --check`: PASS.
+  - `cargo test -p fc-core mapper::vrc4::tests -- --nocapture`: PASS, 7/7.
+  - `cargo test -p fc-core mapper::tests::capability -- --nocapture`: PASS, 3/3.
+  - `cargo test -p fc-core mapper::tests::behavior::asic::mapper273_uses_vrc2_banks_and_custom_cpu_irq -- --nocapture`: PASS, 1/1.
+  - `git diff --check`: PASS.
+  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 73/73.
+  - `cargo test -p fc-core`: PASS, 272/272.
+  - `cargo test`: PASS, workspace tests.

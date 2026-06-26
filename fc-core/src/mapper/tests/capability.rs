@@ -215,6 +215,7 @@ fn watches_ppu_bus_matches_notify_a12_overrides() {
         (266, true),   // Mapper 266 MMC3 A12 IRQ
         (267, true),   // Mapper 267 MMC3 A12 IRQ
         (271, false),  // Mapper 271
+        (273, false),  // Mapper 273 IRQ is CPU-clocked, not PPU-bus-clocked
         (277, false),  // Mapper 277
         (280, false),  // Mapper 280
         (281, true),   // JY ASIC watches PPU bus for PPU-read IRQ / CHR latch
@@ -462,6 +463,7 @@ fn clocks_cpu_matches_cpu_clock_overrides() {
         (254, false),  // Mapper 254 uses PPU A12 edges
         (255, false),  // Mapper 255
         (265, false),  // Mapper 265
+        (273, true),   // Mapper 273 IRQ counter clocks per CPU cycle
         (271, false),  // Mapper 271
         (277, false),  // Mapper 277
         (280, false),  // Mapper 280
@@ -717,6 +719,7 @@ fn clocks_hblank_matches_hblank_clock_overrides() {
         (254, false),
         (255, false),
         (265, false),
+        (273, false),
         (271, false),
         (277, false),
         (280, false),

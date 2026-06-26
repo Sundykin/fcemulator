@@ -156,6 +156,7 @@ Phase 17: Mapper compatibility gap closure
 - [x] Add MMC3 outer-bank long-tail mapper batch 267 / 291
 - [x] Add MMC3 protected long-tail mapper 258
 - [x] Add MMC3 BMC F-15 long-tail mapper 266
+- [x] Add VRC2-derived custom IRQ long-tail mapper 273
 - **Status:** in_progress
 
 ### Phase 18: Mapper board compatibility layer
