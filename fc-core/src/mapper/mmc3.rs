@@ -33,6 +33,8 @@ pub struct Mmc3 {
     mirroring: Mirroring,
     #[serde(flatten)]
     irq: Mmc3A12Irq,
+    #[serde(default)]
+    prg_ram_control: u8,
     // Some TW MMC3+VRAM boards route a small CHR-RAM window through selected
     // CHR bank numbers instead of CHR-ROM (used for dynamic text/map tiles).
     #[serde(default)]
@@ -688,6 +690,13 @@ impl Mmc3 {
                     bank & 0x0F
                 }
             }
+            Mmc3OuterBank::Mapper266 { reg } => {
+                let bank16 = (reg & 0x0F) as usize;
+                let mode = ((reg & 0x08) >> 3) as usize;
+                let base = bank16 & !mode;
+                let bank16 = if region < 2 { base } else { base | mode };
+                (bank16 << 1) | (region as usize & 0x01)
+            }
             Mmc3OuterBank::Mapper267 { reg } => {
                 let outer = ((reg & 0x20) >> 2) | (reg & 0x06);
                 (bank & 0x1F) | ((outer as usize) << 4)
@@ -835,6 +844,7 @@ impl Mmc3 {
             Mmc3OuterBank::Mapper250 => bank,
             Mmc3OuterBank::Mapper254 { .. } => bank,
             Mmc3OuterBank::Mapper258 { .. } => bank,
+            Mmc3OuterBank::Mapper266 { .. } => bank,
             Mmc3OuterBank::Mapper267 { reg } => {
                 let outer = ((reg & 0x20) >> 2) | (reg & 0x06);
                 (bank & 0x7F) | ((outer as usize) << 6)
@@ -896,6 +906,7 @@ impl Mmc3 {
         self.prg_mode = false;
         self.chr_mode = false;
         self.irq = Mmc3A12Irq::new();
+        self.prg_ram_control = 0;
         self.rebuild_chr_layout();
         self.rebuild_txsrom_nametables();
     }
@@ -911,12 +922,14 @@ impl Mmc3 {
                 }
             }
             0xA000..=0xBFFF => {
-                if even && !matches!(self.nametable_layout, Mmc3NametableLayout::TxSrom { .. }) {
-                    if let Mmc3OuterBank::Mapper126 { mirror, .. } = &mut self.outer_bank {
-                        *mirror = value;
-                    }
-                    self.mirroring =
-                        if let Mmc3OuterBank::Mapper126 { regs, mirror, .. } = &self.outer_bank {
+                if even {
+                    if !matches!(self.nametable_layout, Mmc3NametableLayout::TxSrom { .. }) {
+                        if let Mmc3OuterBank::Mapper126 { mirror, .. } = &mut self.outer_bank {
+                            *mirror = value;
+                        }
+                        self.mirroring = if let Mmc3OuterBank::Mapper126 { regs, mirror, .. } =
+                            &self.outer_bank
+                        {
                             Self::mapper126_sync_mirroring(regs, *mirror)
                         } else if matches!(self.outer_bank, Mmc3OuterBank::Mapper199 { .. }) {
                             match value & 0x03 {
@@ -930,8 +943,12 @@ impl Mmc3 {
                         } else {
                             Mirroring::Horizontal
                         };
-                } else if let Mmc3OuterBank::Mapper44 { block } = &mut self.outer_bank {
-                    *block = value & 0x07;
+                    }
+                } else {
+                    self.prg_ram_control = value;
+                    if let Mmc3OuterBank::Mapper44 { block } = &mut self.outer_bank {
+                        *block = value & 0x07;
+                    }
                 }
             }
             0xC000..=0xDFFF => {
@@ -1431,6 +1448,7 @@ impl MapperOps for Mmc3 {
     }
 
     fn write_low_register(&mut self, addr: u16, value: u8) -> bool {
+        let prg_ram_control = self.prg_ram_control;
         match &mut self.outer_bank {
             Mmc3OuterBank::Mapper37 { block } => {
                 *block = (value & 0x06) >> 1;
@@ -1545,6 +1563,12 @@ impl MapperOps for Mmc3 {
             }
             Mmc3OuterBank::Mapper205 { block } => {
                 *block = value & 0x03;
+                true
+            }
+            Mmc3OuterBank::Mapper266 { reg } => {
+                if prg_ram_control & 0x80 != 0 {
+                    *reg = value & 0x0F;
+                }
                 true
             }
             Mmc3OuterBank::Mapper267 { reg } => {
@@ -1981,7 +2005,9 @@ impl MapperOps for Mmc3 {
                 *reg = 0;
                 reset_standard = true;
             }
-            Mmc3OuterBank::Mapper267 { reg } | Mmc3OuterBank::Mapper291 { reg } => {
+            Mmc3OuterBank::Mapper266 { reg }
+            | Mmc3OuterBank::Mapper267 { reg }
+            | Mmc3OuterBank::Mapper291 { reg } => {
                 *reg = 0;
                 reset_standard = true;
             }

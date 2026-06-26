@@ -118,6 +118,9 @@ pub(super) enum Mmc3OuterBank {
     Mapper258 {
         reg: u8,
     },
+    Mapper266 {
+        reg: u8,
+    },
     Mapper267 {
         reg: u8,
     },

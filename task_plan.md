@@ -155,6 +155,7 @@ Phase 17: Mapper compatibility gap closure
 - [x] Add JY/GKCX1 long-tail mapper batch 281 / 282 / 288 / 295
 - [x] Add MMC3 outer-bank long-tail mapper batch 267 / 291
 - [x] Add MMC3 protected long-tail mapper 258
+- [x] Add MMC3 BMC F-15 long-tail mapper 266
 - **Status:** in_progress
 
 ### Phase 18: Mapper board compatibility layer

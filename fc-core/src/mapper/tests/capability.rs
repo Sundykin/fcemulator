@@ -212,6 +212,7 @@ fn watches_ppu_bus_matches_notify_a12_overrides() {
         (255, false),  // Mapper 255
         (258, true),   // Mapper 258 MMC3 A12 IRQ
         (265, false),  // Mapper 265
+        (266, true),   // Mapper 266 MMC3 A12 IRQ
         (267, true),   // Mapper 267 MMC3 A12 IRQ
         (271, false),  // Mapper 271
         (277, false),  // Mapper 277

@@ -350,3 +350,8 @@
 - Mapper 258 / UNL-158B is a protected MMC3 board in FCEUX `158B.cpp:29-69` and Mesen2 `Unl158B.h:10-66`. The only active board state needed for first-pass compatibility is one protection register written at `$5000-$5FFF` when `addr & 7 == 0`.
 - The protection register forces PRG mapping when bit7 is set: bit5 chooses PRG32 versus mirrored PRG16, while bit0-2 choose the outer bank. With bit7 clear, normal MMC3 PRG banks are masked to low 4 bits. CHR, mirroring, and A12 IRQ stay normal MMC3.
 - Mapper 258 validates the existing expansion open-bus hook: `$5000-$5FFF` reads return CPU open bus ORed with LUT `[0,0,0,1,2,4,0x0F,0]`; no new mapper interface is needed.
+
+## Mapper 266 BMC F-15 Findings
+- Mapper 266 / BMC F-15 is a thin MMC3-based board in FCEUX `F-15.cpp:20-61` and FCEUmm `f-15.c:20-61`: CHR and A12 IRQ remain stock MMC3, while PRG ignores MMC3 PRG registers and is selected by a low `$6000-$7FFF` latch.
+- The latch is gated by the MMC3 `$A001` PRG-RAM control register bit7 (`A001B & 0x80` in the references). Adding a generic `Mmc3::prg_ram_control` field preserves this register for mapper 266 while keeping existing mapper 44 `$A001` outer-block behavior.
+- Mapper 266 consumes low-register writes even when `$A001.7` is clear, matching the reference low write handler window and preventing accidental PRG-RAM fall-through. `reg.bit3` switches from mirrored PRG16 to paired PRG16/32KB-style mapping; CHR stays standard MMC3.

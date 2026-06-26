@@ -1393,3 +1393,20 @@
   - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 72/72.
   - `cargo test -p fc-core`: PASS, 268/268.
   - `cargo test`: PASS, workspace tests.
+
+### Mapper 266 BMC F-15 Batch
+- Started: 2026-06-26 14:54:52.
+- Added mapper 266 / BMC F-15 as an MMC3 outer-bank variant in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs`.
+- Added generic MMC3 `$A001` PRG-RAM control storage so mapper 266 can gate its `$6000-$7FFF` latch on bit7 while existing mapper 44 `$A001` block-select behavior remains intact.
+- Implemented FCEUX/FCEUmm F-15 PRG behavior: low-register `reg&0x0F`, bit3 mirrored PRG16 vs paired 16KB mapping, low writes consumed regardless of gate state, CHR and A12 IRQ through ordinary MMC3.
+- Wired mapper 266 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper/factory.rs`, added mapper-local/facade/capability tests, and refreshed `/Users/sunmeng/workspace/fc/docs/Mapper-适配差距清单.md` plus `/Users/sunmeng/workspace/fc/docs/Mapper-适配引用记录.md`; supported mapper count is now 251 and remaining four-reference union gap is 242.
+- Verification so far:
+  - `cargo fmt --check`: PASS.
+  - `cargo test -p fc-core mapper::mmc3::tests::mapper266 -- --nocapture`: PASS, 1/1.
+  - `git diff --check`: PASS.
+  - `cargo test -p fc-core mapper::tests::capability -- --nocapture`: PASS, 3/3.
+  - `cargo test -p fc-core mapper::tests::behavior::asic::mmc3_long_tail_variants_258_266_267_291_321_334_use_outer_registers_and_dip_reads -- --nocapture`: PASS, 1/1.
+  - `cargo test -p fc-core mapper::mmc3::tests -- --nocapture`: PASS, 53/53.
+  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 72/72.
+  - `cargo test -p fc-core`: PASS, 269/269.
+  - `cargo test`: PASS, workspace tests.

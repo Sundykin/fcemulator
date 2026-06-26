@@ -30,6 +30,7 @@ impl Mmc3 {
             nametable_layout: Mmc3NametableLayout::Header,
             mirroring,
             irq: Mmc3A12Irq::new(),
+            prg_ram_control: 0,
             chr_ram_bank_base: None,
             chr_ram_window: None,
             chr_ram: Vec::new(),
@@ -427,6 +428,13 @@ impl Mmc3 {
     pub(in crate::mapper) fn new_258(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
         let mut m = Mmc3::new(prg_16k, chr_8k, mirroring);
         m.outer_bank = Mmc3OuterBank::Mapper258 { reg: 0 };
+        m
+    }
+
+    /// Mapper 266 — BMC F-15, MMC3 CHR/IRQ with low-register PRG16/32 latch.
+    pub(in crate::mapper) fn new_266(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
+        let mut m = Mmc3::new(prg_16k, chr_8k, mirroring);
+        m.outer_bank = Mmc3OuterBank::Mapper266 { reg: 0 };
         m
     }
 

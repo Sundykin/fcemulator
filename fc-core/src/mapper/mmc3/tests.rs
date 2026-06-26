@@ -880,6 +880,38 @@ fn mapper258_protection_register_forces_prg_modes_and_open_bus_reads() {
 }
 
 #[test]
+fn mapper266_low_register_prg_latch_is_gated_by_a001() {
+    let mut mapper = Mmc3::new_266(16, 32, Mirroring::Vertical);
+
+    mapper.write_register(0x8000, 0x06);
+    mapper.write_register(0x8001, 0x0C);
+    assert_eq!(mapper.prg_index(0x8004), 4);
+    assert!(mapper.write_low_register(0x6000, 0x05));
+    assert_eq!(mapper.prg_index(0x8004), 4);
+
+    mapper.write_register(0xA001, 0x80);
+    assert!(mapper.write_low_register(0x6000, 0x05));
+    assert_eq!(mapper.prg_index(0x8004), 0x0A * 0x2000 + 4);
+    assert_eq!(mapper.prg_index(0xA004), 0x0B * 0x2000 + 4);
+    assert_eq!(mapper.prg_index(0xC004), 0x0A * 0x2000 + 4);
+    assert_eq!(mapper.prg_index(0xE004), 0x0B * 0x2000 + 4);
+
+    assert!(mapper.write_low_register(0x6000, 0x0B));
+    assert_eq!(mapper.prg_index(0x8004), 0x14 * 0x2000 + 4);
+    assert_eq!(mapper.prg_index(0xA004), 0x15 * 0x2000 + 4);
+    assert_eq!(mapper.prg_index(0xC004), 0x16 * 0x2000 + 4);
+    assert_eq!(mapper.prg_index(0xE004), 0x17 * 0x2000 + 4);
+
+    mapper.write_register(0x8000, 0x02);
+    mapper.write_register(0x8001, 0x15);
+    assert_eq!(mapper.chr_index(0x1004), 0x15 * 0x400 + 4);
+
+    mapper.reset(true);
+    assert_eq!(mapper.prg_index(0x8004), 4);
+    assert_eq!(mapper.prg_ram_control, 0);
+}
+
+#[test]
 fn mapper267_one_shot_outer_bank_extends_prg_and_chr() {
     let mut mapper = Mmc3::new_267(128, 256, Mirroring::Vertical);
 
