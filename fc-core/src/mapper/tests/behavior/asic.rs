@@ -264,6 +264,41 @@ fn mapper273_uses_vrc2_banks_and_custom_cpu_irq() {
 }
 
 #[test]
+fn mapper308_uses_vrc2_banks_and_custom_cpu_irq() {
+    let mut m308 = Mapper::new(308, 16, 64, Mirroring::Horizontal, 0).expect("mapper 308");
+    assert!(!m308.watches_ppu_bus());
+    assert!(m308.clocks_cpu());
+    assert_eq!(m308.mirroring(), Mirroring::Vertical);
+
+    m308.write_register(0x8000, 3);
+    m308.write_register(0xA000, 5);
+    m308.write_register(0x9003, 3);
+    assert_eq!(m308.prg_index(0x8004), 3 * 0x2000 + 4);
+    assert_eq!(m308.prg_index(0xA004), 5 * 0x2000 + 4);
+    assert_eq!(m308.prg_index(0xC004), 30 * 0x2000 + 4);
+    assert_eq!(m308.prg_index(0xE004), 31 * 0x2000 + 4);
+    assert_eq!(m308.mirroring(), Mirroring::SingleScreenHigh);
+
+    m308.write_register(0xB000, 0x06);
+    m308.write_register(0xB001, 0x11);
+    assert_eq!(m308.chr_index(0x0004), 0x116 * 0x0400 + 4);
+
+    m308.write_register(0xF003, 0x10);
+    m308.write_register(0xF001, 0x00);
+    for _ in 0..4096 {
+        m308.cpu_clock();
+    }
+    assert!(m308.irq());
+
+    m308.write_register(0xF000, 0x00);
+    assert!(!m308.irq());
+    for _ in 0..4096 {
+        m308.cpu_clock();
+    }
+    assert!(!m308.irq());
+}
+
+#[test]
 fn mmc3_long_tail_variants_258_266_267_291_321_334_use_outer_registers_and_dip_reads() {
     let mut m258 = Mapper::new(258, 64, 32, Mirroring::Vertical, 0).expect("mapper 258");
     assert!(m258.watches_ppu_bus());

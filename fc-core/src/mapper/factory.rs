@@ -292,6 +292,7 @@ impl Mapper {
             295 => Mapper::JyAsic(JyAsic::new(prg_16k, chr_8k, JyAsicVariant::Mapper295)),
             298 => Mapper::Tf1201(Tf1201::new(prg_16k, chr_8k)),
             301 => Mapper::Mapper301(Mapper301::new()),
+            308 => Mapper::Vrc4(Vrc4::new_308(prg_16k, chr_8k)),
             310 => Mapper::Mapper310(Mapper310::new()),
             319 => Mapper::Mapper319(Mapper319::new()),
             321 => Mapper::Mmc3(Mmc3::new_321(prg_16k, chr_8k, mirroring)),

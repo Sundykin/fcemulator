@@ -360,3 +360,9 @@
 - Mapper 273 in FCEUmm `273.c:37-83` is a VRC2 banking board with custom CPU-cycle IRQ registers on `$F000-$FFFF`; it does not need new PRG/CHR/low-read hooks.
 - Reusing `Vrc4` is cleaner than a standalone mapper if VRC IRQ selection is explicit. `VrcIrqKind` now separates ordinary VRC4 IRQ, no-IRQ VRC2 variants, and mapper 273's custom counter while preserving old `is_vrc4` save-state compatibility.
 - Mapper 273's IRQ prescaler follows the reference's `irqMask` phase: power-on mask is 0, disabling sets mask to `0x7F`, the first enabled prescaler hit changes the mask to `0xFF`, and IRQ asserts only when the 8-bit counter wraps to 0.
+
+## Mapper 308 VRC2 Custom IRQ Findings
+- Mapper 308 / TH2131-1 in FCEUmm `308.c:35-72` is another VRC2-derived board: PRG/CHR/mirroring are ordinary VRC2 sync with address lines `0x01/0x02`, while `$F000-$FFFF` is replaced by a board-specific CPU-cycle IRQ unit.
+- The existing `VrcIrqKind` split from mapper 273 absorbs mapper 308 cleanly: no new `MapperOps` hook is needed, and VRC2/VRC4 PRG8/CHR1/mirroring decode remains shared.
+- Mapper 308 IRQ state is a 12-bit low phase plus 4-bit high counter: writes with `addr&3==0` clear/disable/reset low phase, `addr&3==1` enable, `addr&3==3` load `value>>4`; each CPU cycle increments low phase, decrements high on phase 2048, and asserts IRQ while high is zero during the low half of the 4096-cycle phase.
+- Mesen2 only has a mapper 308 `TH2131-1` placeholder in `MapperFactory.cpp:564`, so FCEUmm is the actionable behavior reference for the first pass.

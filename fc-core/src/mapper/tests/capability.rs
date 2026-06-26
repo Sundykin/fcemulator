@@ -229,6 +229,7 @@ fn watches_ppu_bus_matches_notify_a12_overrides() {
         (295, true),   // JY ASIC watches PPU bus for PPU-read IRQ / CHR latch
         (298, false),  // TF1201 IRQ is CPU-prescaled, not PPU-bus-clocked
         (301, false),  // Mapper 301
+        (308, false),  // Mapper 308 IRQ is CPU-clocked, not PPU-bus-clocked
         (310, false),  // Mapper 310
         (319, false),  // Mapper 319
         (321, true),   // Mapper 321 MMC3 A12 IRQ
@@ -477,6 +478,7 @@ fn clocks_cpu_matches_cpu_clock_overrides() {
         (295, true),   // JY ASIC can clock IRQs from CPU cycles
         (298, true),   // TF1201 IRQ counter clocks through CPU-cycle prescaler
         (301, false),  // Mapper 301
+        (308, true),   // Mapper 308 IRQ counter clocks per CPU cycle
         (310, false),  // Mapper 310
         (319, false),  // Mapper 319
         (321, false),  // Mapper 321 uses PPU A12 edges
@@ -733,6 +735,7 @@ fn clocks_hblank_matches_hblank_clock_overrides() {
         (295, true),
         (298, false),
         (301, false),
+        (308, false),
         (310, false),
         (319, false),
         (321, false),

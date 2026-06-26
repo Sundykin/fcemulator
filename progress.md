@@ -1426,3 +1426,19 @@
   - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 73/73.
   - `cargo test -p fc-core`: PASS, 272/272.
   - `cargo test`: PASS, workspace tests.
+
+### Mapper 308 VRC2 Custom IRQ Batch
+- Started: 2026-06-26.
+- Added mapper 308 / UNL-TH2131-1 as another `Vrc4`/VRC2-derived custom IRQ variant in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/vrc4.rs`.
+- Reused VRC2b address lines `0x01/0x02`, PRG8/CHR1/mirroring decode, and added the FCEUmm `308.c` IRQ write protocol: `$F000` clear/disable/reset low phase, `$F001` enable, `$F003` load high counter from `value >> 4`.
+- Implemented the CPU-cycle IRQ phase from FCEUmm: 12-bit low counter increments every CPU cycle, high counter decrements at low phase 2048, and IRQ asserts when high is zero during the low half of the phase.
+- Wired mapper 308 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper/factory.rs`, added VRC-local/facade/capability tests, and refreshed `/Users/sunmeng/workspace/fc/docs/Mapper-适配差距清单.md` plus `/Users/sunmeng/workspace/fc/docs/Mapper-适配引用记录.md`; supported mapper count is now 253 and remaining four-reference union gap is 240.
+- Verification so far:
+  - `cargo fmt --check`: PASS.
+  - `git diff --check`: PASS.
+  - `cargo test -p fc-core mapper::vrc4::tests -- --nocapture`: PASS, 9/9.
+  - `cargo test -p fc-core mapper::tests::behavior::asic::mapper308_uses_vrc2_banks_and_custom_cpu_irq -- --nocapture`: PASS, 1/1.
+  - `cargo test -p fc-core mapper::tests::capability -- --nocapture`: PASS, 3/3.
+  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 74/74.
+  - `cargo test -p fc-core`: PASS, 275/275.
+  - `cargo test`: PASS, workspace tests.

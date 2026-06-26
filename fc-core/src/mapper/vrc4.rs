@@ -18,6 +18,7 @@ enum VrcIrqKind {
     None,
     Vrc4,
     Mapper273,
+    Mapper308,
 }
 
 impl Default for VrcIrqKind {
@@ -89,6 +90,12 @@ impl Vrc4 {
             irq_kind: VrcIrqKind::Mapper273,
             chr_shift: 0,
         };
+        mapper
+    }
+
+    pub(super) fn new_308(prg_16k: usize, chr_8k: usize) -> Self {
+        let mut mapper = Self::new(23, prg_16k, chr_8k, 3);
+        mapper.config.irq_kind = VrcIrqKind::Mapper308;
         mapper
     }
 
@@ -178,6 +185,34 @@ impl Vrc4 {
         self.irq_counter = self.irq_counter.wrapping_add(1);
         self.irq_pending = self.irq_counter == 0;
     }
+
+    fn write_mapper308_irq(&mut self, addr: u16, value: u8) {
+        match addr & 0x0003 {
+            0 => {
+                self.irq_pending = false;
+                self.irq_enable = false;
+                self.irq_prescaler = 0;
+            }
+            1 => self.irq_enable = true,
+            3 => self.irq_counter = value >> 4,
+            _ => {}
+        }
+    }
+
+    fn clock_mapper308_irq(&mut self) {
+        if !self.irq_enable {
+            return;
+        }
+
+        self.irq_prescaler = self.irq_prescaler.wrapping_add(1);
+        let low_phase = self.irq_prescaler & 0x0FFF;
+        if low_phase == 2048 {
+            self.irq_counter = self.irq_counter.wrapping_sub(1);
+        }
+        if self.irq_counter == 0 && low_phase < 2048 {
+            self.irq_pending = true;
+        }
+    }
 }
 
 impl MapperOps for Vrc4 {
@@ -257,6 +292,7 @@ impl MapperOps for Vrc4 {
                         }
                     }
                     VrcIrqKind::Mapper273 => self.write_mapper273_irq(addr, value),
+                    VrcIrqKind::Mapper308 => self.write_mapper308_irq(addr, value),
                 }
             }
         }
@@ -286,6 +322,7 @@ impl MapperOps for Vrc4 {
                 }
             }
             VrcIrqKind::Mapper273 => self.clock_mapper273_irq(),
+            VrcIrqKind::Mapper308 => self.clock_mapper308_irq(),
         }
     }
 
@@ -453,6 +490,56 @@ mod tests {
         mapper.write_register(0xF008, 0x00);
         assert!(!mapper.irq());
         for _ in 0..512 {
+            mapper.cpu_clock();
+        }
+        assert!(!mapper.irq());
+    }
+
+    #[test]
+    fn mapper_308_reuses_vrc2_banking_and_address_lines() {
+        let mut mapper = Vrc4::new_308(16, 64);
+        assert!(mapper.clocks_cpu());
+
+        mapper.write_register(0x8000, 3);
+        mapper.write_register(0xA000, 5);
+        assert_eq!(mapper.prg_index(0x8004), 3 * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xA004), 5 * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 30 * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xE004), 31 * 0x2000 + 4);
+
+        mapper.write_register(0x9002, 0x03);
+        assert_eq!(mapper.mirroring(), Mirroring::SingleScreenHigh);
+        assert_eq!(mapper.prg_index(0x8004), 3 * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 30 * 0x2000 + 4);
+
+        mapper.write_register(0xB000, 0x02);
+        mapper.write_register(0xB001, 0x10);
+        mapper.write_register(0xB002, 0x0D);
+        mapper.write_register(0xB003, 0x06);
+        assert_eq!(chr_bank(&mapper, 0), 0x102);
+        assert_eq!(chr_bank(&mapper, 1), 0x06D);
+    }
+
+    #[test]
+    fn mapper_308_irq_asserts_in_low_half_after_high_counter_expires() {
+        let mut mapper = Vrc4::new_308(16, 8);
+        mapper.write_register(0xF003, 0x10);
+        mapper.write_register(0xF001, 0x00);
+
+        for _ in 0..2047 {
+            mapper.cpu_clock();
+        }
+        assert!(!mapper.irq());
+        mapper.cpu_clock();
+        assert!(!mapper.irq());
+        for _ in 0..2048 {
+            mapper.cpu_clock();
+        }
+        assert!(mapper.irq());
+
+        mapper.write_register(0xF000, 0x00);
+        assert!(!mapper.irq());
+        for _ in 0..4096 {
             mapper.cpu_clock();
         }
         assert!(!mapper.irq());
