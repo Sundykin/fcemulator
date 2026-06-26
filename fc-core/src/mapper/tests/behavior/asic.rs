@@ -234,7 +234,16 @@ fn mapper35_switches_jy_banks_and_a12_irq() {
 }
 
 #[test]
-fn mmc3_long_tail_variants_267_291_321_334_use_outer_registers_and_dip_reads() {
+fn mmc3_long_tail_variants_258_267_291_321_334_use_outer_registers_and_dip_reads() {
+    let mut m258 = Mapper::new(258, 64, 32, Mirroring::Vertical, 0).expect("mapper 258");
+    assert!(m258.watches_ppu_bus());
+    m258.write_register(0x8000, 0x06);
+    m258.write_register(0x8001, 0x2E);
+    assert_eq!(m258.prg_index(0x8004), 0x0E * 0x2000 + 4);
+    m258.write_expansion(0x5000, 0xA5);
+    assert_eq!(m258.prg_index(0xE004), 0x0B * 0x2000 + 4);
+    assert_eq!(m258.peek_expansion_with_open_bus(0x5006, 0xA0), Some(0xAF));
+
     let mut m267 = Mapper::new(267, 128, 256, Mirroring::Vertical, 0).expect("mapper 267");
     assert!(m267.watches_ppu_bus());
     m267.write_register(0x8000, 0x06);

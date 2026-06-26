@@ -210,6 +210,7 @@ fn watches_ppu_bus_matches_notify_a12_overrides() {
         (253, false),  // Mapper 253 IRQ is CPU-clocked, not PPU-bus-clocked
         (254, true),   // Mapper 254 MMC3 A12 IRQ
         (255, false),  // Mapper 255
+        (258, true),   // Mapper 258 MMC3 A12 IRQ
         (265, false),  // Mapper 265
         (267, true),   // Mapper 267 MMC3 A12 IRQ
         (271, false),  // Mapper 271

@@ -345,3 +345,8 @@
 - Mapper 267 / 8-in-1 JY-119 is a thin MMC3 outer-bank board in FCEUmm `267.c:26-62`: `OUTER_BANK=((reg & 0x20)>>2)|(reg & 0x06)`, PRG8 keeps low 5 bits, CHR1 keeps low 7 bits, and low-register writes are consumed but only update the register while bit7 is clear.
 - Mapper 291 is another FCEUmm-only MMC3 clone in local references (`291.c:24-59`): CHR1 ORs bit8 from `reg << 2`, PRG uses normal MMC3 low 4 bits plus one outer bit unless `reg.bit5` forces PRG32 bank `((reg >> 1) & 3) | ((reg >> 4) & 4)`.
 - Both mapper 267 and 291 fit `Mmc3OuterBank` without widening `MapperOps`: standard high-register writes, mirroring, and A12 IRQ remain normal MMC3, while low-register writes and PRG/CHR wrappers carry the board-specific behavior.
+
+## Mapper 258 MMC3 Protection Findings
+- Mapper 258 / UNL-158B is a protected MMC3 board in FCEUX `158B.cpp:29-69` and Mesen2 `Unl158B.h:10-66`. The only active board state needed for first-pass compatibility is one protection register written at `$5000-$5FFF` when `addr & 7 == 0`.
+- The protection register forces PRG mapping when bit7 is set: bit5 chooses PRG32 versus mirrored PRG16, while bit0-2 choose the outer bank. With bit7 clear, normal MMC3 PRG banks are masked to low 4 bits. CHR, mirroring, and A12 IRQ stay normal MMC3.
+- Mapper 258 validates the existing expansion open-bus hook: `$5000-$5FFF` reads return CPU open bus ORed with LUT `[0,0,0,1,2,4,0x0F,0]`; no new mapper interface is needed.

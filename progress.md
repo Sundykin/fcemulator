@@ -1378,3 +1378,18 @@
   - `cargo test -p fc-core`: PASS, 267/267.
   - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 72/72.
   - `cargo test`: PASS, workspace tests.
+
+### Mapper 258 MMC3 Protection Batch
+- Added mapper 258 / UNL-158B as an MMC3 outer-bank variant in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs`: protection register at `$5000-$5FFF` when `addr & 7 == 0`, normal MMC3 PRG masked to 4 bits, forced mirrored PRG16 / PRG32 modes from bit7/bit5, and standard MMC3 reset.
+- Added open-bus-aware `$5000-$5FFF` protection reads using the FCEUX/Mesen2 LUT, while leaving CHR, mirroring, and A12 IRQ on the standard MMC3 path.
+- Wired mapper 258 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper/factory.rs`, added mapper-local/facade/capability tests, and refreshed `/Users/sunmeng/workspace/fc/docs/Mapper-适配差距清单.md` plus `/Users/sunmeng/workspace/fc/docs/Mapper-适配引用记录.md`; supported mapper count is now 250 and remaining four-reference union gap is 243.
+- Verification:
+  - `cargo fmt --check`: PASS.
+  - `git diff --check`: PASS.
+  - `cargo test -p fc-core mapper::mmc3::tests::mapper258 -- --nocapture`: PASS, 1/1.
+  - `cargo test -p fc-core mapper::tests::behavior::asic::mmc3_long_tail_variants_258_267_291_321_334_use_outer_registers_and_dip_reads -- --nocapture`: PASS, 1/1.
+  - `cargo test -p fc-core mapper::mmc3::tests -- --nocapture`: PASS, 52/52.
+  - `cargo test -p fc-core mapper::tests::capability -- --nocapture`: PASS, 3/3.
+  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 72/72.
+  - `cargo test -p fc-core`: PASS, 268/268.
+  - `cargo test`: PASS, workspace tests.

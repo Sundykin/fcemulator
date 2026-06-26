@@ -845,6 +845,41 @@ fn mapper254_xors_wram_reads_until_unlocked() {
 }
 
 #[test]
+fn mapper258_protection_register_forces_prg_modes_and_open_bus_reads() {
+    let mut mapper = Mmc3::new_258(64, 32, Mirroring::Vertical);
+
+    mapper.write_register(0x8000, 0x06);
+    mapper.write_register(0x8001, 0x2E);
+    assert_eq!(mapper.prg_index(0x8004), 0x0E * 0x2000 + 4);
+
+    mapper.write_expansion(0x5000, 0x83);
+    assert_eq!(mapper.prg_index(0x8004), 0x06 * 0x2000 + 4);
+    assert_eq!(mapper.prg_index(0xA004), 0x07 * 0x2000 + 4);
+    assert_eq!(mapper.prg_index(0xC004), 0x06 * 0x2000 + 4);
+    assert_eq!(mapper.prg_index(0xE004), 0x07 * 0x2000 + 4);
+
+    mapper.write_expansion(0x5000, 0xA5);
+    assert_eq!(mapper.prg_index(0x8004), 0x08 * 0x2000 + 4);
+    assert_eq!(mapper.prg_index(0xA004), 0x09 * 0x2000 + 4);
+    assert_eq!(mapper.prg_index(0xC004), 0x0A * 0x2000 + 4);
+    assert_eq!(mapper.prg_index(0xE004), 0x0B * 0x2000 + 4);
+
+    mapper.write_expansion(0x5001, 0x80);
+    assert_eq!(mapper.prg_index(0x8004), 0x08 * 0x2000 + 4);
+    assert_eq!(
+        mapper.peek_expansion_with_open_bus(0x5006, 0xA0),
+        Some(0xAF)
+    );
+    assert_eq!(
+        mapper.read_expansion_with_open_bus(0x5003, 0xA0),
+        Some(0xA1)
+    );
+
+    mapper.reset(true);
+    assert_eq!(mapper.prg_index(0x8004), 4);
+}
+
+#[test]
 fn mapper267_one_shot_outer_bank_extends_prg_and_chr() {
     let mut mapper = Mmc3::new_267(128, 256, Mirroring::Vertical);
 

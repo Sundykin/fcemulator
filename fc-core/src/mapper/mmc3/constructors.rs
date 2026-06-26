@@ -423,6 +423,13 @@ impl Mmc3 {
         m
     }
 
+    /// Mapper 258 — UNL-158B protected MMC3 board.
+    pub(in crate::mapper) fn new_258(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
+        let mut m = Mmc3::new(prg_16k, chr_8k, mirroring);
+        m.outer_bank = Mmc3OuterBank::Mapper258 { reg: 0 };
+        m
+    }
+
     /// Mapper 267 — MMC3 clone with a one-shot JY-119 outer bank latch.
     pub(in crate::mapper) fn new_267(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
         let mut m = Mmc3::new(prg_16k, chr_8k, mirroring);

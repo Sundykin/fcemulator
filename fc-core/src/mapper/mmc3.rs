@@ -676,6 +676,18 @@ impl Mmc3 {
             }
             Mmc3OuterBank::Mapper250 => bank,
             Mmc3OuterBank::Mapper254 { .. } => bank,
+            Mmc3OuterBank::Mapper258 { reg } => {
+                if reg & 0x80 != 0 {
+                    let prg = (reg & 0x07) as usize;
+                    if reg & 0x20 != 0 {
+                        ((prg & 0x06) << 1) | region as usize
+                    } else {
+                        (prg << 1) | (region as usize & 0x01)
+                    }
+                } else {
+                    bank & 0x0F
+                }
+            }
             Mmc3OuterBank::Mapper267 { reg } => {
                 let outer = ((reg & 0x20) >> 2) | (reg & 0x06);
                 (bank & 0x1F) | ((outer as usize) << 4)
@@ -822,6 +834,7 @@ impl Mmc3 {
             }
             Mmc3OuterBank::Mapper250 => bank,
             Mmc3OuterBank::Mapper254 { .. } => bank,
+            Mmc3OuterBank::Mapper258 { .. } => bank,
             Mmc3OuterBank::Mapper267 { reg } => {
                 let outer = ((reg & 0x20) >> 2) | (reg & 0x06);
                 (bank & 0x7F) | ((outer as usize) << 6)
@@ -1672,6 +1685,20 @@ impl MapperOps for Mmc3 {
         }
     }
 
+    fn read_expansion_with_open_bus(&mut self, addr: u16, open_bus: u8) -> Option<u8> {
+        self.peek_expansion_with_open_bus(addr, open_bus)
+    }
+
+    fn peek_expansion_with_open_bus(&self, addr: u16, open_bus: u8) -> Option<u8> {
+        if let Mmc3OuterBank::Mapper258 { .. } = &self.outer_bank {
+            if (0x5000..=0x5FFF).contains(&addr) {
+                const PROTECTION: [u8; 8] = [0x00, 0x00, 0x00, 0x01, 0x02, 0x04, 0x0F, 0x00];
+                return Some(open_bus | PROTECTION[(addr & 0x07) as usize]);
+            }
+        }
+        self.peek_expansion(addr)
+    }
+
     fn write_expansion(&mut self, addr: u16, value: u8) {
         match &mut self.outer_bank {
             Mmc3OuterBank::Mapper12 { regs } if (0x4100..=0x5FFF).contains(&addr) => {
@@ -1749,6 +1776,12 @@ impl MapperOps for Mmc3 {
             Mmc3OuterBank::Mapper238 { ex_reg } if (0x4020..=0x5FFF).contains(&addr) => {
                 const SECURITY: [u8; 4] = [0x00, 0x02, 0x02, 0x03];
                 *ex_reg = SECURITY[(value & 0x03) as usize];
+                return;
+            }
+            Mmc3OuterBank::Mapper258 { reg } if (0x5000..=0x5FFF).contains(&addr) => {
+                if addr & 0x07 == 0 {
+                    *reg = value;
+                }
                 return;
             }
             _ => {}
@@ -1943,6 +1976,10 @@ impl MapperOps for Mmc3 {
             Mmc3OuterBank::Mapper254 { unlocked, xor_mask } => {
                 *unlocked = false;
                 *xor_mask = 0;
+            }
+            Mmc3OuterBank::Mapper258 { reg } => {
+                *reg = 0;
+                reset_standard = true;
             }
             Mmc3OuterBank::Mapper267 { reg } | Mmc3OuterBank::Mapper291 { reg } => {
                 *reg = 0;
