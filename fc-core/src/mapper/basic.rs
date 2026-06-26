@@ -13,6 +13,7 @@ mod irq;
 mod jy;
 mod konami;
 mod latch;
+mod longtail;
 mod multicart;
 mod namco;
 mod nanjing;
@@ -44,6 +45,7 @@ pub use latch::{
     Sachen74Ls374N, Sachen74Ls374NVariant, Sachen8259, Sachen8259Variant, SachenSa0161m,
     Sunsoft184, Sunsoft4, Sunsoft89, UnlPci556, UnromVariant, UnromVariantMapper,
 };
+pub use longtail::{Mapper271, Mapper285, Mapper310, Mapper319, Mapper326};
 pub use multicart::{
     Action53, ActionEnterprises, AddrLatch16k, AddrLatchVariant, Mapper128, Mapper15, Mapper226,
     Mapper236, Mapper237, Mapper240, Mapper241, Mapper244, Mapper246, Mapper265, Mapper277,

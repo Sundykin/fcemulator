@@ -1310,3 +1310,22 @@
   - `cargo fmt --check`: PASS.
   - `git diff --check`: PASS.
   - `cargo test -p fc-core`: PASS, 252/252.
+
+### Mapper 271 / 285 / 310 / 319 / 326 Long-tail Batch
+- Added `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/longtail.rs` as a separate long-tail module instead of expanding `multicart.rs` further.
+- Implemented mapper 271 as a FCEUmm data-latch board: PRG32 high nibble, CHR8 low nibble, and bit5 mirroring.
+- Implemented mapper 285 with submapper-specific PRG/mirroring formulas and `$5000-$5FFF` reset DIP pad reads.
+- Implemented mapper 310 / K-1053 with two data registers, address-selected PRG modes, CHR8 register, mirroring bit, and CHR-RAM write gate.
+- Implemented mapper 319 / BMC T-2291 with low-register writes, high latch, expansion pad read, disabled default low PRG-RAM, and soft-reset pad toggling.
+- Implemented mapper 326 with PRG8/CHR1 registers and mapper-owned per-page CIRAM nametable mapping.
+- Wired all five through `basic.rs`, `mapper.rs`, `kind.rs`, `dispatch.rs`, and `factory.rs`; added mapper-local tests, facade latch tests, and capability guard rows.
+- Updated `/Users/sunmeng/workspace/fc/docs/Mapper-适配差距清单.md` and `/Users/sunmeng/workspace/fc/docs/Mapper-适配引用记录.md`; supported mapper count is now 240 and remaining four-reference union gap is 253.
+- Verification:
+  - `cargo fmt --check`: PASS.
+  - `cargo test -p fc-core mapper::basic::longtail::tests -- --nocapture`: PASS, 5/5.
+  - `cargo test -p fc-core mapper::tests::behavior::latch::long_tail_latch_multicarts_271_285_310_319_326_follow_reference_banking -- --nocapture`: PASS, 1/1.
+  - `cargo test -p fc-core mapper::tests::capability -- --nocapture`: PASS, 3/3.
+  - `git diff --check`: PASS.
+  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 69/69.
+  - `cargo test -p fc-core`: PASS, 258/258.
+  - `cargo test`: PASS, workspace tests.

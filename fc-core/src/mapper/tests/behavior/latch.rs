@@ -217,6 +217,55 @@ fn long_tail_latch_multicarts_293_294_follow_reference_banking() {
 }
 
 #[test]
+fn long_tail_latch_multicarts_271_285_310_319_326_follow_reference_banking() {
+    let mut m271 = Mapper::new(271, 128, 16, Mirroring::Vertical, 0).expect("mapper 271");
+    m271.write_register(0x8000, 0x35);
+    assert_eq!(m271.prg_index(0x8004), 3 * 0x8000 + 4);
+    assert_eq!(m271.chr_index(0x1004), 5 * 0x2000 + 0x1004);
+    assert_eq!(m271.mirroring(), Mirroring::Vertical);
+
+    let mut m285 = Mapper::new(285, 512, 0, Mirroring::Vertical, 1).expect("mapper 285");
+    m285.write_register(0x8000, 0x4C);
+    assert_eq!(m285.prg_index(0x8004), 0x12 * 0x8000 + 4);
+    assert_eq!(m285.mirroring(), Mirroring::Horizontal);
+    m285.reset(true);
+    assert_eq!(m285.peek_expansion(0x5000), Some(1));
+
+    let mut m310 = Mapper::new(310, 512, 256, Mirroring::Vertical, 0).expect("mapper 310");
+    m310.write_register(0x8000, 0x45);
+    m310.write_register(0xC001, 0x03);
+    m310.write_register(0xC002, 0x06);
+    assert_eq!(m310.prg_index(0x8004), 0x0A * 0x2000 + 4);
+    assert_eq!(m310.prg_index(0xE004), 0x0A * 0x2000 + 4);
+    assert_eq!(m310.chr_index(0x1004), 6 * 0x2000 + 0x1004);
+    assert!(!m310.chr_write(0x0010, 0x12));
+
+    let mut m319 = Mapper::new(319, 16, 16, Mirroring::Horizontal, 0).expect("mapper 319");
+    assert!(m319.write_low_register(0x6000, 0x11));
+    assert!(m319.write_low_register(0x6004, 0xA4));
+    m319.write_register(0x8000, 0x01);
+    assert_eq!(m319.prg_index(0x8004), 1 * 0x4000 + 4);
+    assert_eq!(m319.chr_index(0x1004), 5 * 0x2000 + 0x1004);
+    assert_eq!(m319.mirroring(), Mirroring::Vertical);
+    m319.reset(true);
+    assert_eq!(m319.peek_expansion(0x5000), Some(0x40));
+
+    let mut m326 = Mapper::new(326, 128, 128, Mirroring::Vertical, 0).expect("mapper 326");
+    m326.write_register(0x8000, 3);
+    m326.write_register(0xA000, 4);
+    m326.write_register(0xC000, 5);
+    assert_eq!(m326.prg_index(0x8004), 3 * 0x2000 + 4);
+    assert_eq!(m326.prg_index(0xA004), 4 * 0x2000 + 4);
+    assert_eq!(m326.prg_index(0xE004), 0xFF * 0x2000 + 4);
+    m326.write_register(0x8017, 9);
+    assert_eq!(m326.chr_index(0x1C04), 9 * 0x0400 + 4);
+    let mut ciram = [0u8; 0x1000];
+    m326.write_register(0x8018, 1);
+    assert!(m326.nametable_write(0x2004, 0x5A, &mut ciram));
+    assert_eq!(m326.peek_nametable(0x2004, &ciram), Some(0x5A));
+}
+
+#[test]
 fn mapper81_uses_address_latch_for_prg16_and_data_latch_for_chr8() {
     let mut m81 = Mapper::new(81, 8, 4, Mirroring::Vertical, 0).expect("mapper 81");
     assert_eq!(m81.prg_index(0x8004), 0x0004);
