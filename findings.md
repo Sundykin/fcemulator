@@ -259,6 +259,13 @@
 - After `122/133/149`, the next low-risk mechanical candidates remain `146/148/144`, followed by `154/155/108`; MMC3 protocol variants `49/115/114/121` should still wait for MMC3 write-helper refactoring so later variants do not duplicate timing-sensitive IRQ/bank logic.
 - Low-risk batch `144/146/148` exposed two useful architecture details: mapper 144 needs a per-mapper bus-conflict transform instead of plain AND, and `$4100-$5FFF` writes in this project flow through `write_expansion()` rather than `write_low_register()`.
 
+## Mapper Long-tail Pass Findings 2026-06-26
+- Reference scan for the next `>255` candidates showed `268` (Coolboy) and `269` (Games Xplosion) are MMC3-family outer-register boards with PRG/CHR wrapping, optional CHR-RAM/protection, and in mapper 269's case CHR data synthesized from unscrambled PRG bytes. They should wait for a stronger MMC3 wrapper/alternate CHR backing layer rather than becoming standalone clones.
+- Mapper `270` is implemented in FCEUmm's `onebus.c` as a OneBus-derived board with CPU/PPU/MMC3 mangling and CHR-RAM overlay. It is an architecture target, not a clean latch/IRQ mapper.
+- Mapper `272` is a bootleg VRC-style board with two PRG8 registers, eight nibble-paired CHR1 registers, PAL-chip mirroring override, and an IRQ that clocks on PPU PA13 falling edges until 84 clocks.
+- Mapper `330` is a Contra/Gryzor bootleg board with three PRG8 registers, eight CHR1 registers, four per-nametable CIRAM page registers, 8KB WRAM, and a CPU-cycle IRQ counter that asserts when its 15-bit counter crosses `0x8000`.
+- Existing mapper hooks are sufficient for a first-pass `272/330` batch: `notify_a12` can observe mapper 272's PA13 edges, `cpu_clock` covers mapper 330's IRQ accumulator, and `nametable_*` hooks cover mapper 330 per-page CIRAM routing without widening `MapperOps`.
+
 ## Mapper 265/277/280/283 Research Findings
 - Mapper 265 / BMC-T-262 is a pure high-register latch board in FCEUmm `libretro-fceumm/src/boards/265.c:27-52`, with address-derived outer PRG bits, data low 3-bit bank, mirroring from address bit 1, optional same-bank PRG16 mode from address bit 7, and an address lock once latched address bit 13 is set. Mesen2 `T262.h:33-47` and Nestopia `NstBoardBmcT262.cpp:74-86` confirm the outer/base + inner bank split and mirroring behavior.
 - Mapper 277 is FCEUmm-only in the local references (`libretro-fceumm/src/boards/277.c:27-50`). It resets/powers latch data to `0x08`, maps PRG16 either as NROM-256 pair, same-bank PRG16, or UNROM-style fixed-high depending on latch data bits, keeps CHR8 fixed, uses header mirroring when bit3 is clear, and ignores future writes once bit5 is set.

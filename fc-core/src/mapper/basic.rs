@@ -6,6 +6,7 @@
 
 mod ave;
 mod bandai;
+mod bootleg;
 mod core;
 mod discrete;
 mod irem;
@@ -29,6 +30,7 @@ mod waixing;
 
 pub use ave::{Bnrom, Nina01};
 pub use bandai::BandaiFcg;
+pub use bootleg::{Mapper272, Mapper330};
 pub use core::{Axrom, Bf9096, Cnrom, Codemasters, ColorDreams, Gxrom, Nrom, Unrom};
 pub use discrete::{Mapper181, Mapper185, Mapper186, Mapper188, Mapper193, Mapper218};
 pub use irem::{IremG101, IremLrog017};

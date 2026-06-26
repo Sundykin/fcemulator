@@ -216,6 +216,7 @@ fn watches_ppu_bus_matches_notify_a12_overrides() {
         (266, true),   // Mapper 266 MMC3 A12 IRQ
         (267, true),   // Mapper 267 MMC3 A12 IRQ
         (271, false),  // Mapper 271
+        (272, true),   // Mapper 272 watches PA13 falling edges
         (273, false),  // Mapper 273 IRQ is CPU-clocked, not PPU-bus-clocked
         (277, false),  // Mapper 277
         (280, false),  // Mapper 280
@@ -235,6 +236,7 @@ fn watches_ppu_bus_matches_notify_a12_overrides() {
         (319, false),  // Mapper 319
         (321, true),   // Mapper 321 MMC3 A12 IRQ
         (326, false),  // Mapper 326
+        (330, false),  // Mapper 330 IRQ is CPU-clocked
         (334, true),   // Mapper 334 MMC3 A12 IRQ
         (340, false),  // Mapper 340
         (341, false),  // Mapper 341
@@ -466,6 +468,7 @@ fn clocks_cpu_matches_cpu_clock_overrides() {
         (255, false),  // Mapper 255
         (264, true),   // Mapper 264 can use CPU-cycle IRQ mode
         (265, false),  // Mapper 265
+        (272, false),  // Mapper 272 uses PPU PA13 edges
         (273, true),   // Mapper 273 IRQ counter clocks per CPU cycle
         (271, false),  // Mapper 271
         (277, false),  // Mapper 277
@@ -485,6 +488,7 @@ fn clocks_cpu_matches_cpu_clock_overrides() {
         (319, false),  // Mapper 319
         (321, false),  // Mapper 321 uses PPU A12 edges
         (326, false),  // Mapper 326
+        (330, true),   // Mapper 330 IRQ counter clocks per CPU cycle
         (334, false),  // Mapper 334 uses PPU A12 edges
         (340, false),  // Mapper 340
         (341, false),  // Mapper 341
@@ -724,6 +728,7 @@ fn clocks_hblank_matches_hblank_clock_overrides() {
         (255, false),
         (264, true),
         (265, false),
+        (272, false),
         (273, false),
         (271, false),
         (277, false),
@@ -743,6 +748,7 @@ fn clocks_hblank_matches_hblank_clock_overrides() {
         (319, false),
         (321, false),
         (326, false),
+        (330, false),
         (334, false),
         (340, false),
         (341, false),

@@ -495,3 +495,76 @@ fn taito_x1_mappers_follow_low_register_banking() {
     assert_eq!(m82.mirroring(), Mirroring::Horizontal);
     assert_eq!(m82.chr_index(0x1004), 6 * 0x0400 + 4);
 }
+
+#[test]
+fn bootleg_272_and_330_follow_reference_irq_and_nametable_rules() {
+    let mut ciram = [0u8; 0x1000];
+    ciram[0x004] = 0x10;
+    ciram[0x404] = 0x20;
+
+    let mut m272 = Mapper::new(272, 16, 32, Mirroring::Vertical, 0).expect("mapper 272");
+    assert!(m272.watches_ppu_bus());
+    assert!(!m272.clocks_cpu());
+    m272.write_register(0x8000, 3);
+    m272.write_register(0xA000, 4);
+    assert_eq!(m272.prg_index(0x8004), 3 * 0x2000 + 4);
+    assert_eq!(m272.prg_index(0xA004), 4 * 0x2000 + 4);
+    assert_eq!(m272.prg_index(0xC004), 30 * 0x2000 + 4);
+    assert_eq!(m272.prg_index(0xE004), 31 * 0x2000 + 4);
+    m272.write_register(0xB000, 5);
+    m272.write_register(0xB001, 1);
+    m272.write_register(0xB002, 6);
+    m272.write_register(0xB003, 2);
+    assert_eq!(m272.chr_index(0x0004), 0x15 * 0x0400 + 4);
+    assert_eq!(m272.chr_index(0x0404), 0x26 * 0x0400 + 4);
+    m272.write_register(0x9000, 1);
+    assert_eq!(m272.peek_nametable(0x2004, &ciram), Some(0x10));
+    assert_eq!(m272.peek_nametable(0x2404, &ciram), Some(0x10));
+    assert_eq!(m272.peek_nametable(0x2804, &ciram), Some(0x20));
+    m272.write_register(0x8004, 2);
+    assert_eq!(m272.peek_nametable(0x2404, &ciram), Some(0x10));
+    m272.write_register(0x8004, 3);
+    assert_eq!(m272.peek_nametable(0x2004, &ciram), Some(0x20));
+    m272.write_register(0xC008, 0);
+    for cycle in 0..83 {
+        m272.notify_a12(0x2000, cycle * 2);
+        m272.notify_a12(0x0000, cycle * 2 + 1);
+    }
+    assert!(!m272.irq());
+    m272.notify_a12(0x2000, 200);
+    m272.notify_a12(0x0000, 201);
+    assert!(m272.irq());
+    m272.write_register(0xC004, 0);
+    assert!(!m272.irq());
+    m272.write_register(0x800C, 0);
+    assert!(m272.irq());
+
+    let mut m330 = Mapper::new(330, 16, 32, Mirroring::Horizontal, 0).expect("mapper 330");
+    assert!(!m330.watches_ppu_bus());
+    assert!(m330.clocks_cpu());
+    m330.write_register(0x8000, 5);
+    m330.write_register(0x8800, 6);
+    assert_eq!(m330.chr_index(0x0004), 5 * 0x0400 + 4);
+    assert_eq!(m330.chr_index(0x0404), 6 * 0x0400 + 4);
+    m330.write_register(0xE000, 3);
+    m330.write_register(0xE800, 4);
+    m330.write_register(0xF000, 5);
+    assert_eq!(m330.prg_index(0x8004), 3 * 0x2000 + 4);
+    assert_eq!(m330.prg_index(0xA004), 4 * 0x2000 + 4);
+    assert_eq!(m330.prg_index(0xC004), 5 * 0x2000 + 4);
+    assert_eq!(m330.prg_index(0xE004), 31 * 0x2000 + 4);
+    m330.write_register(0xC000, 0);
+    m330.write_register(0xC800, 1);
+    assert_eq!(m330.peek_nametable(0x2004, &ciram), Some(0x10));
+    assert_eq!(m330.peek_nametable(0x2404, &ciram), Some(0x20));
+    m330.write_register(0x8401, 0xFF);
+    m330.write_register(0xA401, 0xFF);
+    assert!(!m330.irq());
+    m330.cpu_clock();
+    assert!(m330.irq());
+    m330.clear_irq();
+    assert!(!m330.irq());
+    m330.reset(true);
+    assert_eq!(m330.chr_index(0x0404), 1 * 0x0400 + 4);
+    assert_eq!(m330.prg_index(0x8004), 4);
+}

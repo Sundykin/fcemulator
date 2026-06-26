@@ -1457,3 +1457,21 @@
   - `cargo fmt --check`: PASS.
   - `git diff --check`: PASS.
   - `cargo test`: PASS, workspace tests.
+
+### Mapper 272 / 330 Bootleg Batch
+- Started: 2026-06-26 23:19:10 CST.
+- Added `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/bootleg.rs` with mapper 272 and mapper 330 first-pass support from FCEUmm references.
+- Mapper 272 covers PRG8 banking, VRC-style nibble-paired CHR1 registers, PAL chip mirroring override, PPU PA13 falling-edge IRQ, reset state, and mapper-owned nametable routing for the PAL mirroring override.
+- Mapper 330 covers PRG8/CHR1 register windows, per-nametable CIRAM page registers, CPU-cycle IRQ counter, reset state, and leaves the reference 8KB WRAM behavior on the existing Cartridge default `$6000-$7FFF` PRG-RAM path for now.
+- Wired both through `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic.rs`, `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs`, `/Users/sunmeng/workspace/fc/fc-core/src/mapper/kind.rs`, `/Users/sunmeng/workspace/fc/fc-core/src/mapper/dispatch.rs`, and `/Users/sunmeng/workspace/fc/fc-core/src/mapper/factory.rs`.
+- Added facade behavior coverage in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/tests/behavior/asic.rs` and capability guard rows in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/tests/capability.rs`.
+- Refreshed `/Users/sunmeng/workspace/fc/docs/Mapper-适配差距清单.md`, `/Users/sunmeng/workspace/fc/docs/Mapper-适配引用记录.md`, `/Users/sunmeng/workspace/fc/findings.md`, and `/Users/sunmeng/workspace/fc/task_plan.md`; supported mapper count is now 256 and remaining four-reference union gap is 237.
+- Verification so far:
+  - `cargo test -p fc-core mapper::tests::behavior::asic::bootleg_272_and_330_follow_reference_irq_and_nametable_rules -- --nocapture`: PASS, 1/1.
+  - `cargo test -p fc-core mapper::tests::capability -- --nocapture`: PASS, 3/3.
+  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 75/75.
+  - `cargo fmt`: PASS.
+  - `cargo fmt --check`: PASS.
+  - `git diff --check`: PASS.
+  - `cargo test -p fc-core`: PASS, 276/276.
+  - `cargo test`: PASS, workspace tests.
