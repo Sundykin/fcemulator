@@ -404,3 +404,12 @@
 - Mapper 366 in FCEUmm `366.c:26-53` is the GN-45 address-latch sibling of mapper 361: PRG/CHR outer formulas are identical, but low-register writes latch `addr & 0xFF` instead of data and stop updating once bit7 is set.
 - FCEUX `mmc3.cpp:1218-1261` corroborates the GN-45 address-latch and bit7 lock behavior through `GN45Write0`, with the same PRG/CHR wrappers and reset clear.
 - The existing `Mmc3OuterBank` layer is enough for mapper 366: add one register field, reuse 361 PRG/CHR wrappers, keep low write fall-through for AX5202P WRAM, and reset standard MMC3 registers on soft reset/power reset.
+
+## Mapper 363/364/368 Long-tail Findings
+- Mapper 363 in FCEUmm `363.c:24-39` is an `asic_latch`-style board with one important nuance: address bits only latch on an A4 rising edge, while data is ANDed with the current PRG-ROM byte before becoming latch data. The existing `MapperOps::has_bus_conflicts()` plus Cartridge conflict application covers this if the conflict happens before `write_register()`.
+- Mapper 363 does not need a new mapper interface. Existing PRG/CHR page index functions, mirroring, reset, and bus-conflict hooks cover PRG16 low/fixed-high mapping, CHR8 fixed 0, bit5 mirroring, and reset clear.
+- Mapper 364 in FCEUmm `364.c:25-52` is a thin MMC3 clone: `$6000-$7FFF` writes set one outer register, PRG8 and CHR1 wrappers change masks when bit5 is set, and normal MMC3 high writes/A12 IRQ/mirroring stay untouched. It belongs in `Mmc3OuterBank`, not as a standalone mapper.
+- Mapper 364's low-register writes should be consumed without PRG-RAM fall-through. Unlike AX5202P family boards such as 321/361/366, FCEUmm installs a dedicated `$6000-$7FFF` write handler and does not chain through WRAM.
+- Mapper 368 in FCEUmm `368.c:30-112` is basically the game-0 SMB2J-style mode from mapper 357 without the reset-selected multicart wrapper. Existing low PRG-ROM, expansion register, CPU-clock IRQ, and reset hooks are sufficient.
+- Mapper 368 reset only clears IRQ state and resyncs banks; `preg` and `latch` persist across soft reset. Power/reset distinction is represented by keeping `preg/latch` on soft reset and clearing them on hard reset.
+- Candidate triage remains: mapper 362 needs VRC4 reset-selected outer game support; mapper 369 mixes MMC3/HBlank IRQ and SMB2J CPU IRQ mode; mapper 370 needs a PPU hook affecting mirroring; mapper 372 needs CHR-RAM/outer-register review. These are architecture-guided batches rather than pure mechanical latch additions.

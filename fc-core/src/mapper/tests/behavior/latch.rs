@@ -227,6 +227,29 @@ fn long_tail_latch_multicarts_352_360_follow_reset_and_register_banking() {
     assert_eq!(m360s1.prg_index(0x8004), 0x12 * 0x4000 + 4);
     assert_eq!(m360s1.prg_index(0xC004), 0x12 * 0x4000 + 4);
     assert_eq!(m360s1.mirroring(), Mirroring::Horizontal);
+
+    let mut m363 = Mapper::new(363, 128, 0, Mirroring::Vertical, 0).expect("mapper 363");
+    assert!(m363.has_bus_conflicts());
+    m363.write_register(0x8030, 0x06);
+    assert_eq!(m363.prg_index(0x8004), 0x40186 * 0x4000 + 4);
+    assert_eq!(m363.mirroring(), Mirroring::Horizontal);
+    m363.write_register(0x8000, 0x02);
+    assert_eq!(m363.prg_index(0x8004), 0x40182 * 0x4000 + 4);
+    m363.reset(true);
+    assert_eq!(m363.prg_index(0x8004), 4);
+
+    let mut m368 = Mapper::new(368, 8, 1, Mirroring::Vertical, 0).expect("mapper 368");
+    assert!(m368.clocks_cpu());
+    assert_eq!(m368.low_prg_index(0x6004), Some(2 * 0x2000 + 4));
+    assert_eq!(m368.prg_index(0xC004), 4 * 0x2000 + 4);
+    m368.write_expansion(0x4022, 0x06);
+    assert_eq!(m368.prg_index(0xC004), 7 * 0x2000 + 4);
+    m368.write_expansion(0x4122, 0x53);
+    assert_eq!(m368.peek_expansion(0x4122), Some(0xFB));
+    for _ in 0..4097 {
+        m368.cpu_clock();
+    }
+    assert!(m368.irq());
 }
 
 #[test]

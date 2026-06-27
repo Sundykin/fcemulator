@@ -717,6 +717,10 @@ impl Mmc3 {
                 }
             }
             Mmc3OuterBank::Mapper334 { reg, .. } => ((*reg as usize) >> 1) * 4 + region as usize,
+            Mmc3OuterBank::Mapper364 { reg } => {
+                let mask = if reg & 0x20 != 0 { 0x0F } else { 0x1F };
+                (bank & mask) | (((*reg as usize) >> 1) & 0x20)
+            }
             Mmc3OuterBank::Mapper361 { reg } | Mmc3OuterBank::Mapper366 { reg } => {
                 (bank & 0x0F) | ((*reg as usize) & !0x0F)
             }
@@ -855,6 +859,10 @@ impl Mmc3 {
             Mmc3OuterBank::Mapper291 { reg } => bank | (((*reg as usize) << 2) & 0x100),
             Mmc3OuterBank::Mapper321 { reg } => (bank & 0x7F) | (((*reg as usize) << 5) & !0x7F),
             Mmc3OuterBank::Mapper334 { .. } => bank,
+            Mmc3OuterBank::Mapper364 { reg } => {
+                let mask = if reg & 0x20 != 0 { 0x7F } else { 0xFF };
+                (bank & mask) | (((*reg as usize) << 4) & 0x100)
+            }
             Mmc3OuterBank::Mapper361 { reg } | Mmc3OuterBank::Mapper366 { reg } => {
                 (bank & 0x7F) | (((*reg as usize) << 3) & !0x7F)
             }
@@ -1601,6 +1609,10 @@ impl MapperOps for Mmc3 {
                 *reg = value;
                 true
             }
+            Mmc3OuterBank::Mapper364 { reg } => {
+                *reg = value;
+                true
+            }
             Mmc3OuterBank::Mapper366 { reg } => {
                 if *reg & 0x80 == 0 {
                     *reg = addr as u8;
@@ -2040,6 +2052,9 @@ impl MapperOps for Mmc3 {
             }
             Mmc3OuterBank::Mapper361 { reg } => {
                 *reg = 0;
+                reset_standard = true;
+            }
+            Mmc3OuterBank::Mapper364 { .. } => {
                 reset_standard = true;
             }
             Mmc3OuterBank::Mapper366 { reg } => {

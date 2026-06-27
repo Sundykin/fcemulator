@@ -2558,6 +2558,197 @@ impl MapperOps for Mapper360 {
     }
 }
 
+// ============================================================================
+// Mapper 363 — address latch with A4 rising-edge trap and bus conflicts
+//
+// Reference:
+// - FCEUmm `src/boards/363.c`
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Mapper363 {
+    latch_addr: u16,
+    latch_data: u8,
+}
+
+impl Mapper363 {
+    pub(in crate::mapper) fn new() -> Self {
+        Mapper363 {
+            latch_addr: 0,
+            latch_data: 0,
+        }
+    }
+
+    fn prg16_bank(&self, addr: u16) -> usize {
+        let outer = (self.latch_addr as usize) << 3;
+        if addr < 0xC000 {
+            outer | ((self.latch_data & 0x07) as usize)
+        } else {
+            outer | 0x07
+        }
+    }
+}
+
+impl MapperOps for Mapper363 {
+    fn prg_index(&self, addr: u16) -> usize {
+        self.prg16_bank(addr) * 0x4000 + (addr as usize & 0x3FFF)
+    }
+
+    fn chr_index(&self, addr: u16) -> usize {
+        addr as usize & 0x1FFF
+    }
+
+    fn write_register(&mut self, addr: u16, value: u8) {
+        if self.latch_addr & 0x10 == 0 && addr & 0x10 != 0 {
+            self.latch_addr = addr;
+        }
+        self.latch_data = value;
+    }
+
+    fn has_bus_conflicts(&self) -> bool {
+        true
+    }
+
+    fn mirroring(&self) -> Mirroring {
+        if self.latch_addr & 0x20 != 0 {
+            Mirroring::Horizontal
+        } else {
+            Mirroring::Vertical
+        }
+    }
+
+    fn reset(&mut self, _soft: bool) {
+        self.latch_addr = 0;
+        self.latch_data = 0;
+    }
+}
+
+// ============================================================================
+// Mapper 368 — Bit Corp SMB2J-derived fixed-bank board with CPU IRQ
+//
+// Reference:
+// - FCEUmm `src/boards/368.c`
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Mapper368 {
+    preg: u8,
+    latch: u8,
+    irq_enabled: bool,
+    irq_counter: u16,
+    irq_pending: bool,
+    mirroring: Mirroring,
+}
+
+impl Mapper368 {
+    const BANKS: [usize; 8] = [4, 3, 5, 3, 6, 3, 7, 3];
+
+    pub(in crate::mapper) fn new(mirroring: Mirroring) -> Self {
+        Mapper368 {
+            preg: 0,
+            latch: 0,
+            irq_enabled: false,
+            irq_counter: 0,
+            irq_pending: false,
+            mirroring,
+        }
+    }
+
+    fn high_prg8_page(&self, addr: u16) -> usize {
+        match addr & 0xE000 {
+            0x8000 => 1,
+            0xA000 => 0,
+            0xC000 => Self::BANKS[(self.preg & 0x07) as usize],
+            0xE000 => 8,
+            _ => 0,
+        }
+    }
+
+    fn disable_irq(&mut self) {
+        self.irq_enabled = false;
+        self.irq_counter = 0;
+        self.irq_pending = false;
+    }
+}
+
+impl MapperOps for Mapper368 {
+    fn prg_index(&self, addr: u16) -> usize {
+        self.high_prg8_page(addr) * 0x2000 + (addr as usize & 0x1FFF)
+    }
+
+    fn chr_index(&self, addr: u16) -> usize {
+        addr as usize & 0x1FFF
+    }
+
+    fn read_expansion(&mut self, addr: u16) -> Option<u8> {
+        self.peek_expansion(addr)
+    }
+
+    fn peek_expansion(&self, addr: u16) -> Option<u8> {
+        (addr == 0x4122).then_some(self.latch | 0xBA)
+    }
+
+    fn write_expansion(&mut self, addr: u16, value: u8) {
+        match addr {
+            0x4022 | 0x4120 => self.preg = value & 0x07,
+            0x4122 => {
+                self.latch = value & 0x53;
+                if value & 0x01 != 0 {
+                    self.irq_enabled = true;
+                } else {
+                    self.disable_irq();
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn low_prg_index(&self, addr: u16) -> Option<usize> {
+        Some(2 * 0x2000 + (addr as usize & 0x1FFF))
+    }
+
+    fn low_prg_ram_read_enabled(&self, _addr: u16) -> bool {
+        false
+    }
+
+    fn low_prg_ram_write_enabled(&self, _addr: u16) -> bool {
+        false
+    }
+
+    fn mirroring(&self) -> Mirroring {
+        self.mirroring
+    }
+
+    fn cpu_clock(&mut self) {
+        if !self.irq_enabled {
+            return;
+        }
+
+        if self.irq_counter < 4096 {
+            self.irq_counter += 1;
+        } else {
+            self.irq_enabled = false;
+            self.irq_pending = true;
+        }
+    }
+
+    fn clocks_cpu(&self) -> bool {
+        true
+    }
+
+    fn irq(&self) -> bool {
+        self.irq_pending
+    }
+
+    fn reset(&mut self, soft: bool) {
+        self.disable_irq();
+        if !soft {
+            self.preg = 0;
+            self.latch = 0;
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2977,5 +3168,57 @@ mod tests {
         assert_eq!(sub1.mirroring(), Mirroring::Horizontal);
         sub1.reset(true);
         assert_eq!(sub1.prg_index(0x8004), 0x40 * 0x2000 + 4);
+    }
+
+    #[test]
+    fn mapper363_latches_address_on_a4_rising_edge_and_conflicts_data() {
+        let mut mapper = Mapper363::new();
+        assert!(mapper.has_bus_conflicts());
+        assert_eq!(mapper.prg_index(0x8004), 0x0004);
+        assert_eq!(mapper.prg_index(0xC004), 7 * 0x4000 + 4);
+
+        mapper.write_register(0x8030, 0x06);
+        assert_eq!(mapper.prg_index(0x8004), 0x40186 * 0x4000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 0x40187 * 0x4000 + 4);
+        assert_eq!(mapper.mirroring(), Mirroring::Horizontal);
+        assert_eq!(mapper.apply_bus_conflict(0xFF, 0x06), 0x06);
+
+        mapper.write_register(0x8010, 0x03);
+        assert_eq!(mapper.prg_index(0x8004), 0x40183 * 0x4000 + 4);
+        mapper.write_register(0x8000, 0x04);
+        mapper.write_register(0x8010, 0x02);
+        assert_eq!(mapper.prg_index(0x8004), 0x40182 * 0x4000 + 4);
+
+        mapper.reset(true);
+        assert_eq!(mapper.prg_index(0x8004), 0x0004);
+        assert_eq!(mapper.mirroring(), Mirroring::Vertical);
+    }
+
+    #[test]
+    fn mapper368_maps_fixed_banks_status_read_and_cpu_irq() {
+        let mut mapper = Mapper368::new(Mirroring::Horizontal);
+        assert_eq!(mapper.low_prg_index(0x6004), Some(2 * 0x2000 + 4));
+        assert_eq!(mapper.prg_index(0x8004), 1 * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xA004), 4);
+        assert_eq!(mapper.prg_index(0xC004), 4 * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xE004), 8 * 0x2000 + 4);
+        assert_eq!(mapper.mirroring(), Mirroring::Horizontal);
+
+        mapper.write_expansion(0x4022, 0x06);
+        assert_eq!(mapper.prg_index(0xC004), 7 * 0x2000 + 4);
+        mapper.write_expansion(0x4122, 0x53);
+        assert_eq!(mapper.peek_expansion(0x4122), Some(0xFB));
+        assert!(mapper.clocks_cpu());
+        for _ in 0..4096 {
+            mapper.cpu_clock();
+        }
+        assert!(!mapper.irq());
+        mapper.cpu_clock();
+        assert!(mapper.irq());
+
+        mapper.reset(true);
+        assert!(!mapper.irq());
+        assert_eq!(mapper.prg_index(0xC004), 7 * 0x2000 + 4);
+        assert_eq!(mapper.peek_expansion(0x4122), Some(0xFB));
     }
 }

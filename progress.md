@@ -1573,3 +1573,21 @@
   - `cargo test -p fc-core mapper::mmc3::tests -- --nocapture`: PASS, 55/55.
   - `cargo test -p fc-core`: PASS, 286/286.
   - `cargo test`: PASS, workspace tests.
+
+### Mapper 363 / 364 / 368 Long-tail Batch
+- Started: 2026-06-27 CST.
+- Added mapper 363 / address-latch bus-conflict board in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/multicart.rs`, following FCEUmm `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/363.c:24-39`.
+- Added mapper 364 as an MMC3 outer-bank variant in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs`, following FCEUmm `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/364.c:25-52`.
+- Added mapper 368 / Bit Corp SMB2J-derived fixed-bank board in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/multicart.rs`, following FCEUmm `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/368.c:30-112`.
+- Mapper 363 covers A4 rising-edge address latch, AND bus conflict, PRG16 low/fixed-high mapping, CHR8 fixed 0, mirroring from latch address bit5, and reset clear. Cartridge-level coverage verifies the bus-conflict value is applied before the mapper stores latch data.
+- Mapper 364 covers the low `$6000-$7FFF` outer register, PRG/CHR mode-dependent masks, ordinary MMC3 PRG/CHR/mirroring/A12 IRQ reuse, no low WRAM fall-through, and standard MMC3 reset while preserving the outer register on soft reset.
+- Mapper 368 covers fixed PRG8 pages at `$6000/$8000/$A000/$E000`, `banks[preg]` at `$C000`, `$4022/$4120/$4122` register/status behavior, CPU-cycle IRQ after 4096 cycles, header mirroring, and reset-clears-IRQ behavior.
+- Wired all three through `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic.rs`, `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs`, `/Users/sunmeng/workspace/fc/fc-core/src/mapper/kind.rs`, `/Users/sunmeng/workspace/fc/fc-core/src/mapper/dispatch.rs`, and `/Users/sunmeng/workspace/fc/fc-core/src/mapper/factory.rs`.
+- Added mapper-local/facade behavior tests, a cartridge bus-conflict regression, and capability guard rows; refreshed mapper gap/reference docs. Supported mapper count is now 267 and remaining four-reference union gap is 226.
+- Verification:
+  - `cargo fmt --check`: PASS.
+  - `git diff --check`: PASS.
+  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 78/78.
+  - `cargo test -p fc-core mapper::mmc3::tests -- --nocapture`: PASS, 56/56.
+  - `cargo test -p fc-core`: PASS, 290/290.
+  - `cargo test`: PASS, workspace tests.

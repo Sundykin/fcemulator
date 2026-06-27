@@ -861,6 +861,23 @@ mod tests {
         assert_eq!(cart.cpu_peek(0x8000), 0xAB);
     }
 
+    #[test]
+    fn mapper363_applies_and_bus_conflict_before_latch_data() {
+        let mut rom = vec![0u8; 16 + 128 * 0x4000];
+        rom[0..4].copy_from_slice(&INES_MAGIC);
+        rom[4] = 128; // PRG 16K banks
+        rom[5] = 0;
+        rom[6] = 0xB0; // mapper low nibble = 11
+        rom[7] = 0x68; // mapper middle nibble = 6, NES 2.0 marker
+        rom[8] = 0x01; // mapper high nibble = 1 => 0x16B / 363
+        rom[16 + 0x0030] = 0x02; // bus-conflict byte at $8030 in the initial bank
+
+        let mut cart = Cartridge::from_bytes(&rom).expect("mapper 363");
+        assert_eq!(cart.mapper_number, 363);
+        assert!(cart.cpu_write(0x8030, 0x07)); // latch data becomes 0x07 & 0x02
+        assert_eq!(cart.mapper.prg_index(0x8004), 0x40182 * 0x4000 + 4);
+    }
+
     /// Build a minimal mapper-4 (MMC3) iNES image: 2×16K PRG + 1×8K CHR.
     fn mmc3_rom() -> Vec<u8> {
         let mut rom = vec![0u8; 16 + 2 * 0x4000 + 0x2000];

@@ -38,14 +38,14 @@ pub use basic::{
     Mapper253, Mapper265, Mapper271, Mapper272, Mapper277, Mapper280, Mapper283, Mapper285,
     Mapper29, Mapper293, Mapper294, Mapper301, Mapper31, Mapper310, Mapper319, Mapper326,
     Mapper330, Mapper340, Mapper341, Mapper343, Mapper35, Mapper352, Mapper354, Mapper357,
-    Mapper36, Mapper360, Mapper40, Mapper42, Mapper43, Mapper50, Mapper51, Mapper53, Mapper57,
-    Mapper60, Mapper63, Mapper65, Mapper67, Mapper72, Mapper73, Mapper79, Mapper8, Mapper81,
-    Mapper83, Mapper91, Mapper92, Mapper96, Mapper99, Namco108Mapper154, Namco108Mapper206,
-    Namco108Mapper95, Namco118, NanjingMapper, NanjingVariant, Nina01, Nina03_06, Nrom, Ntdec112,
-    Sachen133, Sachen149, Sachen74Ls374N, Sachen74Ls374NVariant, Sachen8259, Sachen8259Variant,
-    SachenSa0161m, Subor166, SuborVariant, Sunsoft184, Sunsoft4, Sunsoft89, TaitoTc0190,
-    TaitoX1005, TaitoX1017, Tf1201, TxcMapper, TxcVariant, UnlPci556, Unrom, UnromVariant,
-    UnromVariantMapper, Vrc1,
+    Mapper36, Mapper360, Mapper363, Mapper368, Mapper40, Mapper42, Mapper43, Mapper50, Mapper51,
+    Mapper53, Mapper57, Mapper60, Mapper63, Mapper65, Mapper67, Mapper72, Mapper73, Mapper79,
+    Mapper8, Mapper81, Mapper83, Mapper91, Mapper92, Mapper96, Mapper99, Namco108Mapper154,
+    Namco108Mapper206, Namco108Mapper95, Namco118, NanjingMapper, NanjingVariant, Nina01,
+    Nina03_06, Nrom, Ntdec112, Sachen133, Sachen149, Sachen74Ls374N, Sachen74Ls374NVariant,
+    Sachen8259, Sachen8259Variant, SachenSa0161m, Subor166, SuborVariant, Sunsoft184, Sunsoft4,
+    Sunsoft89, TaitoTc0190, TaitoX1005, TaitoX1017, Tf1201, TxcMapper, TxcVariant, UnlPci556,
+    Unrom, UnromVariant, UnromVariantMapper, Vrc1,
 };
 pub use expansion_mappers::{Fme7, Namco163, Vrc6, Vrc6Variant, Vrc7};
 pub use kind::Mapper;
