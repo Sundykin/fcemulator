@@ -1475,3 +1475,19 @@
   - `git diff --check`: PASS.
   - `cargo test -p fc-core`: PASS, 276/276.
   - `cargo test`: PASS, workspace tests.
+
+### Mapper 297 MMC1/Mapper70 Composite Batch
+- Started: 2026-06-27 07:16:27 CST.
+- Added mapper 297 / 2-in-1 Uzi Lightgun MGC-002 as an MMC1 variant in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc1.rs`, following FCEUmm `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/mmc1.c:499-557`.
+- Factored MMC1 serial-register writes into `write_mmc1_register()` so mapper 297 can switch high-register writes between ordinary MMC1 serial behavior and Mapper70-style latch behavior without duplicating MMC1 register timing.
+- Implemented `$4120` mode writes, Mapper70 PRG16/CHR8/vertical mirroring branch, MMC1 PRG/CHR outer-bank hooks through mode bit0, and the reference power-on nuance where initial output remains MMC1 reset mapping until the Mapper70 branch is explicitly synced.
+- Wired mapper 297 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper/factory.rs`, added mapper-local/facade behavior tests and capability guard rows, and refreshed `/Users/sunmeng/workspace/fc/docs/Mapper-适配差距清单.md` plus `/Users/sunmeng/workspace/fc/docs/Mapper-适配引用记录.md`; supported mapper count is now 257 and remaining four-reference union gap is 236.
+- Verification:
+  - `cargo fmt --check`: PASS.
+  - `git diff --check`: PASS.
+  - `cargo test -p fc-core mapper::mmc1::tests -- --nocapture`: PASS, 3/3.
+  - `cargo test -p fc-core mapper::tests::behavior::asic::mapper297_switches_between_mapper70_latch_and_mmc1_modes -- --nocapture`: PASS, 1/1.
+  - `cargo test -p fc-core mapper::tests::capability -- --nocapture`: PASS, 3/3.
+  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 76/76.
+  - `cargo test -p fc-core`: PASS, 278/278.
+  - `cargo test`: PASS, workspace tests.

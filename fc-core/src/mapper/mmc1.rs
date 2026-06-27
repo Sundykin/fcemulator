@@ -30,6 +30,11 @@ enum Mmc1Variant {
         irq_pending: bool,
     },
     Mapper155,
+    Mapper297 {
+        mode: u8,
+        latch: u8,
+        mapper70_active: bool,
+    },
 }
 
 impl Default for Mmc1Variant {
@@ -69,6 +74,17 @@ impl Mmc1 {
     pub(super) fn new_155(prg_16k: usize, chr_8k: usize) -> Self {
         Mmc1 {
             variant: Mmc1Variant::Mapper155,
+            ..Self::new(prg_16k, chr_8k)
+        }
+    }
+
+    pub(super) fn new_297(prg_16k: usize, chr_8k: usize) -> Self {
+        Mmc1 {
+            variant: Mmc1Variant::Mapper297 {
+                mode: 0,
+                latch: 0,
+                mapper70_active: false,
+            },
             ..Self::new(prg_16k, chr_8k)
         }
     }
@@ -113,6 +129,79 @@ impl Mmc1 {
         }
     }
 
+    fn mapper297_prg_index(&self, addr: u16, mode: u8, latch: u8, mapper70_active: bool) -> usize {
+        let bank16 = if mode & 0x01 != 0 || !mapper70_active {
+            match self.prg_mode() {
+                0 | 1 => {
+                    (((self.prg & 0x0E) + u8::from(addr >= 0xC000)) & 0x07) | ((mode & 0x01) << 3)
+                }
+                2 => {
+                    if addr < 0xC000 {
+                        (mode & 0x01) << 3
+                    } else {
+                        (self.prg & 0x07) | ((mode & 0x01) << 3)
+                    }
+                }
+                _ => {
+                    if addr < 0xC000 {
+                        (self.prg & 0x07) | ((mode & 0x01) << 3)
+                    } else {
+                        0x07 | ((mode & 0x01) << 3)
+                    }
+                }
+            }
+        } else if addr < 0xC000 {
+            ((mode & 0x02) << 1) | ((latch >> 4) & 0x03)
+        } else {
+            ((mode & 0x02) << 1) | 0x03
+        };
+        bank16 as usize * 0x4000 + (addr as usize & 0x3FFF)
+    }
+
+    fn mapper297_chr_index(&self, addr: u16, mode: u8, latch: u8, mapper70_active: bool) -> usize {
+        if mode & 0x01 == 0 && mapper70_active {
+            return (latch as usize & 0x0F) * 0x2000 + (addr as usize & 0x1FFF);
+        }
+
+        let bank4 = if self.chr_mode_4k() {
+            if addr < 0x1000 {
+                self.chr0
+            } else {
+                self.chr1
+            }
+        } else {
+            (self.chr0 & 0x1E) | u8::from(addr >= 0x1000)
+        };
+        (((bank4 & 0x1F) | ((mode & 0x01) << 5)) as usize) * 0x1000 + (addr as usize & 0x0FFF)
+    }
+
+    fn write_mmc1_register(&mut self, addr: u16, value: u8) {
+        if value & 0x80 != 0 {
+            // Reset: clear shift register, set PRG mode 3.
+            self.shift = 0x10;
+            self.count = 0;
+            self.control |= 0x0C;
+            self.update_mapper105_state();
+            return;
+        }
+        // Shift in bit0 (LSB first).
+        let complete = self.shift & 0x01 != 0;
+        self.shift = (self.shift >> 1) | ((value & 0x01) << 4);
+        self.count += 1;
+        if complete || self.count == 5 {
+            let v = self.shift & 0x1F;
+            match (addr >> 13) & 0x03 {
+                0 => self.control = v,
+                1 => self.chr0 = v,
+                2 => self.chr1 = v,
+                _ => self.prg = v,
+            }
+            self.shift = 0x10;
+            self.count = 0;
+            self.update_mapper105_state();
+        }
+    }
+
     fn update_mapper105_state(&mut self) {
         if let Mmc1Variant::Mapper105 {
             init_state,
@@ -142,6 +231,14 @@ impl MapperOps for Mmc1 {
     fn prg_index(&self, addr: u16) -> usize {
         if matches!(self.variant, Mmc1Variant::Mapper105 { .. }) {
             return self.mapper105_prg_index(addr);
+        }
+        if let Mmc1Variant::Mapper297 {
+            mode,
+            latch,
+            mapper70_active,
+        } = self.variant
+        {
+            return self.mapper297_prg_index(addr, mode, latch, mapper70_active);
         }
 
         let last = self.prg_16k - 1;
@@ -175,6 +272,14 @@ impl MapperOps for Mmc1 {
         if matches!(self.variant, Mmc1Variant::Mapper105 { .. }) {
             return (addr & 0x1FFF) as usize;
         }
+        if let Mmc1Variant::Mapper297 {
+            mode,
+            latch,
+            mapper70_active,
+        } = self.variant
+        {
+            return self.mapper297_chr_index(addr, mode, latch, mapper70_active);
+        }
 
         let a = (addr & 0x1FFF) as usize;
         if self.chr_mode_4k() {
@@ -191,29 +296,32 @@ impl MapperOps for Mmc1 {
     }
 
     fn write_register(&mut self, addr: u16, value: u8) {
-        if value & 0x80 != 0 {
-            // Reset: clear shift register, set PRG mode 3.
-            self.shift = 0x10;
-            self.count = 0;
-            self.control |= 0x0C;
-            self.update_mapper105_state();
-            return;
-        }
-        // Shift in bit0 (LSB first).
-        let complete = self.shift & 0x01 != 0;
-        self.shift = (self.shift >> 1) | ((value & 0x01) << 4);
-        self.count += 1;
-        if complete || self.count == 5 {
-            let v = self.shift & 0x1F;
-            match (addr >> 13) & 0x03 {
-                0 => self.control = v,
-                1 => self.chr0 = v,
-                2 => self.chr1 = v,
-                _ => self.prg = v,
+        if let Mmc1Variant::Mapper297 {
+            mode,
+            latch,
+            mapper70_active,
+        } = &mut self.variant
+        {
+            if *mode & 0x01 == 0 {
+                *latch = value;
+                *mapper70_active = true;
+                return;
             }
-            self.shift = 0x10;
-            self.count = 0;
-            self.update_mapper105_state();
+        }
+        self.write_mmc1_register(addr, value);
+    }
+
+    fn write_expansion(&mut self, addr: u16, value: u8) {
+        if addr == 0x4120 {
+            if let Mmc1Variant::Mapper297 {
+                mode,
+                mapper70_active,
+                ..
+            } = &mut self.variant
+            {
+                *mode = value;
+                *mapper70_active = value & 0x01 == 0;
+            }
         }
     }
 
@@ -253,6 +361,16 @@ impl MapperOps for Mmc1 {
     }
 
     fn mirroring(&self) -> Mirroring {
+        if matches!(
+            self.variant,
+            Mmc1Variant::Mapper297 {
+                mode,
+                mapper70_active: true,
+                ..
+            } if mode & 0x01 == 0
+        ) {
+            return Mirroring::Vertical;
+        }
         match self.control & 0x03 {
             0 => Mirroring::SingleScreenLow,
             1 => Mirroring::SingleScreenHigh,
@@ -314,5 +432,32 @@ mod tests {
             assert_eq!(irq_counter, 0);
         }
         assert!(!mapper.irq());
+    }
+
+    #[test]
+    fn mapper297_switches_between_mapper70_latch_and_mmc1_modes() {
+        let mut mapper = Mmc1::new_297(32, 32);
+
+        assert_eq!(mapper.prg_index(0x8004), 4);
+        assert_eq!(mapper.prg_index(0xC004), 7 * 0x4000 + 4);
+        assert_eq!(mapper.chr_index(0x1004), 0x1004);
+        assert_eq!(mapper.mirroring(), Mirroring::SingleScreenLow);
+
+        mapper.write_register(0x8000, 0x2A);
+        assert_eq!(mapper.prg_index(0x8004), 2 * 0x4000 + 4);
+        assert_eq!(mapper.chr_index(0x1004), 0x0A * 0x2000 + 0x1004);
+
+        mapper.write_expansion(0x4120, 0x02);
+        assert_eq!(mapper.prg_index(0x8004), 6 * 0x4000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 7 * 0x4000 + 4);
+
+        mapper.write_expansion(0x4120, 0x01);
+        write_serial(&mut mapper, 0xA000, 0x03);
+        write_serial(&mut mapper, 0xC000, 0x04);
+        write_serial(&mut mapper, 0xE000, 0x05);
+        assert_eq!(mapper.prg_index(0x8004), 0x0D * 0x4000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 0x0F * 0x4000 + 4);
+        assert_eq!(mapper.chr_index(0x0004), 0x22 * 0x1000 + 4);
+        assert_eq!(mapper.chr_index(0x1004), 0x23 * 0x1000 + 4);
     }
 }

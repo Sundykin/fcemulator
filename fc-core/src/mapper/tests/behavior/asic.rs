@@ -128,6 +128,45 @@ fn ntdec_tf1201_switches_prg_chr_and_cpu_prescaled_irq() {
 }
 
 #[test]
+fn mapper297_switches_between_mapper70_latch_and_mmc1_modes() {
+    let mut m = Mapper::new(297, 32, 32, Mirroring::Vertical, 0).expect("mapper 297");
+
+    assert!(!m.clocks_cpu());
+    assert!(!m.watches_ppu_bus());
+    assert_eq!(m.mirroring(), Mirroring::SingleScreenLow);
+    assert_eq!(m.prg_index(0x8004), 4);
+    assert_eq!(m.prg_index(0xC004), 7 * 0x4000 + 4);
+    assert_eq!(m.chr_index(0x1004), 0x1004);
+
+    m.write_register(0x8000, 0x2A);
+    assert_eq!(m.prg_index(0x8004), 2 * 0x4000 + 4);
+    assert_eq!(m.chr_index(0x1004), 0x0A * 0x2000 + 0x1004);
+
+    m.write_expansion(0x4120, 0x02);
+    assert_eq!(m.prg_index(0x8004), 6 * 0x4000 + 4);
+    assert_eq!(m.prg_index(0xC004), 7 * 0x4000 + 4);
+
+    m.write_expansion(0x4120, 0x01);
+    for bit in 0..5 {
+        m.write_register(0xA000, (0x03 >> bit) & 1);
+    }
+    for bit in 0..5 {
+        m.write_register(0xC000, (0x04 >> bit) & 1);
+    }
+    for bit in 0..5 {
+        m.write_register(0xE000, (0x05 >> bit) & 1);
+    }
+    assert_eq!(m.prg_index(0x8004), 0x0D * 0x4000 + 4);
+    assert_eq!(m.prg_index(0xC004), 0x0F * 0x4000 + 4);
+    assert_eq!(m.chr_index(0x0004), 0x22 * 0x1000 + 4);
+    assert_eq!(m.chr_index(0x1004), 0x23 * 0x1000 + 4);
+
+    m.write_expansion(0x4120, 0x00);
+    assert_eq!(m.mirroring(), Mirroring::Vertical);
+    assert_eq!(m.prg_index(0xC004), 3 * 0x4000 + 4);
+}
+
+#[test]
 fn mapper151_selects_three_8k_prg_and_two_4k_chr_pages() {
     let mut m = Mapper::new(151, 8, 16, Mirroring::Horizontal, 0).expect("mapper 151");
     m.write_register(0x8000, 1);

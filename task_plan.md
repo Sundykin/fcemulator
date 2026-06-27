@@ -160,6 +160,7 @@ Phase 17: Mapper compatibility gap closure
 - [x] Add VRC2-derived custom IRQ long-tail mapper 308
 - [x] Add YOKO-derived long-tail mapper 264
 - [x] Add bootleg long-tail mapper batch 272 / 330
+- [x] Add MMC1/Mapper70 composite long-tail mapper 297
 - **Status:** in_progress
 
 ### Phase 18: Mapper board compatibility layer
