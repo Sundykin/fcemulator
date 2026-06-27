@@ -490,6 +490,14 @@ impl Mmc3 {
         m
     }
 
+    /// Mapper 367 — mapper 205-compatible MMC3 outer bank with address-latched
+    /// low-register writes.
+    pub(in crate::mapper) fn new_367(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
+        let mut m = Mmc3::new(prg_16k, chr_8k, mirroring);
+        m.outer_bank = Mmc3OuterBank::Mapper367 { reg: 0 };
+        m
+    }
+
     /// Mapper 76 — Namco 109 / MMC3 command and IRQ core with custom CHR cwrap.
     pub(in crate::mapper) fn new_76(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
         let mut m = Mmc3::new(prg_16k, chr_8k, mirroring);

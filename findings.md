@@ -413,3 +413,8 @@
 - Mapper 368 in FCEUmm `368.c:30-112` is basically the game-0 SMB2J-style mode from mapper 357 without the reset-selected multicart wrapper. Existing low PRG-ROM, expansion register, CPU-clock IRQ, and reset hooks are sufficient.
 - Mapper 368 reset only clears IRQ state and resyncs banks; `preg` and `latch` persist across soft reset. Power/reset distinction is represented by keeping `preg/latch` on soft reset and clearing them on hard reset.
 - Candidate triage remains: mapper 362 needs VRC4 reset-selected outer game support; mapper 369 mixes MMC3/HBlank IRQ and SMB2J CPU IRQ mode; mapper 370 needs a PPU hook affecting mirroring; mapper 372 needs CHR-RAM/outer-register review. These are architecture-guided batches rather than pure mechanical latch additions.
+
+## Mapper 367 MMC3 Long-tail Findings
+- Mapper 367 in FCEUmm `mmc3.c:1241-1299` shares mapper 205's `M205_367PW/CW` PRG/CHR outer-bank formulas: PRG8 uses mask `0x0F` when register bit1 is set and `0x1F` otherwise, while CHR1 uses mask `0x7F` or `0xFF`, then ORs `reg << 4` / `reg << 7`.
+- Mapper 367 differs from mapper 205 only in the low-register write protocol: `$6000-$7FFF` writes store the CPU address low byte (`addr & 0xFF`) instead of the data byte. This fits the existing `Mmc3OuterBank` layer with a new variant plus shared helper formulas.
+- Unlike mapper 205's FCEUX `CartBW` fall-through behavior, FCEUmm mapper 367 installs a dedicated low write handler. The first pass should consume low writes without PRG-RAM fall-through and reset both the outer register and standard MMC3 registers.

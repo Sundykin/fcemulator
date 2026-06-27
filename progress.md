@@ -1591,3 +1591,19 @@
   - `cargo test -p fc-core mapper::mmc3::tests -- --nocapture`: PASS, 56/56.
   - `cargo test -p fc-core`: PASS, 290/290.
   - `cargo test`: PASS, workspace tests.
+
+### Mapper 367 MMC3 Long-tail Batch
+- Started: 2026-06-27 CST.
+- Added mapper 367 as an MMC3 outer-bank variant in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs`, following FCEUmm `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/mmc3.c:1241-1299`.
+- Extracted shared mapper 205/367 PRG/CHR outer-bank helper formulas, kept mapper 205's existing low-write fall-through unchanged, and implemented mapper 367's address-low-byte latch with no PRG-RAM fall-through.
+- Wired mapper 367 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper/factory.rs`, added mapper-local/facade/capability tests, and refreshed mapper gap/reference docs. Supported mapper count is now 268 and remaining four-reference union gap is 225.
+- Verification so far:
+  - `cargo fmt --check`: PASS.
+  - `cargo test -p fc-core mapper::mmc3::tests::mapper367_address_latch_uses_mapper205_outer_bank_formula -- --nocapture`: PASS, 1/1.
+  - `cargo test -p fc-core mapper::tests::behavior::asic::mmc3_long_tail_variants_258_266_267_291_321_334_361_364_366_367_use_outer_registers_and_dip_reads -- --nocapture`: PASS, 1/1.
+  - `cargo test -p fc-core mapper::tests::capability -- --nocapture`: PASS, 3/3.
+  - `git diff --check`: PASS.
+  - `cargo test -p fc-core mapper::mmc3::tests -- --nocapture`: PASS, 57/57.
+  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 78/78.
+  - `cargo test -p fc-core`: PASS, 291/291.
+  - `cargo test`: PASS, workspace tests.

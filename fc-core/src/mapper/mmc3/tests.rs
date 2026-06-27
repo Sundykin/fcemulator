@@ -1090,6 +1090,29 @@ fn mapper366_address_latch_extends_mmc3_outer_banks_until_locked() {
 }
 
 #[test]
+fn mapper367_address_latch_uses_mapper205_outer_bank_formula() {
+    let mut mapper = Mmc3::new_367(1024, 8192, Mirroring::Vertical);
+
+    mapper.write_register(0x8000, 0x06);
+    mapper.write_register(0x8001, 0x1F);
+    mapper.write_register(0x8000, 0x02);
+    mapper.write_register(0x8001, 0x8A);
+
+    assert!(mapper.write_low_register(0x6032, 0x00));
+    assert!(!mapper.low_register_write_falls_through(0x6032));
+    assert_eq!(mapper.prg_index(0x8004), 0x32F * 0x2000 + 4);
+    assert_eq!(mapper.chr_index(0x1004), 0x190A * 0x400 + 4);
+
+    assert!(mapper.write_low_register(0x6010, 0xF2));
+    assert_eq!(mapper.prg_index(0x8004), 0x11F * 0x2000 + 4);
+    assert_eq!(mapper.chr_index(0x1004), 0x88A * 0x400 + 4);
+
+    mapper.reset(true);
+    assert_eq!(mapper.prg_index(0x8004), 4);
+    assert_eq!(mapper.chr_index(0x1004), 0x04 * 0x400 + 4);
+}
+
+#[test]
 fn mapper114_remaps_mmc3_writes_and_can_force_prg_banks() {
     let mut mapper = Mmc3::new_114(64, 64, Mirroring::Vertical);
 

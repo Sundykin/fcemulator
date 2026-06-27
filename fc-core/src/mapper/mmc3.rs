@@ -607,10 +607,8 @@ impl Mmc3 {
                     bank
                 }
             }
-            Mmc3OuterBank::Mapper205 { block } => {
-                let mask = if *block <= 1 { 0x1F } else { 0x0F };
-                ((*block as usize) << 4) | (bank & mask)
-            }
+            Mmc3OuterBank::Mapper205 { block } => Self::mapper205_367_prg_bank(*block, bank),
+            Mmc3OuterBank::Mapper367 { reg } => Self::mapper205_367_prg_bank(*reg, bank),
             Mmc3OuterBank::Mapper208 { regs, submapper } => {
                 let base = if *submapper == 1 {
                     ((self.banks[6] as usize) >> 2) << 2
@@ -735,6 +733,16 @@ impl Mmc3 {
             | (((reg as usize) << 5) & 0x200)
     }
 
+    fn mapper205_367_prg_bank(reg: u8, bank: usize) -> usize {
+        let mask = if reg & 0x02 != 0 { 0x0F } else { 0x1F };
+        ((reg as usize) << 4) | (bank & mask)
+    }
+
+    fn mapper205_367_chr_bank(reg: u8, bank: usize) -> usize {
+        let mask = if reg & 0x02 != 0 { 0x7F } else { 0xFF };
+        ((reg as usize) << 7) | (bank & mask)
+    }
+
     fn outer_chr_bank(&self, addr: u16, bank: usize) -> usize {
         match &self.outer_bank {
             Mmc3OuterBank::None => bank,
@@ -823,10 +831,8 @@ impl Mmc3 {
             Mmc3OuterBank::Mapper196 { .. } => bank,
             Mmc3OuterBank::Mapper199 { .. } => bank,
             Mmc3OuterBank::Mapper198 => bank,
-            Mmc3OuterBank::Mapper205 { block } => {
-                let bank = if *block >= 2 { bank & 0x7F } else { bank };
-                bank | ((*block as usize) << 7)
-            }
+            Mmc3OuterBank::Mapper205 { block } => Self::mapper205_367_chr_bank(*block, bank),
+            Mmc3OuterBank::Mapper367 { reg } => Self::mapper205_367_chr_bank(*reg, bank),
             Mmc3OuterBank::Mapper208 { .. } => bank,
             Mmc3OuterBank::Mapper215 { regs } => {
                 if regs[0] & 0x40 != 0 {
@@ -1579,6 +1585,10 @@ impl MapperOps for Mmc3 {
                 *block = value & 0x03;
                 true
             }
+            Mmc3OuterBank::Mapper367 { reg } => {
+                *reg = addr as u8;
+                true
+            }
             Mmc3OuterBank::Mapper266 { reg } => {
                 if prg_ram_control & 0x80 != 0 {
                     *reg = value & 0x0F;
@@ -2003,6 +2013,10 @@ impl MapperOps for Mmc3 {
             Mmc3OuterBank::Mapper198 => {}
             Mmc3OuterBank::Mapper205 { block } => {
                 *block = 0;
+            }
+            Mmc3OuterBank::Mapper367 { reg } => {
+                *reg = 0;
+                reset_standard = true;
             }
             Mmc3OuterBank::Mapper208 { regs, .. } => {
                 *regs = [0; 6];
