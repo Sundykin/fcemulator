@@ -383,3 +383,8 @@
 - Mapper 352 does not need a new mapper hook. Existing reset, PRG index, CHR index, and header mirroring are enough for a first pass.
 - Mapper 360 from FCEUmm `360.c:21-77` is another low-risk DIP/register board: submapper 0 soft reset increments `reg & 31`; submapper 1 writes `$4100-$4FFF` directly. Bit5 clear in submapper 1 forces all 8KB PRG slots to bank `$40`; otherwise low DIP values 0/1 select PRG32 and larger values mirror a PRG16 bank at both halves.
 - Mapper 360's CHR8 and mirroring are pure register-derived behavior, so it also fits the existing multicart/latch path with no architecture expansion.
+
+## Mapper 354/358 Long-tail Findings
+- Mapper 354 is an address/data latch multicart in FCEUX/FCEUmm `354.cpp`/`354.c:23-102`. Existing hooks cover it: high write registers, low PRG-ROM window through `low_prg_index`, CHR-RAM write-protect through `chr_write`, default low PRG-RAM gating, mirroring, and reset.
+- Mapper 354 has a reference divergence: FCEUX always uses the submapper-1 PRG outer formula, while FCEUmm keeps a submapper-aware formula. Current implementation follows FCEUmm for NES 2.0 submapper behavior and records FCEUX as cross-check.
+- Mapper 358 is another JY ASIC multicart in FCEUmm `jyasic.c:567-587`; no new mapper core is needed. Adding `JyAsicVariant::Mapper358` with its PRG/CHR/NT mask/OR formulas reuses the existing JY register, IRQ, ALU, nametable, PPU hook, and low PRG-ROM paths.

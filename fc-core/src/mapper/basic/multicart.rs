@@ -2221,6 +2221,116 @@ impl MapperOps for Mapper352 {
 }
 
 // ============================================================================
+// Mapper 354 — address/data latch multicart with CHR write gate
+//
+// References:
+// - FCEUX `src/boards/354.cpp`
+// - FCEUmm `src/boards/354.c`
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Mapper354 {
+    latch_addr: u16,
+    latch_data: u8,
+    submapper: u8,
+}
+
+impl Mapper354 {
+    pub(in crate::mapper) fn new(submapper: u8) -> Self {
+        Mapper354 {
+            latch_addr: 0,
+            latch_data: 0,
+            submapper,
+        }
+    }
+
+    fn write_window_start(&self) -> u16 {
+        if self.submapper == 1 {
+            0xE000
+        } else {
+            0xF000
+        }
+    }
+
+    fn prg_latch(&self) -> usize {
+        let base = (self.latch_data & 0x3F) as usize;
+        if self.submapper == 1 {
+            base | (((self.latch_addr as usize) << 2) & 0x40)
+                | (((self.latch_addr as usize) >> 5) & 0x80)
+        } else {
+            base | (((self.latch_addr as usize) << 4) & 0x40)
+        }
+    }
+
+    fn prg8_latch(&self) -> usize {
+        (self.prg_latch() << 1) | ((self.latch_data >> 7) as usize)
+    }
+
+    fn prg8_page(&self, addr: u16) -> usize {
+        let prg = self.prg_latch();
+        let slot = ((addr - 0x8000) / 0x2000) as usize;
+        match self.latch_addr & 0x0007 {
+            0 | 4 => (prg >> 1) * 4 + slot,
+            1 => {
+                let bank16 = if addr < 0xC000 { prg } else { prg | 0x07 };
+                bank16 * 2 + (slot & 1)
+            }
+            2 | 6 => self.prg8_latch(),
+            3 | 7 => prg * 2 + (slot & 1),
+            5 => ((prg >> 1) | 0x03) * 4 + slot,
+            _ => 0,
+        }
+    }
+}
+
+impl MapperOps for Mapper354 {
+    fn prg_index(&self, addr: u16) -> usize {
+        self.prg8_page(addr) * 0x2000 + (addr as usize & 0x1FFF)
+    }
+
+    fn chr_index(&self, addr: u16) -> usize {
+        addr as usize & 0x1FFF
+    }
+
+    fn chr_write(&mut self, _addr: u16, _value: u8) -> bool {
+        self.latch_addr & 0x0008 != 0
+    }
+
+    fn write_register(&mut self, addr: u16, value: u8) {
+        if addr >= self.write_window_start() {
+            self.latch_addr = addr;
+            self.latch_data = value;
+        }
+    }
+
+    fn low_prg_index(&self, addr: u16) -> Option<usize> {
+        (self.latch_addr & 0x0007 == 5)
+            .then(|| self.prg8_latch() * 0x2000 + (addr as usize & 0x1FFF))
+    }
+
+    fn low_prg_ram_read_enabled(&self, _addr: u16) -> bool {
+        false
+    }
+
+    fn low_prg_ram_write_enabled(&self, _addr: u16) -> bool {
+        false
+    }
+
+    fn mirroring(&self) -> Mirroring {
+        if self.latch_data & 0x40 != 0 {
+            Mirroring::Horizontal
+        } else {
+            Mirroring::Vertical
+        }
+    }
+
+    fn reset(&mut self, _soft: bool) {
+        self.latch_addr = 0;
+        self.latch_data = 0;
+    }
+}
+
+// ============================================================================
 // Mapper 360 — Bit Corp 31-in-1 multicart
 //
 // Reference:
@@ -2618,6 +2728,30 @@ mod tests {
         mapper.reset(true);
         mapper.reset(true);
         assert_eq!(mapper.prg_index(0x8004), 4);
+    }
+
+    #[test]
+    fn mapper354_decodes_latch_modes_low_prg_and_chr_gate() {
+        let mut mapper = Mapper354::new(0);
+        mapper.write_register(0xE006, 0xC1);
+        assert_eq!(mapper.prg_index(0x8004), 4);
+
+        mapper.write_register(0xF006, 0xC1);
+        assert_eq!(mapper.prg_index(0x8004), 0x83 * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xE004), 0x83 * 0x2000 + 4);
+        assert_eq!(mapper.mirroring(), Mirroring::Horizontal);
+        assert!(!mapper.chr_write(0x0010, 0x12));
+
+        let mut sub1 = Mapper354::new(1);
+        sub1.write_register(0xE005, 0xC2);
+        assert_eq!(sub1.low_prg_index(0x6004), Some(5 * 0x2000 + 4));
+        assert_eq!(sub1.prg_index(0x8004), 3 * 0x8000 + 4);
+        assert_eq!(sub1.prg_index(0xC004), 3 * 0x8000 + 0x4004);
+        sub1.write_register(0xE00D, 0x02);
+        assert!(sub1.chr_write(0x0010, 0x12));
+        sub1.reset(true);
+        assert_eq!(sub1.low_prg_index(0x6004), None);
+        assert_eq!(sub1.prg_index(0x8004), 4);
     }
 
     #[test]

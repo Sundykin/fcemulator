@@ -306,6 +306,8 @@ impl Mapper {
             341 => Mapper::Mapper341(Mapper341::new(submapper)),
             343 => Mapper::Mapper343(Mapper343::new()),
             352 => Mapper::Mapper352(Mapper352::new(prg_16k, mirroring)),
+            354 => Mapper::Mapper354(Mapper354::new(submapper)),
+            358 => Mapper::JyAsic(JyAsic::new(prg_16k, chr_8k, JyAsicVariant::Mapper358)),
             360 => Mapper::Mapper360(Mapper360::new(submapper)),
             213 => Mapper::AddrLatch16k(AddrLatch16k::new_with_mirroring(
                 AddrLatchVariant::Mapper213,

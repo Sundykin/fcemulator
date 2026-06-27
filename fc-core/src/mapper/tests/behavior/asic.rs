@@ -493,6 +493,21 @@ fn jy_asic_mappers_switch_prg_chr_alu_nametable_and_irq() {
     m295.write_register(0xD000, 0x60);
     m295.write_register(0xB000, 0x92);
     assert_eq!(m295.nametable_chr_index(0x2004), Some(0x292 * 0x0400 + 4));
+
+    let mut m358 = Mapper::new(358, 512, 512, Mirroring::Vertical, 0).expect("mapper 358");
+    m358.write_register(0xD000, 0x1A);
+    m358.write_register(0x8000, 0x1A);
+    m358.write_register(0xD003, 0x05);
+    assert_eq!(m358.prg_index(0x8004), 0x5A * 0x2000 + 4);
+    m358.write_register(0x9000, 0xF5);
+    assert_eq!(m358.chr_index(0x0004), 0x3F5 * 0x0400 + 4);
+    m358.write_register(0xD003, 0x28);
+    assert_eq!(m358.prg_index(0x8004), 0x29A * 0x2000 + 4);
+    assert_eq!(m358.chr_index(0x0004), 0x4F5 * 0x0400 + 4);
+    m358.write_register(0xD003, 0x05);
+    m358.write_register(0xD000, 0x60);
+    m358.write_register(0xB000, 0x12);
+    assert_eq!(m358.nametable_chr_index(0x2004), Some(0x312 * 0x0400 + 4));
 }
 
 #[test]

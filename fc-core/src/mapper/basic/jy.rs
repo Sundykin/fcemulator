@@ -66,6 +66,7 @@ pub enum JyAsicVariant {
     Mapper281,
     Mapper282,
     Mapper295,
+    Mapper358,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -140,6 +141,7 @@ impl JyAsic {
             JyAsicVariant::Mapper281 => (0x1F, (self.mode[3] as usize) << 5),
             JyAsicVariant::Mapper282 => (0x1F, ((self.mode[3] as usize) << 4) & !0x1F),
             JyAsicVariant::Mapper295 => (0x0F, (self.mode[3] as usize) << 4),
+            JyAsicVariant::Mapper358 => (0x1F, ((self.mode[3] as usize) << 4) & !0x1F),
             JyAsicVariant::Mapper90 | JyAsicVariant::Mapper209 | JyAsicVariant::Mapper211 => {
                 (0x3F, ((self.mode[3] as usize) << 5) & !0x3F)
             }
@@ -208,6 +210,17 @@ impl JyAsic {
                 }
             }
             JyAsicVariant::Mapper295 => (0x07F, (self.mode[3] as usize) << 7),
+            JyAsicVariant::Mapper358 => {
+                if self.mode[3] & 0x20 != 0 {
+                    (0x1FF, ((self.mode[3] as usize) << 7) & 0x600)
+                } else {
+                    (
+                        0x0FF,
+                        (((self.mode[3] as usize) << 8) & 0x100)
+                            | (((self.mode[3] as usize) << 7) & 0x600),
+                    )
+                }
+            }
             JyAsicVariant::Mapper90 | JyAsicVariant::Mapper209 | JyAsicVariant::Mapper211 => {
                 if self.mode[3] & 0x20 != 0 {
                     (0x1FF, ((self.mode[3] as usize) << 6) & 0x600)

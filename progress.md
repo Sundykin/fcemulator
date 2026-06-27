@@ -1508,3 +1508,19 @@
   - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 77/77.
   - `cargo test -p fc-core`: PASS, 281/281.
   - `cargo test`: PASS, workspace tests.
+
+### Mapper 354 / 358 Long-tail Batch
+- Started: 2026-06-27 CST.
+- Added mapper 354 / address-data latch multicart in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/multicart.rs`, following FCEUmm `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/354.c:23-102` and cross-checking FCEUX `/Users/sunmeng/workspace/fc/fceux/src/boards/354.cpp:23-98`.
+- Added mapper 358 as a `JyAsicVariant` in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/jy.rs`, following FCEUmm `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/jyasic.c:567-587`.
+- Mapper 354 covers submapper-specific high write window, PRG32/PRG16/PRG8/lower PRG8 mapping modes, CHR-RAM write gate, low PRG-RAM disable, mirroring, and reset. Mapper 358 reuses existing JY ASIC register/IRQ/ALU/nametable paths with its own PRG/CHR/NT outer mask formulas.
+- Wired both through `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic.rs`, `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs`, `/Users/sunmeng/workspace/fc/fc-core/src/mapper/kind.rs`, `/Users/sunmeng/workspace/fc/fc-core/src/mapper/dispatch.rs`, and `/Users/sunmeng/workspace/fc/fc-core/src/mapper/factory.rs`.
+- Added mapper-local/facade behavior tests and capability guard rows; refreshed mapper gap/reference docs; supported mapper count is now 261 and remaining four-reference union gap is 232.
+- Verification:
+  - `cargo test -p fc-core mapper::basic::multicart::tests::mapper354_decodes_latch_modes_low_prg_and_chr_gate -- --nocapture`: PASS, 1/1.
+  - `cargo test -p fc-core mapper::tests::behavior::latch::long_tail_latch_mapper354_decodes_latch_prg_and_chr_gate -- --nocapture`: PASS, 1/1.
+  - `cargo test -p fc-core mapper::tests::behavior::asic::jy_asic_mappers_switch_prg_chr_alu_nametable_and_irq -- --nocapture`: PASS, 1/1.
+  - `cargo test -p fc-core mapper::tests::capability -- --nocapture`: PASS, 3/3.
+  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 78/78.
+  - `git diff --check`: PASS.
+  - `cargo test -p fc-core`: PASS, 283/283.
