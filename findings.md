@@ -377,3 +377,9 @@
 - The existing `VrcIrqKind` split from mapper 273 absorbs mapper 308 cleanly: no new `MapperOps` hook is needed, and VRC2/VRC4 PRG8/CHR1/mirroring decode remains shared.
 - Mapper 308 IRQ state is a 12-bit low phase plus 4-bit high counter: writes with `addr&3==0` clear/disable/reset low phase, `addr&3==1` enable, `addr&3==3` load `value>>4`; each CPU cycle increments low phase, decrements high on phase 2048, and asserts IRQ while high is zero during the low half of the 4096-cycle phase.
 - Mesen2 only has a mapper 308 `TH2131-1` placeholder in `MapperFactory.cpp:564`, so FCEUmm is the actionable behavior reference for the first pass.
+
+## Mapper 352/360 Latch Multicart Findings
+- Mapper 352 from FCEUmm `352.c:23-39` is a reset-selected NROM-256 multicart: soft reset increments a `game` latch, `ROM_size / 2` is the PRG32 game count because FCEUmm stores ROM size in 16KB units, and PRG32 plus CHR8 both select the same game.
+- Mapper 352 does not need a new mapper hook. Existing reset, PRG index, CHR index, and header mirroring are enough for a first pass.
+- Mapper 360 from FCEUmm `360.c:21-77` is another low-risk DIP/register board: submapper 0 soft reset increments `reg & 31`; submapper 1 writes `$4100-$4FFF` directly. Bit5 clear in submapper 1 forces all 8KB PRG slots to bank `$40`; otherwise low DIP values 0/1 select PRG32 and larger values mirror a PRG16 bank at both halves.
+- Mapper 360's CHR8 and mirroring are pure register-derived behavior, so it also fits the existing multicart/latch path with no architecture expansion.

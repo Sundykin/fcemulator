@@ -191,6 +191,31 @@ fn long_tail_latch_multicarts_301_340_341_343_follow_reference_banking() {
 }
 
 #[test]
+fn long_tail_latch_multicarts_352_360_follow_reset_and_register_banking() {
+    let mut m352 = Mapper::new(352, 8, 8, Mirroring::Vertical, 0).expect("mapper 352");
+    assert_eq!(m352.prg_index(0x8004), 4);
+    assert_eq!(m352.chr_index(0x1004), 0x1004);
+    m352.reset(true);
+    assert_eq!(m352.prg_index(0x8004), 0x8000 + 4);
+    assert_eq!(m352.chr_index(0x1004), 0x2000 + 0x1004);
+
+    let mut m360 = Mapper::new(360, 64, 32, Mirroring::Vertical, 0).expect("mapper 360");
+    m360.reset(true);
+    m360.reset(true);
+    assert_eq!(m360.prg_index(0x8004), 2 * 0x4000 + 4);
+    assert_eq!(m360.prg_index(0xC004), 2 * 0x4000 + 4);
+    assert_eq!(m360.chr_index(0x1004), 2 * 0x2000 + 0x1004);
+    assert_eq!(m360.mirroring(), Mirroring::Vertical);
+
+    let mut m360s1 = Mapper::new(360, 128, 64, Mirroring::Vertical, 1).expect("mapper 360 sub1");
+    assert_eq!(m360s1.prg_index(0x8004), 0x40 * 0x2000 + 4);
+    m360s1.write_expansion(0x4100, 0x32);
+    assert_eq!(m360s1.prg_index(0x8004), 0x12 * 0x4000 + 4);
+    assert_eq!(m360s1.prg_index(0xC004), 0x12 * 0x4000 + 4);
+    assert_eq!(m360s1.mirroring(), Mirroring::Horizontal);
+}
+
+#[test]
 fn long_tail_latch_multicarts_293_294_follow_reference_banking() {
     let mut m293 = Mapper::new(293, 128, 0, Mirroring::Vertical, 0).expect("mapper 293");
     assert_eq!(m293.prg_index(0x8004), 0x0004);

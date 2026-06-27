@@ -1491,3 +1491,20 @@
   - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 76/76.
   - `cargo test -p fc-core`: PASS, 278/278.
   - `cargo test`: PASS, workspace tests.
+
+### Mapper 352 / 360 Latch Multicart Batch
+- Started: 2026-06-27 CST.
+- Added mapper 352 / reset-selected NROM-256 multicart in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/multicart.rs`, following FCEUmm `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/352.c:23-39`.
+- Added mapper 360 / Bit Corp 31-in-1 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/multicart.rs`, following FCEUmm `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/360.c:21-77`.
+- Mapper 352 covers soft-reset game rotation, PRG32/CHR8 same-game selection, and header mirroring. Mapper 360 covers submapper 0 reset DIP rotation, submapper 1 `$4100-$4FFF` register writes, fixed PRG8 bank `$40` mode, PRG32/PRG16 mirrored modes, CHR8, and mirroring.
+- Wired both through `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic.rs`, `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs`, `/Users/sunmeng/workspace/fc/fc-core/src/mapper/kind.rs`, `/Users/sunmeng/workspace/fc/fc-core/src/mapper/dispatch.rs`, and `/Users/sunmeng/workspace/fc/fc-core/src/mapper/factory.rs`.
+- Added mapper-local tests, facade behavior coverage, and capability guard rows; refreshed `/Users/sunmeng/workspace/fc/docs/Mapper-适配差距清单.md` plus `/Users/sunmeng/workspace/fc/docs/Mapper-适配引用记录.md`; supported mapper count is now 259 and remaining four-reference union gap is 234.
+- Verification:
+  - `cargo fmt --check`: PASS.
+  - `git diff --check`: PASS.
+  - `cargo test -p fc-core mapper::basic::multicart::tests::mapper352_rotates_nrom_games_on_soft_reset -- --nocapture`: PASS, 1/1.
+  - `cargo test -p fc-core mapper::basic::multicart::tests::mapper360_rotates_or_writes_bitcorp_31_in_1_latch -- --nocapture`: PASS, 1/1.
+  - `cargo test -p fc-core mapper::tests::behavior::latch::long_tail_latch_multicarts_352_360_follow_reset_and_register_banking -- --nocapture`: PASS, 1/1.
+  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 77/77.
+  - `cargo test -p fc-core`: PASS, 281/281.
+  - `cargo test`: PASS, workspace tests.

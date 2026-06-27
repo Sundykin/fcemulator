@@ -2171,6 +2171,120 @@ impl MapperOps for Mapper343 {
     }
 }
 
+// ============================================================================
+// Mapper 352 — reset-selected NROM-256 multicart
+//
+// Reference:
+// - FCEUmm `src/boards/352.c`
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Mapper352 {
+    prg32_count: u8,
+    game: u8,
+    mirroring: Mirroring,
+}
+
+impl Mapper352 {
+    pub(in crate::mapper) fn new(prg_16k: usize, mirroring: Mirroring) -> Self {
+        Mapper352 {
+            prg32_count: ((prg_16k / 2).max(1).min(u8::MAX as usize)) as u8,
+            game: 0,
+            mirroring,
+        }
+    }
+}
+
+impl MapperOps for Mapper352 {
+    fn prg_index(&self, addr: u16) -> usize {
+        (self.game as usize) * 0x8000 + (addr as usize & 0x7FFF)
+    }
+
+    fn chr_index(&self, addr: u16) -> usize {
+        (self.game as usize) * 0x2000 + (addr as usize & 0x1FFF)
+    }
+
+    fn mirroring(&self) -> Mirroring {
+        self.mirroring
+    }
+
+    fn reset(&mut self, soft: bool) {
+        if soft {
+            self.game = self.game.wrapping_add(1);
+            if self.game >= self.prg32_count {
+                self.game = 0;
+            }
+        } else {
+            self.game = 0;
+        }
+    }
+}
+
+// ============================================================================
+// Mapper 360 — Bit Corp 31-in-1 multicart
+//
+// Reference:
+// - FCEUmm `src/boards/360.c`
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Mapper360 {
+    reg: u8,
+    submapper: u8,
+}
+
+impl Mapper360 {
+    pub(in crate::mapper) fn new(submapper: u8) -> Self {
+        Mapper360 { reg: 0, submapper }
+    }
+
+    fn fixed_prg8_mode(&self) -> bool {
+        self.submapper == 1 && self.reg & 0x20 == 0
+    }
+}
+
+impl MapperOps for Mapper360 {
+    fn prg_index(&self, addr: u16) -> usize {
+        if self.fixed_prg8_mode() {
+            return 0x40 * 0x2000 + (addr as usize & 0x1FFF);
+        }
+
+        if self.reg & 0x1F < 2 {
+            let bank32 = ((self.reg >> 1) & 0x0F) as usize;
+            bank32 * 0x8000 + (addr as usize & 0x7FFF)
+        } else {
+            let bank16 = (self.reg & 0x1F) as usize;
+            bank16 * 0x4000 + (addr as usize & 0x3FFF)
+        }
+    }
+
+    fn chr_index(&self, addr: u16) -> usize {
+        (self.reg as usize) * 0x2000 + (addr as usize & 0x1FFF)
+    }
+
+    fn write_expansion(&mut self, addr: u16, value: u8) {
+        if self.submapper == 1 && (0x4100..=0x4FFF).contains(&addr) {
+            self.reg = value;
+        }
+    }
+
+    fn mirroring(&self) -> Mirroring {
+        if self.reg & 0x10 != 0 {
+            Mirroring::Horizontal
+        } else {
+            Mirroring::Vertical
+        }
+    }
+
+    fn reset(&mut self, soft: bool) {
+        if soft && self.submapper == 0 {
+            self.reg = self.reg.wrapping_add(1) & 0x1F;
+        } else {
+            self.reg = 0;
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2487,5 +2601,45 @@ mod tests {
         mapper.reset(true);
         assert_eq!(mapper.prg_index(0x8004), 0x0004);
         assert_eq!(mapper.mirroring(), Mirroring::Vertical);
+    }
+
+    #[test]
+    fn mapper352_rotates_nrom_games_on_soft_reset() {
+        let mut mapper = Mapper352::new(8, Mirroring::Horizontal);
+        assert_eq!(mapper.prg_index(0x8004), 4);
+        assert_eq!(mapper.chr_index(0x1004), 0x1004);
+        assert_eq!(mapper.mirroring(), Mirroring::Horizontal);
+
+        mapper.reset(true);
+        assert_eq!(mapper.prg_index(0x8004), 0x8000 + 4);
+        assert_eq!(mapper.chr_index(0x1004), 0x2000 + 0x1004);
+
+        mapper.reset(true);
+        mapper.reset(true);
+        mapper.reset(true);
+        assert_eq!(mapper.prg_index(0x8004), 4);
+    }
+
+    #[test]
+    fn mapper360_rotates_or_writes_bitcorp_31_in_1_latch() {
+        let mut mapper = Mapper360::new(0);
+        assert_eq!(mapper.prg_index(0x8004), 4);
+        assert_eq!(mapper.mirroring(), Mirroring::Vertical);
+
+        mapper.reset(true);
+        assert_eq!(mapper.prg_index(0xC004), 0x4004);
+        mapper.reset(true);
+        assert_eq!(mapper.prg_index(0x8004), 2 * 0x4000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 2 * 0x4000 + 4);
+
+        let mut sub1 = Mapper360::new(1);
+        assert_eq!(sub1.prg_index(0x8004), 0x40 * 0x2000 + 4);
+        sub1.write_expansion(0x4100, 0x32);
+        assert_eq!(sub1.prg_index(0x8004), 0x12 * 0x4000 + 4);
+        assert_eq!(sub1.prg_index(0xC004), 0x12 * 0x4000 + 4);
+        assert_eq!(sub1.chr_index(0x1004), 0x32 * 0x2000 + 0x1004);
+        assert_eq!(sub1.mirroring(), Mirroring::Horizontal);
+        sub1.reset(true);
+        assert_eq!(sub1.prg_index(0x8004), 0x40 * 0x2000 + 4);
     }
 }

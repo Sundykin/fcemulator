@@ -305,6 +305,8 @@ impl Mapper {
             340 => Mapper::Mapper340(Mapper340::new(submapper)),
             341 => Mapper::Mapper341(Mapper341::new(submapper)),
             343 => Mapper::Mapper343(Mapper343::new()),
+            352 => Mapper::Mapper352(Mapper352::new(prg_16k, mirroring)),
+            360 => Mapper::Mapper360(Mapper360::new(submapper)),
             213 => Mapper::AddrLatch16k(AddrLatch16k::new_with_mirroring(
                 AddrLatchVariant::Mapper213,
                 mirroring,

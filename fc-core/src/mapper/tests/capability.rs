@@ -242,6 +242,8 @@ fn watches_ppu_bus_matches_notify_a12_overrides() {
         (340, false),  // Mapper 340
         (341, false),  // Mapper 341
         (343, false),  // Mapper 343
+        (352, false),  // Mapper 352
+        (360, false),  // Mapper 360
         (184, false),  // Sunsoft 184
         (4, true),     // MMC3
         (5, true),     // MMC5
@@ -495,6 +497,8 @@ fn clocks_cpu_matches_cpu_clock_overrides() {
         (340, false),  // Mapper 340
         (341, false),  // Mapper 341
         (343, false),  // Mapper 343
+        (352, false),  // Mapper 352
+        (360, false),  // Mapper 360
         (184, false),  // Sunsoft 184
     ];
     for (num, expected) in cases {
@@ -756,6 +760,8 @@ fn clocks_hblank_matches_hblank_clock_overrides() {
         (340, false),
         (341, false),
         (343, false),
+        (352, false),
+        (360, false),
     ];
     for (num, expected) in cases {
         let submapper = if num == 34 { 2 } else { 0 };
