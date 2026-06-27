@@ -82,6 +82,17 @@ impl Mmc3 {
         m
     }
 
+    /// Mapper 373 — mapper 45-style serial outer registers with a paired PRG
+    /// mode when outer register 2 bit5 is set.
+    pub(in crate::mapper) fn new_373(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
+        let mut m = Mmc3::new(prg_16k, chr_8k, mirroring);
+        m.outer_bank = Mmc3OuterBank::Mapper373 {
+            regs: [0, 0, 0x0F, 0],
+            index: 0,
+        };
+        m
+    }
+
     /// Mapper 47 — NES-QJ SSVB/NWC, MMC3 with a 1-bit low-register outer bank.
     pub(in crate::mapper) fn new_47(
         prg_16k: usize,

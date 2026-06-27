@@ -338,7 +338,7 @@ fn mapper308_uses_vrc2_banks_and_custom_cpu_irq() {
 }
 
 #[test]
-fn mmc3_long_tail_variants_258_266_267_291_321_334_361_364_366_367_use_outer_registers_and_dip_reads(
+fn mmc3_long_tail_variants_258_266_267_291_321_334_361_364_366_367_373_use_outer_registers_and_dip_reads(
 ) {
     let mut m258 = Mapper::new(258, 64, 32, Mirroring::Vertical, 0).expect("mapper 258");
     assert!(m258.watches_ppu_bus());
@@ -454,6 +454,21 @@ fn mmc3_long_tail_variants_258_266_267_291_321_334_361_364_366_367_use_outer_reg
     assert_eq!(m367.chr_index(0x1004), 0x190A * 0x400 + 4);
     m367.reset(true);
     assert_eq!(m367.prg_index(0x8004), 4);
+
+    let mut m373 = Mapper::new(373, 512, 512, Mirroring::Vertical, 0).expect("mapper 373");
+    assert!(m373.watches_ppu_bus());
+    m373.write_register(0x8000, 0x06);
+    m373.write_register(0x8001, 0x2A);
+    m373.write_register(0x8000, 0x07);
+    m373.write_register(0x8001, 0x2D);
+    assert!(m373.write_low_register(0x6000, 0x34));
+    assert!(m373.write_low_register(0x6000, 0x20));
+    assert!(m373.write_low_register(0x6000, 0x60));
+    assert!(m373.write_low_register(0x6000, 0x3C));
+    assert_eq!(m373.prg_index(0x8004), 0x122 * 0x2000 + 4);
+    assert_eq!(m373.prg_index(0xC004), 0x122 * 0x2000 + 4);
+    m373.reset(true);
+    assert_eq!(m373.prg_index(0x8004), 4);
 }
 
 #[test]

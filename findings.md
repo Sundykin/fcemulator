@@ -418,3 +418,8 @@
 - Mapper 367 in FCEUmm `mmc3.c:1241-1299` shares mapper 205's `M205_367PW/CW` PRG/CHR outer-bank formulas: PRG8 uses mask `0x0F` when register bit1 is set and `0x1F` otherwise, while CHR1 uses mask `0x7F` or `0xFF`, then ORs `reg << 4` / `reg << 7`.
 - Mapper 367 differs from mapper 205 only in the low-register write protocol: `$6000-$7FFF` writes store the CPU address low byte (`addr & 0xFF`) instead of the data byte. This fits the existing `Mmc3OuterBank` layer with a new variant plus shared helper formulas.
 - Unlike mapper 205's FCEUX `CartBW` fall-through behavior, FCEUmm mapper 367 installs a dedicated low write handler. The first pass should consume low writes without PRG-RAM fall-through and reset both the outer register and standard MMC3 registers.
+
+## Mapper 373 MMC3 Long-tail Findings
+- Mapper 373 in FCEUmm `mmc3.c:591-598` is a mapper 45 derivative: it reuses `M45CW`, `M45Write`, `M45Reset`, and `M45Power`, but swaps in `M373PW`.
+- `M373PW` keeps mapper 45's PRG AND/OR formula unless outer register 2 bit5 is set. In paired mode, only writes for `$8000/$A000` directly update banks, while `$C000/$E000` mirror those source banks with `| 0x02`.
+- Existing MMC3 architecture is sufficient if mapper 373 gets its own `Mmc3OuterBank` variant: share mapper45 serial register helpers, keep mapper45 behavior unchanged, and let mapper 373 reset standard MMC3 registers per FCEUmm `M45Reset()`.

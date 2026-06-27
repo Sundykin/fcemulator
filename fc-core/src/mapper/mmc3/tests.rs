@@ -110,6 +110,33 @@ fn mapper45_lock_bit_reenables_wram_fallthrough() {
 }
 
 #[test]
+fn mapper373_serial_outer_regs_can_pair_prg_windows() {
+    let mut mapper = Mmc3::new_373(512, 512, Mirroring::Vertical);
+
+    mapper.write_register(0x8000, 0x06);
+    mapper.write_register(0x8001, 0x2A);
+    mapper.write_register(0x8000, 0x07);
+    mapper.write_register(0x8001, 0x2D);
+    mapper.write_register(0x8000, 0x02);
+    mapper.write_register(0x8001, 0x55);
+
+    assert!(mapper.write_low_register(0x6000, 0x34));
+    assert!(mapper.write_low_register(0x6000, 0x20));
+    assert!(mapper.write_low_register(0x6000, 0x60));
+    assert!(mapper.write_low_register(0x6000, 0x3C));
+
+    assert_eq!(mapper.prg_index(0x8004), 0x122 * 0x2000 + 4);
+    assert_eq!(mapper.prg_index(0xA004), 0x121 * 0x2000 + 4);
+    assert_eq!(mapper.prg_index(0xC004), 0x122 * 0x2000 + 4);
+    assert_eq!(mapper.prg_index(0xE004), 0x123 * 0x2000 + 4);
+    assert_eq!(mapper.chr_index(0x1004), 0x634 * 0x0400 + 4);
+
+    mapper.reset(true);
+    assert_eq!(mapper.prg_index(0x8004), 4);
+    assert_eq!(mapper.chr_index(0x1004), 0x04 * 0x0400 + 4);
+}
+
+#[test]
 fn mapper47_low_latch_selects_outer_bank_and_can_fall_through() {
     let mut mapper = Mmc3::new_47(32, 32, Mirroring::Vertical, 0);
 

@@ -1607,3 +1607,19 @@
   - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 78/78.
   - `cargo test -p fc-core`: PASS, 291/291.
   - `cargo test`: PASS, workspace tests.
+
+### Mapper 373 MMC3 Long-tail Batch
+- Started: 2026-06-27 CST.
+- Added mapper 373 as a mapper45-derived MMC3 outer-bank variant in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs`, following FCEUmm `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/mmc3.c:505-589,591-598`.
+- Reused mapper45 serial outer-register write, CHR wrapper, and low-write gating helpers, while adding mapper373-specific paired PRG mode when outer register 2 bit5 is set. Kept existing mapper45 reset behavior unchanged and made mapper373 reset standard MMC3 registers per reference.
+- Wired mapper 373 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper/factory.rs`, added mapper-local/facade/capability tests, and refreshed mapper gap/reference docs. Supported mapper count is now 269 and remaining four-reference union gap is 224.
+- Verification so far:
+  - `cargo fmt --check`: PASS.
+  - `cargo test -p fc-core mapper::mmc3::tests::mapper373_serial_outer_regs_can_pair_prg_windows -- --nocapture`: PASS, 1/1.
+  - `cargo test -p fc-core mapper::mmc3::tests::mapper45_serial_outer_regs_mask_prg_and_chr -- --nocapture`: PASS, 1/1.
+  - `cargo test -p fc-core mapper::tests::capability -- --nocapture`: PASS, 3/3.
+  - `git diff --check`: PASS.
+  - `cargo test -p fc-core mapper::mmc3::tests -- --nocapture`: PASS, 58/58.
+  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 78/78.
+  - `cargo test -p fc-core`: PASS, 292/292.
+  - `cargo test`: PASS, workspace tests.

@@ -458,6 +458,41 @@ impl Mmc3 {
         (bank & mask) | outer
     }
 
+    fn mapper45_prg_wrap(regs: &[u8; 4], bank: usize) -> usize {
+        let prg_and = (!regs[3] as usize) & 0x3F;
+        let prg_or = regs[1] as usize | (((regs[2] as usize) << 2) & 0x300);
+        (bank & prg_and) | (prg_or & !prg_and)
+    }
+
+    fn mapper373_prg_bank(&self, region: u16, regs: &[u8; 4], bank: usize) -> usize {
+        if regs[2] & 0x20 != 0 {
+            let paired_source = match region {
+                2 => self.mmc3_prg_bank_for_region(0),
+                3 => self.mmc3_prg_bank_for_region(1),
+                _ => bank,
+            };
+            Self::mapper45_prg_wrap(regs, paired_source) | if region >= 2 { 0x02 } else { 0 }
+        } else {
+            Self::mapper45_prg_wrap(regs, bank)
+        }
+    }
+
+    fn mapper45_chr_wrap(regs: &[u8; 4], bank: usize) -> usize {
+        let chr_and = 0xFFu16 >> (!regs[2] & 0x0F);
+        let chr_or = regs[0] as u16 | (((regs[2] as u16) << 4) & 0x0F00);
+        (((bank as u16) & chr_and) | (chr_or & !chr_and)) as usize
+    }
+
+    fn mapper45_write_low(regs: &mut [u8; 4], index: &mut u8, value: u8) -> bool {
+        if regs[3] & 0x40 == 0 {
+            regs[*index as usize] = value;
+            *index = (*index + 1) & 0x03;
+            true
+        } else {
+            false
+        }
+    }
+
     fn outer_prg_bank(&self, region: u16, bank: usize) -> usize {
         match &self.outer_bank {
             Mmc3OuterBank::None => bank,
@@ -477,11 +512,8 @@ impl Mmc3 {
                 let mask = if *block >= 6 { 0x1F } else { 0x0F };
                 ((*block as usize) << 4) | (bank & mask)
             }
-            Mmc3OuterBank::Mapper45 { regs, .. } => {
-                let prg_and = (!regs[3] as usize) & 0x3F;
-                let prg_or = regs[1] as usize | (((regs[2] as usize) << 2) & 0x300);
-                (bank & prg_and) | (prg_or & !prg_and)
-            }
+            Mmc3OuterBank::Mapper45 { regs, .. } => Self::mapper45_prg_wrap(regs, bank),
+            Mmc3OuterBank::Mapper373 { regs, .. } => self.mapper373_prg_bank(region, regs, bank),
             Mmc3OuterBank::Mapper47 { block, .. } => (((block & 1) as usize) << 4) | (bank & 0x0F),
             Mmc3OuterBank::Mapper49 { reg, .. } => {
                 if reg & 1 != 0 {
@@ -763,11 +795,8 @@ impl Mmc3 {
                 let mask = if *block < 6 { 0x7F } else { 0xFF };
                 ((*block as usize) << 7) | (bank & mask)
             }
-            Mmc3OuterBank::Mapper45 { regs, .. } => {
-                let chr_and = 0xFFu16 >> (!regs[2] & 0x0F);
-                let chr_or = regs[0] as u16 | (((regs[2] as u16) << 4) & 0x0F00);
-                (((bank as u16) & chr_and) | (chr_or & !chr_and)) as usize
-            }
+            Mmc3OuterBank::Mapper45 { regs, .. } => Self::mapper45_chr_wrap(regs, bank),
+            Mmc3OuterBank::Mapper373 { regs, .. } => Self::mapper45_chr_wrap(regs, bank),
             Mmc3OuterBank::Mapper47 { block, .. } => (((block & 1) as usize) << 7) | (bank & 0x7F),
             Mmc3OuterBank::Mapper49 { reg, .. } => (bank & 0x7F) | (((reg & 0xC0) as usize) << 1),
             Mmc3OuterBank::Mapper52 { reg, .. } => {
@@ -1474,14 +1503,8 @@ impl MapperOps for Mmc3 {
                 *block = (value & 0x06) >> 1;
                 true
             }
-            Mmc3OuterBank::Mapper45 { regs, index } => {
-                if regs[3] & 0x40 == 0 {
-                    regs[*index as usize] = value;
-                    *index = (*index + 1) & 0x03;
-                    true
-                } else {
-                    false
-                }
+            Mmc3OuterBank::Mapper45 { regs, index } | Mmc3OuterBank::Mapper373 { regs, index } => {
+                Self::mapper45_write_low(regs, index, value)
             }
             Mmc3OuterBank::Mapper47 { block, submapper } => {
                 if *submapper == 0 || (*block & 0x80) == 0 {
@@ -1950,6 +1973,11 @@ impl MapperOps for Mmc3 {
             Mmc3OuterBank::Mapper45 { regs, index } => {
                 *regs = [0, 0, 0x0F, 0];
                 *index = 0;
+            }
+            Mmc3OuterBank::Mapper373 { regs, index } => {
+                *regs = [0, 0, 0x0F, 0];
+                *index = 0;
+                reset_standard = true;
             }
             Mmc3OuterBank::Mapper49 { reg, submapper } => {
                 *reg = if *submapper == 1 { 0x41 } else { 0 };

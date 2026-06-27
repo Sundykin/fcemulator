@@ -34,6 +34,10 @@ pub(super) enum Mmc3OuterBank {
         regs: [u8; 4],
         index: u8,
     },
+    Mapper373 {
+        regs: [u8; 4],
+        index: u8,
+    },
     Mapper47 {
         block: u8,
         submapper: u8,
