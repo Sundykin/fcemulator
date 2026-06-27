@@ -165,6 +165,7 @@ Phase 17: Mapper compatibility gap closure
 - [x] Add long-tail mapper batch 354 / 358
 - [x] Add long-tail multicart mapper 357
 - [x] Add MMC3 long-tail mapper 361
+- [x] Add MMC3 long-tail mapper 366
 - **Status:** in_progress
 
 ### Phase 18: Mapper board compatibility layer

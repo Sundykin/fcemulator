@@ -1558,3 +1558,18 @@
   - `cargo test -p fc-core mapper::mmc3::tests -- --nocapture`: PASS, 54/54.
   - `cargo test -p fc-core`: PASS, 285/285.
   - `cargo test`: PASS, workspace tests.
+
+### Mapper 366 MMC3 Long-tail Batch
+- Started: 2026-06-27 CST.
+- Added mapper 366 / GN-45 as an MMC3 outer-bank variant in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs`, following FCEUmm `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/366.c:26-53` and cross-checking FCEUX `/Users/sunmeng/workspace/fc/fceux/src/boards/mmc3.cpp:1218-1261`.
+- Mapper 366 reuses mapper 361's AX5202P PRG/CHR outer formulas but latches the CPU address low byte on low-register writes and locks further updates once bit7 is set. It keeps ordinary MMC3 high writes, A12 IRQ, low WRAM fall-through, and reset clear behavior.
+- Wired mapper 366 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper/factory.rs`, added mapper-local/facade/capability tests, and refreshed mapper gap/reference docs; supported mapper count is now 264 and remaining four-reference union gap is 229.
+- Verification so far:
+  - `cargo fmt --check`: PASS.
+  - `cargo test -p fc-core mapper::mmc3::tests::mapper366_address_latch_extends_mmc3_outer_banks_until_locked -- --nocapture`: PASS, 1/1.
+  - `cargo test -p fc-core mapper::tests::behavior::asic::mmc3_long_tail_variants_258_266_267_291_321_334_361_366_use_outer_registers_and_dip_reads -- --nocapture`: PASS, 1/1.
+  - `cargo test -p fc-core mapper::tests::capability -- --nocapture`: PASS, 3/3.
+  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 78/78.
+  - `cargo test -p fc-core mapper::mmc3::tests -- --nocapture`: PASS, 55/55.
+  - `cargo test -p fc-core`: PASS, 286/286.
+  - `cargo test`: PASS, workspace tests.

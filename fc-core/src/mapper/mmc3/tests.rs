@@ -1039,6 +1039,34 @@ fn mapper361_data_latch_extends_mmc3_outer_banks() {
 }
 
 #[test]
+fn mapper366_address_latch_extends_mmc3_outer_banks_until_locked() {
+    let mut mapper = Mmc3::new_366(128, 256, Mirroring::Vertical);
+
+    mapper.write_register(0x8000, 0x06);
+    mapper.write_register(0x8001, 0x2A);
+    mapper.write_register(0x8000, 0x02);
+    mapper.write_register(0x8001, 0xD5);
+
+    assert!(mapper.write_low_register(0x6030, 0x00));
+    assert!(mapper.low_register_write_falls_through(0x6030));
+    assert_eq!(mapper.prg_index(0x8004), 0x3A * 0x2000 + 4);
+    assert_eq!(mapper.chr_index(0x1004), 0x1D5 * 0x400 + 4);
+
+    assert!(mapper.write_low_register(0x7010, 0x00));
+    assert_eq!(mapper.prg_index(0x8004), 0x1A * 0x2000 + 4);
+    assert_eq!(mapper.chr_index(0x1004), 0x0D5 * 0x400 + 4);
+
+    assert!(mapper.write_low_register(0x7080, 0x00));
+    assert_eq!(mapper.prg_index(0x8004), 0x8A * 0x2000 + 4);
+    assert!(mapper.write_low_register(0x7030, 0x00));
+    assert_eq!(mapper.prg_index(0x8004), 0x8A * 0x2000 + 4);
+
+    mapper.reset(true);
+    assert_eq!(mapper.prg_index(0x8004), 4);
+    assert_eq!(mapper.chr_index(0x1004), 0x04 * 0x400 + 4);
+}
+
+#[test]
 fn mapper114_remaps_mmc3_writes_and_can_force_prg_banks() {
     let mut mapper = Mmc3::new_114(64, 64, Mirroring::Vertical);
 

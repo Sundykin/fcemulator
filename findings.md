@@ -399,3 +399,8 @@
 - FCEUmm `asic_mmc3.c:71-82` confirms AX5202P keeps WRAM reads/writes active, so mapper 361 should share the low-register write fall-through behavior already used by mapper 321.
 - FCEUX `mmc3.cpp:1218-1261` documents the GN-45 family and old mapper 205 assignment for mapper 361/366. That reference includes address-latch/lock behavior for adjacent variants, but mapper 361 itself is implemented this pass from FCEUmm's data-latched OK-411 board to avoid over-broad behavior.
 - Mesen2 has mapper 361 ROM metadata in `MesenNesDB.txt` but no dedicated Core mapper implementation; it is useful for confirming board presence, not behavior.
+
+## Mapper 366 MMC3 Long-tail Findings
+- Mapper 366 in FCEUmm `366.c:26-53` is the GN-45 address-latch sibling of mapper 361: PRG/CHR outer formulas are identical, but low-register writes latch `addr & 0xFF` instead of data and stop updating once bit7 is set.
+- FCEUX `mmc3.cpp:1218-1261` corroborates the GN-45 address-latch and bit7 lock behavior through `GN45Write0`, with the same PRG/CHR wrappers and reset clear.
+- The existing `Mmc3OuterBank` layer is enough for mapper 366: add one register field, reuse 361 PRG/CHR wrappers, keep low write fall-through for AX5202P WRAM, and reset standard MMC3 registers on soft reset/power reset.
