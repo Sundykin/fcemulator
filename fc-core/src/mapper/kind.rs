@@ -129,6 +129,7 @@ pub enum Mapper {
     Mapper343(Mapper343),
     Mapper352(Mapper352),
     Mapper354(Mapper354),
+    Mapper357(Mapper357),
     Mapper360(Mapper360),
     IremLrog017(IremLrog017),
     Namco108Mapper154(Namco108Mapper154),

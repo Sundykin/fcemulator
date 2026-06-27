@@ -2331,6 +2331,169 @@ impl MapperOps for Mapper354 {
 }
 
 // ============================================================================
+// Mapper 357 — Bit Corp 4-in-1 multicart
+//
+// Reference:
+// - FCEUmm `src/boards/357.c`
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Mapper357 {
+    preg: [u8; 4],
+    dip_switch: u8,
+    irq_enabled: bool,
+    irq_counter: u16,
+    irq_pending: bool,
+    prg4_5000: usize,
+    prg8_6000: usize,
+}
+
+impl Mapper357 {
+    const SMB2J_BANKS: [usize; 8] = [4, 3, 5, 3, 6, 3, 7, 3];
+    const OUTER_BANKS: [usize; 4] = [0x00, 0x08, 0x10, 0x18];
+
+    pub(in crate::mapper) fn new() -> Self {
+        let mut mapper = Self {
+            preg: [0; 4],
+            dip_switch: 0,
+            irq_enabled: false,
+            irq_counter: 0,
+            irq_pending: false,
+            prg4_5000: 16,
+            prg8_6000: 2,
+        };
+        mapper.sync_low_smb2j_banks();
+        mapper
+    }
+
+    fn sync_low_smb2j_banks(&mut self) {
+        if self.dip_switch == 0 {
+            self.prg4_5000 = 16;
+            self.prg8_6000 = if self.preg[1] & 1 != 0 { 0 } else { 2 };
+        }
+    }
+
+    fn high_prg8_page(&self, addr: u16) -> usize {
+        if self.dip_switch == 0 {
+            match addr & 0xE000 {
+                0x8000 => 1,
+                0xA000 => 0,
+                0xC000 => Self::SMB2J_BANKS[(self.preg[0] & 0x07) as usize],
+                0xE000 => {
+                    if self.preg[1] & 1 != 0 {
+                        8
+                    } else {
+                        10
+                    }
+                }
+                _ => 0,
+            }
+        } else {
+            let outer = Self::OUTER_BANKS[self.dip_switch as usize];
+            let bank16 = if addr < 0xC000 {
+                outer | (self.preg[2] as usize & 7)
+            } else {
+                outer | 7
+            };
+            bank16 * 2 + ((addr as usize >> 13) & 1)
+        }
+    }
+}
+
+impl MapperOps for Mapper357 {
+    fn prg_index(&self, addr: u16) -> usize {
+        self.high_prg8_page(addr) * 0x2000 + (addr as usize & 0x1FFF)
+    }
+
+    fn chr_index(&self, addr: u16) -> usize {
+        addr as usize & 0x1FFF
+    }
+
+    fn write_register(&mut self, _addr: u16, value: u8) {
+        self.preg[2] = value & 0x07;
+    }
+
+    fn write_expansion(&mut self, addr: u16, value: u8) {
+        match addr & 0x71FF {
+            0x4022 => {
+                self.preg[0] = value & 0x07;
+            }
+            0x4120 => {
+                self.preg[1] = value & 0x01;
+                self.sync_low_smb2j_banks();
+            }
+            0x4122 => {
+                self.irq_enabled = value & 0x01 != 0;
+                if !self.irq_enabled {
+                    self.irq_counter = 0;
+                    self.irq_pending = false;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn expansion_prg_index(&self, addr: u16) -> Option<usize> {
+        (0x5000..=0x5FFF)
+            .contains(&addr)
+            .then(|| self.prg4_5000 * 0x1000 + (addr as usize & 0x0FFF))
+    }
+
+    fn low_prg_index(&self, addr: u16) -> Option<usize> {
+        Some(self.prg8_6000 * 0x2000 + (addr as usize & 0x1FFF))
+    }
+
+    fn low_prg_ram_read_enabled(&self, _addr: u16) -> bool {
+        false
+    }
+
+    fn low_prg_ram_write_enabled(&self, _addr: u16) -> bool {
+        false
+    }
+
+    fn mirroring(&self) -> Mirroring {
+        if self.dip_switch == 3 {
+            Mirroring::Horizontal
+        } else {
+            Mirroring::Vertical
+        }
+    }
+
+    fn cpu_clock(&mut self) {
+        if !self.irq_enabled {
+            return;
+        }
+
+        if self.irq_counter < 4096 {
+            self.irq_counter += 1;
+        } else {
+            self.irq_enabled = false;
+            self.irq_pending = true;
+        }
+    }
+
+    fn clocks_cpu(&self) -> bool {
+        true
+    }
+
+    fn irq(&self) -> bool {
+        self.irq_pending
+    }
+
+    fn reset(&mut self, soft: bool) {
+        self.irq_enabled = false;
+        self.irq_counter = 0;
+        self.irq_pending = false;
+        if soft {
+            self.dip_switch = self.dip_switch.wrapping_add(1) & 3;
+        } else {
+            self.dip_switch = 0;
+        }
+        self.sync_low_smb2j_banks();
+    }
+}
+
+// ============================================================================
 // Mapper 360 — Bit Corp 31-in-1 multicart
 //
 // Reference:
@@ -2752,6 +2915,45 @@ mod tests {
         sub1.reset(true);
         assert_eq!(sub1.low_prg_index(0x6004), None);
         assert_eq!(sub1.prg_index(0x8004), 4);
+    }
+
+    #[test]
+    fn mapper357_rotates_bitcorp_games_low_prg_and_irq() {
+        let mut mapper = Mapper357::new();
+        assert_eq!(mapper.expansion_prg_index(0x5004), Some(16 * 0x1000 + 4));
+        assert_eq!(mapper.low_prg_index(0x6004), Some(2 * 0x2000 + 4));
+        assert_eq!(mapper.prg_index(0x8004), 1 * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xA004), 4);
+        assert_eq!(mapper.prg_index(0xC004), 4 * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xE004), 10 * 0x2000 + 4);
+        assert_eq!(mapper.mirroring(), Mirroring::Vertical);
+
+        mapper.write_expansion(0x4022, 0x02);
+        mapper.write_expansion(0x4120, 0x01);
+        assert_eq!(mapper.low_prg_index(0x6004), Some(4));
+        assert_eq!(mapper.prg_index(0xC004), 5 * 0x2000 + 4);
+        assert_eq!(mapper.prg_index(0xE004), 8 * 0x2000 + 4);
+
+        mapper.write_expansion(0x4122, 0x01);
+        for _ in 0..4096 {
+            mapper.cpu_clock();
+        }
+        assert!(!mapper.irq());
+        mapper.cpu_clock();
+        assert!(mapper.irq());
+
+        mapper.reset(true);
+        mapper.write_register(0x8000, 0x06);
+        assert_eq!(mapper.low_prg_index(0x6004), Some(4));
+        assert_eq!(mapper.prg_index(0x8004), 0x0E * 0x4000 + 4);
+        assert_eq!(mapper.prg_index(0xC004), 0x0F * 0x4000 + 4);
+        assert_eq!(mapper.mirroring(), Mirroring::Vertical);
+
+        mapper.reset(true);
+        mapper.write_register(0x8000, 0x03);
+        assert_eq!(mapper.prg_index(0x8004), 0x13 * 0x4000 + 4);
+        mapper.reset(true);
+        assert_eq!(mapper.mirroring(), Mirroring::Horizontal);
     }
 
     #[test]

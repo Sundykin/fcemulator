@@ -1523,4 +1523,21 @@
   - `cargo test -p fc-core mapper::tests::capability -- --nocapture`: PASS, 3/3.
   - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 78/78.
   - `git diff --check`: PASS.
+  - `cargo test -p fc-core`: PASS, 284/284.
+  - `cargo test`: PASS, workspace tests.
   - `cargo test -p fc-core`: PASS, 283/283.
+
+### Mapper 357 Long-tail Multicart Batch
+- Started: 2026-06-27 CST.
+- Added mapper 357 / Bit Corp 4-in-1 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/multicart.rs`, following FCEUmm `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/357.c:21-120`.
+- Mapper 357 covers reset DIP rotation, SMB2J mode `$5000` PRG4 and `$6000` PRG8 mappings, SMB2J high PRG8 bank table, UNROM-mode outer PRG16 banks, `$4022/$4120/$4122` low-register writes, high-register UNROM bank writes, CPU-cycle IRQ, CHR-RAM default indexing, and mirroring.
+- Wired mapper 357 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic.rs`, `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs`, `/Users/sunmeng/workspace/fc/fc-core/src/mapper/kind.rs`, `/Users/sunmeng/workspace/fc/fc-core/src/mapper/dispatch.rs`, and `/Users/sunmeng/workspace/fc/fc-core/src/mapper/factory.rs`.
+- Added mapper-local/facade behavior tests and capability guard rows; refreshed mapper gap/reference docs; supported mapper count is now 262 and remaining four-reference union gap is 231.
+- Candidate scan notes: `268/269` look like next MMC3-wrapper candidates, while `351/353/355/356/359` need larger composite/audio/peripheral architecture support before safe translation.
+- Verification so far:
+  - `cargo test -p fc-core mapper::basic::multicart::tests::mapper357_rotates_bitcorp_games_low_prg_and_irq -- --nocapture`: PASS, 1/1.
+  - `cargo test -p fc-core mapper::tests::behavior::latch::long_tail_latch_multicarts_352_360_follow_reset_and_register_banking -- --nocapture`: PASS, 1/1.
+  - `cargo fmt --check`: PASS.
+  - `cargo test -p fc-core mapper::tests::capability -- --nocapture`: PASS, 3/3.
+  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 78/78.
+  - `git diff --check`: PASS.

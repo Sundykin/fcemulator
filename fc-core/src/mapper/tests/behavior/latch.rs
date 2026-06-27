@@ -199,6 +199,20 @@ fn long_tail_latch_multicarts_352_360_follow_reset_and_register_banking() {
     assert_eq!(m352.prg_index(0x8004), 0x8000 + 4);
     assert_eq!(m352.chr_index(0x1004), 0x2000 + 0x1004);
 
+    let mut m357 = Mapper::new(357, 32, 0, Mirroring::Vertical, 0).expect("mapper 357");
+    m357.write_expansion(0x4022, 0x04);
+    m357.write_expansion(0x4120, 0x01);
+    assert_eq!(m357.low_prg_index(0x6004), Some(4));
+    assert_eq!(m357.prg_index(0xC004), 6 * 0x2000 + 4);
+    m357.write_expansion(0x4122, 1);
+    for _ in 0..4097 {
+        m357.cpu_clock();
+    }
+    assert!(m357.irq());
+    m357.reset(true);
+    m357.write_register(0x8000, 0x06);
+    assert_eq!(m357.prg_index(0x8004), 0x0E * 0x4000 + 4);
+
     let mut m360 = Mapper::new(360, 64, 32, Mirroring::Vertical, 0).expect("mapper 360");
     m360.reset(true);
     m360.reset(true);

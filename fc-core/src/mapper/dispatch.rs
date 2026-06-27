@@ -128,6 +128,7 @@ macro_rules! dispatch {
             Mapper::Mapper343($m) => $body,
             Mapper::Mapper352($m) => $body,
             Mapper::Mapper354($m) => $body,
+            Mapper::Mapper357($m) => $body,
             Mapper::Mapper360($m) => $body,
             Mapper::IremLrog017($m) => $body,
             Mapper::Namco108Mapper154($m) => $body,
