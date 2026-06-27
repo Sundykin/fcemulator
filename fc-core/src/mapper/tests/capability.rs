@@ -247,6 +247,7 @@ fn watches_ppu_bus_matches_notify_a12_overrides() {
         (357, false),  // Mapper 357
         (358, true),   // JY ASIC watches PPU bus for PPU-read IRQ / CHR latch
         (360, false),  // Mapper 360
+        (361, true),   // Mapper 361 MMC3 A12 IRQ
         (184, false),  // Sunsoft 184
         (4, true),     // MMC3
         (5, true),     // MMC5
@@ -505,6 +506,7 @@ fn clocks_cpu_matches_cpu_clock_overrides() {
         (357, true),   // Mapper 357 IRQ counter clocks per CPU cycle
         (358, true),   // JY ASIC can clock IRQs from CPU cycles
         (360, false),  // Mapper 360
+        (361, false),  // Mapper 361 uses PPU A12 edges
         (184, false),  // Sunsoft 184
     ];
     for (num, expected) in cases {
@@ -770,6 +772,7 @@ fn clocks_hblank_matches_hblank_clock_overrides() {
         (354, false),
         (358, true),
         (360, false),
+        (361, false),
     ];
     for (num, expected) in cases {
         let submapper = if num == 34 { 2 } else { 0 };

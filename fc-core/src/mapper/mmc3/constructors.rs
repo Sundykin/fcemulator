@@ -466,6 +466,14 @@ impl Mmc3 {
         m
     }
 
+    /// Mapper 361 — OK-411 / BMC-GN-45 style AX5202P MMC3 clone with one
+    /// data-latched outer PRG/CHR register.
+    pub(in crate::mapper) fn new_361(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
+        let mut m = Mmc3::new(prg_16k, chr_8k, mirroring);
+        m.outer_bank = Mmc3OuterBank::Mapper361 { reg: 0 };
+        m
+    }
+
     /// Mapper 76 — Namco 109 / MMC3 command and IRQ core with custom CHR cwrap.
     pub(in crate::mapper) fn new_76(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
         let mut m = Mmc3::new(prg_16k, chr_8k, mirroring);

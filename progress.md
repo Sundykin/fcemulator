@@ -1541,3 +1541,20 @@
   - `cargo test -p fc-core mapper::tests::capability -- --nocapture`: PASS, 3/3.
   - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 78/78.
   - `git diff --check`: PASS.
+
+### Mapper 361 MMC3 Long-tail Batch
+- Started: 2026-06-27 CST.
+- Added mapper 361 / OK-411 as an MMC3 outer-bank variant in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs`, following FCEUmm `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/361.c:26-49`.
+- Mapper 361 covers the data-latched outer PRG/CHR register, normal MMC3 high-register writes, A12 IRQ path, AX5202P-style low-register WRAM fall-through, and reset clear. FCEUX `/Users/sunmeng/workspace/fc/fceux/src/boards/mmc3.cpp:1218-1261` is recorded as GN-45 family cross-check; Mesen2 only supplies ROM DB metadata for mapper 361.
+- Wired mapper 361 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper/factory.rs`, added mapper-local/facade/capability tests, and refreshed `/Users/sunmeng/workspace/fc/docs/Mapper-适配差距清单.md` plus `/Users/sunmeng/workspace/fc/docs/Mapper-适配引用记录.md`; supported mapper count is now 263 and remaining four-reference union gap is 230.
+- Candidate scan notes: mapper 362 is a VRC4 reset-game variant, 366 likely belongs beside the GN-45 address-latch family, and 367/373 should be checked for existing MMC3 helper fit before touching larger composite/audio/peripheral candidates.
+- Verification so far:
+  - `cargo fmt --check`: PASS.
+  - `cargo test -p fc-core mapper::mmc3::tests::mapper361_data_latch_extends_mmc3_outer_banks -- --nocapture`: PASS, 1/1.
+  - `cargo test -p fc-core mapper::tests::behavior::asic::mmc3_long_tail_variants_258_266_267_291_321_334_361_use_outer_registers_and_dip_reads -- --nocapture`: PASS, 1/1.
+  - `cargo test -p fc-core mapper::tests::capability -- --nocapture`: PASS, 3/3.
+  - `git diff --check`: PASS.
+  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 78/78.
+  - `cargo test -p fc-core mapper::mmc3::tests -- --nocapture`: PASS, 54/54.
+  - `cargo test -p fc-core`: PASS, 285/285.
+  - `cargo test`: PASS, workspace tests.

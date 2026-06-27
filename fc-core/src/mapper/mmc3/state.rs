@@ -134,6 +134,9 @@ pub(super) enum Mmc3OuterBank {
         reg: u8,
         dip: u8,
     },
+    Mapper361 {
+        reg: u8,
+    },
 }
 
 pub(super) const MAPPER208_PROTECTION_LUT: [u8; 256] = [

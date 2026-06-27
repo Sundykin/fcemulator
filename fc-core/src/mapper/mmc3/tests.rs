@@ -1015,6 +1015,30 @@ fn mapper334_prg32_latch_and_dip_open_bus_read() {
 }
 
 #[test]
+fn mapper361_data_latch_extends_mmc3_outer_banks() {
+    let mut mapper = Mmc3::new_361(128, 256, Mirroring::Vertical);
+
+    mapper.write_register(0x8000, 0x06);
+    mapper.write_register(0x8001, 0x2A);
+    mapper.write_register(0x8000, 0x02);
+    mapper.write_register(0x8001, 0xD5);
+
+    assert!(mapper.write_low_register(0x7000, 0x30));
+    assert!(mapper.low_register_write_falls_through(0x7000));
+    assert_eq!(mapper.prg_index(0x8004), 0x3A * 0x2000 + 4);
+    assert_eq!(mapper.prg_index(0xE004), 0x3F * 0x2000 + 4);
+    assert_eq!(mapper.chr_index(0x1004), 0x1D5 * 0x400 + 4);
+
+    assert!(mapper.write_low_register(0x6000, 0x10));
+    assert_eq!(mapper.prg_index(0x8004), 0x1A * 0x2000 + 4);
+    assert_eq!(mapper.chr_index(0x1004), 0x0D5 * 0x400 + 4);
+
+    mapper.reset(true);
+    assert_eq!(mapper.prg_index(0x8004), 4);
+    assert_eq!(mapper.chr_index(0x1004), 0x04 * 0x400 + 4);
+}
+
+#[test]
 fn mapper114_remaps_mmc3_writes_and_can_force_prg_banks() {
     let mut mapper = Mmc3::new_114(64, 64, Mirroring::Vertical);
 
