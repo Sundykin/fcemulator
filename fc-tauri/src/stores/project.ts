@@ -9,6 +9,7 @@ import * as emu from "../emu";
 let buildUnlisten: UnlistenFn | null = null;
 let ideMcpUnlisten: UnlistenFn | null = null;
 let ideMcpSyncQueue: Promise<void> = Promise.resolve();
+let uiPublishTimer: number | null = null;
 
 // Web Audio for tracker preview (module-level; non-reactive).
 let audioCtx: AudioContext | null = null;
@@ -52,6 +53,14 @@ function sourceTemplate(path: string): string {
     .replace(/[^A-Za-z0-9_]/g, "_");
   if (/^\d/.test(label)) label = `mod_${label}`;
   return `; ${path}\n\n.export ${label}_init\n.export ${label}_tick\n\n.segment "CODE"\n\n${label}_init:\n    rts\n\n${label}_tick:\n    rts\n`;
+}
+
+function isTrackerSongPath(path: string): boolean {
+  return path.endsWith(".song.json");
+}
+
+function isAssemblyPath(path: string): boolean {
+  return /\.(s|asm)$/i.test(path);
 }
 
 function replaceResourcePath(path: string, from: string, to: string): string {
@@ -114,7 +123,232 @@ interface ActiveResource {
   seq: number;
 }
 
+type ResourceHistoryEntry = {
+  kind: Exclude<ResourceKind, "">;
+  path: string;
+  label: string;
+  target?: ResourceFocusTarget;
+};
+
+type ResourceFocusTarget = {
+  line?: number;
+  tile?: number;
+  x?: number;
+  y?: number;
+  layer?: MapLayer | "";
+  pattern?: number;
+  row?: number;
+  channel?: number;
+};
+
+const RESOURCE_HISTORY_LIMIT = 80;
+const RESOURCE_RECENT_LIMIT = 12;
+
+const RESOURCE_KIND_LABELS: Record<Exclude<ResourceKind, "">, string> = {
+  source: "源码",
+  chr: "CHR",
+  map: "地图",
+  music: "乐曲",
+};
+
+function resourceLabel(kind: Exclude<ResourceKind, "">, path: string): string {
+  return `${RESOURCE_KIND_LABELS[kind]} ${path}`;
+}
+
+function sanitizeHistoryEntry(entry: ResourceHistoryEntry): ResourceHistoryEntry {
+  return hasFocusTarget(entry.target) ? entry : { kind: entry.kind, path: entry.path, label: entry.label };
+}
+
+function cloneHistoryEntry(entry: ResourceHistoryEntry | null | undefined): ResourceHistoryEntry | null {
+  if (!entry) return null;
+  return sanitizeHistoryEntry({
+    kind: entry.kind,
+    path: entry.path,
+    label: entry.label,
+    target: entry.target ? { ...entry.target } : undefined,
+  });
+}
+
+function historyEntryKey(kind: Exclude<ResourceKind, "">, path: string): string {
+  return `${kind}:${path}`;
+}
+
+function sameHistoryResource(entry: ResourceHistoryEntry, kind: Exclude<ResourceKind, "">, path: string): boolean {
+  return entry.kind === kind && entry.path === path;
+}
+
+function removeHistoryResource(
+  stack: ResourceHistoryEntry[],
+  kind: Exclude<ResourceKind, "">,
+  path: string,
+): ResourceHistoryEntry[] {
+  return stack.filter((entry) => !sameHistoryResource(entry, kind, path));
+}
+
+function pushUniqueHistoryEntry(stack: ResourceHistoryEntry[], entry: ResourceHistoryEntry): ResourceHistoryEntry[] {
+  const next = removeHistoryResource(stack, entry.kind, entry.path);
+  next.push(sanitizeHistoryEntry(entry));
+  if (next.length > RESOURCE_HISTORY_LIMIT) next.splice(0, next.length - RESOURCE_HISTORY_LIMIT);
+  return next;
+}
+
+function activeResourceHistoryEntry(
+  active: ActiveResource,
+  contexts: Record<string, EditorContext>,
+  targets: Record<string, ResourceFocusTarget>,
+): ResourceHistoryEntry | null {
+  if (!active.kind || !active.path) return null;
+  const kind = active.kind;
+  const path = active.path;
+  return sanitizeHistoryEntry({
+    kind,
+    path,
+    label: active.label || resourceLabel(kind, path),
+    target: focusTargetFromContext(kind, path, contexts) || targets[historyEntryKey(kind, path)],
+  });
+}
+
+function recentHistoryEntries(
+  active: ResourceHistoryEntry | null,
+  back: ResourceHistoryEntry[],
+  forward: ResourceHistoryEntry[],
+): ResourceHistoryEntry[] {
+  const seen = new Set<string>();
+  const rows: ResourceHistoryEntry[] = [];
+  const add = (entry: ResourceHistoryEntry | null | undefined) => {
+    if (!entry) return;
+    const key = historyEntryKey(entry.kind, entry.path);
+    if (seen.has(key)) return;
+    seen.add(key);
+    rows.push(sanitizeHistoryEntry(entry));
+  };
+  add(active);
+  [...back].reverse().forEach(add);
+  [...forward].reverse().forEach(add);
+  return rows.slice(0, RESOURCE_RECENT_LIMIT);
+}
+
 type MapLayer = "tiles" | "attr" | "collision";
+type MapRectFocus = { x0: number; y0: number; x1: number; y1: number };
+type SongRangeFocus = { row0: number; row1: number; channel0: number; channel1: number };
+
+type EditorContext = Record<string, unknown>;
+
+function optionalNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function optionalMapLayer(value: unknown): MapLayer | "" | undefined {
+  return value === "tiles" || value === "attr" || value === "collision" || value === "" ? value : undefined;
+}
+
+function mapRectFocusFromExtra(rect: unknown): MapRectFocus | null {
+  if (!rect || typeof rect !== "object") return null;
+  const data = rect as Partial<Record<keyof MapRectFocus, unknown>>;
+  const x0 = optionalNumber(data.x0);
+  const y0 = optionalNumber(data.y0);
+  const x1 = optionalNumber(data.x1);
+  const y1 = optionalNumber(data.y1);
+  if (x0 === undefined || y0 === undefined || x1 === undefined || y1 === undefined) return null;
+  return {
+    x0: Math.min(x0, x1),
+    y0: Math.min(y0, y1),
+    x1: Math.max(x0, x1),
+    y1: Math.max(y0, y1),
+  };
+}
+
+function songRangeFocusFromExtra(range: unknown): SongRangeFocus | null {
+  if (!range || typeof range !== "object") return null;
+  const data = range as Partial<Record<keyof SongRangeFocus, unknown>>;
+  const row0 = optionalNumber(data.row0);
+  const row1 = optionalNumber(data.row1);
+  const channel0 = optionalNumber(data.channel0);
+  const channel1 = optionalNumber(data.channel1);
+  if (row0 === undefined || row1 === undefined || channel0 === undefined || channel1 === undefined) return null;
+  return {
+    row0: Math.min(row0, row1),
+    row1: Math.max(row0, row1),
+    channel0: Math.max(0, Math.min(4, Math.min(channel0, channel1))),
+    channel1: Math.max(0, Math.min(4, Math.max(channel0, channel1))),
+  };
+}
+
+function hasFocusTarget(target?: ResourceFocusTarget): boolean {
+  return !!target && Object.values(target).some((value) => value !== undefined && value !== "");
+}
+
+function focusTargetFromContext(kind: Exclude<ResourceKind, "">, path: string, contexts: Record<string, EditorContext>): ResourceFocusTarget | undefined {
+  if (kind === "source") {
+    const ctx = contexts.source;
+    if (ctx?.path === path) {
+      const line = optionalNumber(ctx.line);
+      return line !== undefined ? { line } : undefined;
+    }
+    return undefined;
+  }
+  if (kind === "chr") {
+    const ctx = contexts.chr;
+    if (ctx?.path === path) {
+      const tile = optionalNumber(ctx.tile);
+      return tile !== undefined ? { tile } : undefined;
+    }
+    return undefined;
+  }
+  if (kind === "map") {
+    const ctx = contexts.map;
+    if (ctx?.path === path) {
+      const focus = (ctx.focus_cell || ctx.hover) as { x?: unknown; y?: unknown } | null | undefined;
+      const x = optionalNumber(focus?.x);
+      const y = optionalNumber(focus?.y);
+      if (x === undefined || y === undefined) return undefined;
+      return { x, y, layer: optionalMapLayer(ctx.layer) };
+    }
+    return undefined;
+  }
+  const sourceCtx = contexts.source;
+  if (sourceCtx?.path === path) {
+    const line = optionalNumber(sourceCtx.line);
+    return line !== undefined ? { line } : undefined;
+  }
+  const musicCtx = contexts.music;
+  if (musicCtx?.path === path) {
+    const pattern = optionalNumber(musicCtx.pattern);
+    const row = optionalNumber(musicCtx.row);
+    const channel = optionalNumber(musicCtx.channel);
+    return pattern !== undefined || row !== undefined || channel !== undefined
+      ? { pattern, row, channel }
+      : undefined;
+  }
+  return undefined;
+}
+
+function focusTargetFromEditorContext(context: EditorContext): ResourceFocusTarget | undefined {
+  if (context.kind === "source") {
+    const line = optionalNumber(context.line);
+    return line !== undefined ? { line } : undefined;
+  }
+  if (context.kind === "chr") {
+    const tile = optionalNumber(context.tile);
+    return tile !== undefined ? { tile } : undefined;
+  }
+  if (context.kind === "map") {
+    const focus = (context.focus_cell || context.hover) as { x?: unknown; y?: unknown } | null | undefined;
+    const x = optionalNumber(focus?.x);
+    const y = optionalNumber(focus?.y);
+    if (x === undefined || y === undefined) return undefined;
+    return { x, y, layer: optionalMapLayer(context.layer) };
+  }
+  if (context.kind === "music") {
+    const pattern = optionalNumber(context.pattern);
+    const row = optionalNumber(context.row);
+    const channel = optionalNumber(context.channel);
+    return pattern !== undefined || row !== undefined || channel !== undefined
+      ? { pattern, row, channel }
+      : undefined;
+  }
+  return undefined;
+}
 
 interface IdeMcpExtra {
   root?: string;
@@ -129,9 +363,28 @@ interface IdeMcpExtra {
   x?: number;
   y?: number;
   layer?: string;
+  rect?: Partial<MapRectFocus>;
+  range?: Partial<SongRangeFocus>;
+  cell_count?: number;
   pattern?: number;
   row?: number;
   channel?: number;
+  last_row?: number;
+  last_channel?: number;
+  ok?: boolean;
+  runtime?: Record<string, unknown>;
+  frame?: Record<string, unknown>;
+  input?: Record<string, unknown> | null;
+}
+
+export interface GameVerifyResult {
+  ok: boolean;
+  runtime: Record<string, unknown>;
+  frame: Record<string, unknown>;
+  input: Record<string, unknown> | null;
+  buildSeq: number;
+  previewSeq: number;
+  verifiedAt: number;
 }
 
 export const useProjectStore = defineStore("project", {
@@ -141,6 +394,9 @@ export const useProjectStore = defineStore("project", {
     tree: null as ide.FileNode | null,
     resourceFocusSeq: 0,
     activeResource: { kind: "", path: "", label: "", seq: 0 } as ActiveResource,
+    resourceHistoryBack: [] as ResourceHistoryEntry[],
+    resourceHistoryForward: [] as ResourceHistoryEntry[],
+    resourceHistoryReplaying: false,
     tabs: [] as EditorTab[],
     activePath: "" as string,
     focusEditor: 0, // bumped to ask the IDE to bring the source editor forward
@@ -148,12 +404,15 @@ export const useProjectStore = defineStore("project", {
     buildPanelTab: "diagnostics" as "diagnostics" | "health" | "log",
     building: false,
     build: null as ide.BuildResult | null,
+    buildSeq: 0,
     status: "未打开工程",
     // editor jump signal: bumped seq + target line, watched by EditorPanel
     goto: { path: "", line: 0, seq: 0 },
     // address↔source-line map from the last successful build (source-debug-link)
     sourceMap: [] as ide.LineAddr[],
     focusPreview: 0,
+    previewSeq: 0,
+    lastGameVerify: null as GameVerifyResult | null,
     // path → (line → ControlDeck breakpoint id)
     lineBps: {} as Record<string, Record<number, number>>,
     // last halted source line (for editor highlight), bumped seq
@@ -168,13 +427,17 @@ export const useProjectStore = defineStore("project", {
     map: null as { path: string; data: ide.MapData } | null,
     mapSaved: "" as string,
     focusMap: 0,
-    mapCellFocus: { path: "", x: 0, y: 0, layer: "" as MapLayer | "", seq: 0 },
+    mapCellFocus: { path: "", x: 0, y: 0, layer: "" as MapLayer | "", rect: null as MapRectFocus | null, seq: 0 },
+    mapTileBrushFocus: { path: "", tile: 0, seq: 0 },
     mapChrBindings: {} as Record<string, string>,
     // active tracker song (audio-tracker)
     song: null as { path: string; data: ide.Song } | null,
     songSaved: "" as string,
     focusTracker: 0,
-    songCellFocus: { path: "", pattern: 0, row: 0, channel: 0, seq: 0 },
+    songCellFocus: { path: "", pattern: 0, row: 0, channel: 0, range: null as SongRangeFocus | null, seq: 0 },
+    uiShellContext: {} as EditorContext,
+    editorContexts: {} as Record<string, EditorContext>,
+    resourceFocusTargets: {} as Record<string, ResourceFocusTarget>,
     trackerPlaying: false,
     watching: false,
   }),
@@ -197,17 +460,32 @@ export const useProjectStore = defineStore("project", {
       const bindings = { ...(s.manifest?.map_chr || {}), ...s.mapChrBindings };
       return (s.manifest?.maps ?? []).filter((path) => bindings[path] === s.chr?.path);
     },
+    canNavigateResourceBack: (s) => s.resourceHistoryBack.length > 0,
+    canNavigateResourceForward: (s) => s.resourceHistoryForward.length > 0,
+    previousResource: (s) => s.resourceHistoryBack[s.resourceHistoryBack.length - 1] ?? null,
+    nextResource: (s) => s.resourceHistoryForward[s.resourceHistoryForward.length - 1] ?? null,
+    recentResources: (s) => recentHistoryEntries(
+      activeResourceHistoryEntry(s.activeResource, s.editorContexts, s.resourceFocusTargets),
+      s.resourceHistoryBack,
+      s.resourceHistoryForward,
+    ),
   },
   actions: {
     resetWorkspaceState(dir: string) {
       this.root = dir;
       this.resourceFocusSeq = 0;
       this.activeResource = { kind: "", path: "", label: "", seq: 0 };
+      this.resourceHistoryBack = [];
+      this.resourceHistoryForward = [];
+      this.resourceHistoryReplaying = false;
       this.tabs = [];
       this.activePath = "";
       this.build = null;
+      this.buildSeq = 0;
       this.sourceMap = [];
       this.focusPreview = 0;
+      this.previewSeq = 0;
+      this.lastGameVerify = null;
       this.lineBps = {};
       this.halt = { path: "", line: 0, seq: this.halt.seq + 1, active: false };
       this.lastHaltPc = -1;
@@ -216,43 +494,293 @@ export const useProjectStore = defineStore("project", {
       this.chrTileFocus = { path: "", tile: 0, seq: 0 };
       this.map = null;
       this.mapSaved = "";
-      this.mapCellFocus = { path: "", x: 0, y: 0, layer: "", seq: 0 };
+      this.mapCellFocus = { path: "", x: 0, y: 0, layer: "", rect: null, seq: 0 };
+      this.mapTileBrushFocus = { path: "", tile: 0, seq: 0 };
       this.mapChrBindings = {};
       this.song = null;
       this.songSaved = "";
-      this.songCellFocus = { path: "", pattern: 0, row: 0, channel: 0, seq: 0 };
+      this.songCellFocus = { path: "", pattern: 0, row: 0, channel: 0, range: null as SongRangeFocus | null, seq: 0 };
+      this.uiShellContext = {};
+      this.editorContexts = {};
+      this.resourceFocusTargets = {};
       this.trackerPlaying = false;
+      this.publishUiContext();
     },
     markActiveResource(kind: Exclude<ResourceKind, "">, path: string) {
-      const labels: Record<Exclude<ResourceKind, "">, string> = {
-        source: "源码",
-        chr: "CHR",
-        map: "地图",
-        music: "乐曲",
-      };
+      const current = this.activeResourceEntry();
+      const sameResource = current?.kind === kind && current.path === path;
+      const target = focusTargetFromContext(kind, path, this.editorContexts)
+        || this.resourceFocusTargets[historyEntryKey(kind, path)];
+      if (target && hasFocusTarget(target)) {
+        this.resourceFocusTargets = {
+          ...this.resourceFocusTargets,
+          [historyEntryKey(kind, path)]: target,
+        };
+      }
+      if (current && !sameResource && !this.resourceHistoryReplaying) {
+        this.resourceHistoryBack = removeHistoryResource(this.resourceHistoryBack, kind, path);
+        this.resourceHistoryBack = pushUniqueHistoryEntry(this.resourceHistoryBack, current);
+        this.resourceHistoryForward = [];
+      }
       this.resourceFocusSeq++;
-      this.activeResource = { kind, path, label: `${labels[kind]} ${path}`, seq: this.resourceFocusSeq };
+      this.activeResource = { kind, path, label: resourceLabel(kind, path), seq: this.resourceFocusSeq };
+      this.publishUiContext();
+    },
+    activeResourceEntry(): ResourceHistoryEntry | null {
+      return activeResourceHistoryEntry(this.activeResource, this.editorContexts, this.resourceFocusTargets);
+    },
+    updateResourceHistoryPath(from: string, to: string) {
+      const update = (entry: ResourceHistoryEntry): ResourceHistoryEntry => {
+        const path = replaceResourcePath(entry.path, from, to);
+        return path === entry.path ? entry : { ...entry, path, label: resourceLabel(entry.kind, path) };
+      };
+      this.resourceHistoryBack = this.resourceHistoryBack.map(update);
+      this.resourceHistoryForward = this.resourceHistoryForward.map(update);
+    },
+    updateResourceFocusTargetPath(from: string, to: string) {
+      const next: Record<string, ResourceFocusTarget> = {};
+      for (const [key, target] of Object.entries(this.resourceFocusTargets)) {
+        const split = key.indexOf(":");
+        if (split < 0) {
+          next[key] = target;
+          continue;
+        }
+        const kind = key.slice(0, split);
+        const path = key.slice(split + 1);
+        next[`${kind}:${replaceResourcePath(path, from, to)}`] = target;
+      }
+      this.resourceFocusTargets = next;
+    },
+    pruneResourceHistoryPath(path: string) {
+      const keep = (entry: ResourceHistoryEntry) => entry.path !== path && !entry.path.startsWith(path + "/");
+      this.resourceHistoryBack = this.resourceHistoryBack.filter(keep);
+      this.resourceHistoryForward = this.resourceHistoryForward.filter(keep);
+    },
+    pruneResourceFocusTargetPath(path: string) {
+      const next: Record<string, ResourceFocusTarget> = {};
+      for (const [key, target] of Object.entries(this.resourceFocusTargets)) {
+        const split = key.indexOf(":");
+        const targetPath = split >= 0 ? key.slice(split + 1) : key;
+        if (targetPath !== path && !targetPath.startsWith(path + "/")) next[key] = target;
+      }
+      this.resourceFocusTargets = next;
+    },
+    async navigateResourceHistory(direction: "back" | "forward") {
+      const source = direction === "back" ? this.resourceHistoryBack : this.resourceHistoryForward;
+      const destination = direction === "back" ? this.resourceHistoryForward : this.resourceHistoryBack;
+      const sourceSnapshot = [...source];
+      const destinationSnapshot = [...destination];
+      const target = source.pop();
+      if (!target) {
+        this.status = direction === "back" ? "没有上一资源" : "没有下一资源";
+        this.publishUiContext();
+        return false;
+      }
+      const cleanedSource = removeHistoryResource(source, target.kind, target.path);
+      if (cleanedSource.length !== source.length) source.splice(0, source.length, ...cleanedSource);
+      const current = this.activeResourceEntry();
+      if (current && (current.kind !== target.kind || current.path !== target.path)) {
+        const cleaned = removeHistoryResource(destination, target.kind, target.path);
+        if (cleaned.length !== destination.length) destination.splice(0, destination.length, ...cleaned);
+        const nextDestination = pushUniqueHistoryEntry(destination, current);
+        destination.splice(0, destination.length, ...nextDestination);
+      }
+      this.resourceHistoryReplaying = true;
+      try {
+        if (hasFocusTarget(target.target)) await this.focusResource(target.path, target.kind, target.target);
+        else await this.openResource(target.path, target.kind);
+        this.status = direction === "back" ? `返回 ${target.path}` : `前进 ${target.path}`;
+        this.publishUiContext();
+        return true;
+      } catch (e) {
+        source.splice(0, source.length, ...sourceSnapshot);
+        destination.splice(0, destination.length, ...destinationSnapshot);
+        this.status = `${direction === "back" ? "返回" : "前进"}资源失败：${e}`;
+        this.publishUiContext();
+        return false;
+      } finally {
+        this.resourceHistoryReplaying = false;
+      }
+    },
+    async navigateResourceBack() {
+      return this.navigateResourceHistory("back");
+    },
+    async navigateResourceForward() {
+      return this.navigateResourceHistory("forward");
     },
     clearActiveResource(path?: string) {
       if (path && this.activeResource.path !== path && !this.activeResource.path.startsWith(path + "/")) return;
       this.activeResource = { kind: "", path: "", label: "", seq: this.resourceFocusSeq };
+      this.publishUiContext();
     },
     requestPreviewFocus() {
       this.focusPreview++;
+    },
+    markPreviewUpdated() {
+      this.previewSeq++;
+      this.publishUiContext();
+    },
+    setBuildResult(result: ide.BuildResult) {
+      this.build = result;
+      this.buildSeq++;
+      if (result.success) this.sourceMap = result.source_map;
+      this.publishUiContext();
+    },
+    recordGameVerify(extra?: IdeMcpExtra) {
+      this.lastGameVerify = {
+        ok: !!extra?.ok,
+        runtime: extra?.runtime ?? {},
+        frame: extra?.frame ?? {},
+        input: extra?.input ?? null,
+        buildSeq: this.buildSeq,
+        previewSeq: this.previewSeq,
+        verifiedAt: Date.now(),
+      };
+      this.publishUiContext();
     },
     requestBuildFocus(tab: "diagnostics" | "health" | "log" = "diagnostics") {
       this.buildPanelTab = tab;
       this.focusBuild++;
     },
+    setUiShellContext(context: EditorContext) {
+      this.uiShellContext = { ...this.uiShellContext, ...context };
+      this.publishUiContext();
+    },
+    setEditorContext(key: string, context: EditorContext | null) {
+      if (context) {
+        this.editorContexts = { ...this.editorContexts, [key]: context };
+        const kind = context.kind === "source" || context.kind === "chr" || context.kind === "map" || context.kind === "music"
+          ? context.kind
+          : "";
+        const path = typeof context.path === "string" ? context.path : "";
+        const target = focusTargetFromEditorContext(context);
+        if (kind && path && target && hasFocusTarget(target)) {
+          const updates: Record<string, ResourceFocusTarget> = {
+            [historyEntryKey(kind, path)]: target,
+          };
+          if (kind === "source" && this.resourceKindFor(path) === "music") {
+            updates[historyEntryKey("music", path)] = target;
+          }
+          this.resourceFocusTargets = { ...this.resourceFocusTargets, ...updates };
+        }
+      }
+      else {
+        const next = { ...this.editorContexts };
+        delete next[key];
+        this.editorContexts = next;
+      }
+      this.publishUiContext();
+    },
+    activeEditorContext() {
+      const keyByKind: Record<string, string> = {
+        source: "source",
+        chr: "chr",
+        map: "map",
+        music: this.activeResource.path && isAssemblyPath(this.activeResource.path) ? "source" : "music",
+      };
+      const preferred = keyByKind[this.activeResource.kind] || "";
+      return (preferred && this.editorContexts[preferred]) || this.editorContexts.source || null;
+    },
+    uiSnapshot() {
+      const activeHistoryEntry = this.activeResourceEntry();
+      const recent = recentHistoryEntries(activeHistoryEntry, this.resourceHistoryBack, this.resourceHistoryForward);
+      const gameVerify = this.lastGameVerify
+        ? {
+            ...this.lastGameVerify,
+            stale: this.lastGameVerify.buildSeq !== this.buildSeq || this.lastGameVerify.previewSeq !== this.previewSeq,
+          }
+        : null;
+      return {
+        active_resource: this.activeResource,
+        resource_history: {
+          can_back: this.resourceHistoryBack.length > 0,
+          can_forward: this.resourceHistoryForward.length > 0,
+          back_depth: this.resourceHistoryBack.length,
+          forward_depth: this.resourceHistoryForward.length,
+          previous: cloneHistoryEntry(this.resourceHistoryBack[this.resourceHistoryBack.length - 1]),
+          next: cloneHistoryEntry(this.resourceHistoryForward[this.resourceHistoryForward.length - 1]),
+          recent: recent.map(cloneHistoryEntry),
+          entries: {
+            back: this.resourceHistoryBack.map(cloneHistoryEntry),
+            forward: this.resourceHistoryForward.map(cloneHistoryEntry),
+          },
+        },
+        active_editor: this.activeEditorContext(),
+        editors: this.editorContexts,
+        shell: this.uiShellContext,
+        dirty: {
+          source: this.dirty,
+          chr: this.chrDirty,
+          map: this.mapDirty,
+          music: this.songDirty,
+          any: this.dirty || this.chrDirty || this.mapDirty || this.songDirty,
+        },
+        focus_signals: {
+          source: this.focusEditor,
+          chr: this.focusChr,
+          map: this.focusMap,
+          music: this.focusTracker,
+          build: this.focusBuild,
+          preview: this.focusPreview,
+        },
+        game_verify: gameVerify,
+        status: this.status,
+      };
+    },
+    publishUiContext() {
+      if (uiPublishTimer != null) window.clearTimeout(uiPublishTimer);
+      uiPublishTimer = window.setTimeout(() => {
+        uiPublishTimer = null;
+        ide.ideUiUpdate(this.uiSnapshot()).catch((e) => {
+          console.warn("ide ui context publish failed", e);
+        });
+      }, 30);
+    },
     async applyExternalBuildResult(result: ide.BuildResult) {
-      this.build = result;
-      if (result.success) this.sourceMap = result.source_map;
+      this.setBuildResult(result);
       await this.refreshTree();
       this.status = result.success
         ? `MCP 构建成功 → ${result.output}`
         : `MCP 构建失败（${this.errorCount} 错误）`;
       this.requestBuildFocus(result.diagnostics.length ? "diagnostics" : "health");
       if (!result.success) await this.focusFirstDiagnostic();
+    },
+    async verifyGame() {
+      if (!this.hasProject || this.building) return null;
+      this.building = true;
+      let phase = "验证";
+      try {
+        const dirtyBeforeVerify = [
+          this.dirty ? "源码" : "",
+          this.chrDirty ? "CHR" : "",
+          this.mapDirty ? "地图" : "",
+          this.songDirty ? "音乐" : "",
+        ].filter(Boolean);
+        if (dirtyBeforeVerify.length) {
+          phase = "验证前保存";
+          this.status = `保存 ${dirtyBeforeVerify.join("、")}…`;
+          for (const t of this.tabs) if (t.content !== t.saved) await this.saveTab(t.path);
+          if (this.chrDirty) await this.saveChr();
+          if (this.mapDirty) await this.saveMap();
+          if (this.songDirty) await this.saveTracker();
+        }
+        phase = "验证";
+        this.status = "验证游戏中…";
+        const result = await ide.ideVerifyGameUi();
+        await this.refreshTree();
+        const nonblack = Number(result.frame?.nonblack ?? 0);
+        this.status = result.ok
+          ? `游戏验证通过 · 画面 ${nonblack} 非黑像素`
+          : `游戏验证失败 · 查看体检`;
+        this.requestBuildFocus("health");
+        return result;
+      } catch (e) {
+        this.status = `${phase}失败：${e}`;
+        this.requestBuildFocus("health");
+        return null;
+      } finally {
+        this.building = false;
+      }
     },
     resourceKindFor(path: string, requested = "auto"): Exclude<ResourceKind, ""> {
       if (requested === "source" || requested === "chr" || requested === "map" || requested === "music") return requested;
@@ -268,8 +796,10 @@ export const useProjectStore = defineStore("project", {
         await this.openChr(path);
       } else if (resolvedKind === "map") {
         await this.openMap(path);
-      } else if (resolvedKind === "music") {
+      } else if (resolvedKind === "music" && isTrackerSongPath(path)) {
         await this.openTracker(path);
+      } else if (resolvedKind === "music" && isAssemblyPath(path)) {
+        await this.openFile(path, path.split("/").pop() || path, "music");
       } else {
         await this.openFile(path, path.split("/").pop() || path);
       }
@@ -278,7 +808,7 @@ export const useProjectStore = defineStore("project", {
     async focusResource(
       path: string,
       kind = "auto",
-      target: { line?: number; tile?: number; x?: number; y?: number; layer?: MapLayer | "" } = {},
+      target: { line?: number; tile?: number; x?: number; y?: number; layer?: MapLayer | ""; pattern?: number; row?: number; channel?: number } = {},
     ) {
       const resolvedKind = this.resourceKindFor(path, kind);
       if (resolvedKind === "source") {
@@ -289,8 +819,14 @@ export const useProjectStore = defineStore("project", {
         await this.openMap(path, target.x !== undefined && target.y !== undefined
           ? { x: target.x, y: target.y, layer: target.layer }
           : undefined);
+      } else if (resolvedKind === "music" && isTrackerSongPath(path)) {
+        await this.openTracker(path, target.row !== undefined || target.channel !== undefined || target.pattern !== undefined
+          ? { pattern: target.pattern, row: target.row, channel: target.channel }
+          : undefined);
+      } else if (resolvedKind === "music" && isAssemblyPath(path)) {
+        await this.gotoSource(path, target.line ?? 1, "music");
       } else {
-        await this.openTracker(path);
+        await this.openFile(path, path.split("/").pop() || path);
       }
       this.status = `已定位 ${path}`;
     },
@@ -339,7 +875,8 @@ export const useProjectStore = defineStore("project", {
       changed: string[] = [],
     ) {
       try {
-        if ((reason === "project-new" || reason === "project-open") && root) {
+        const rootChanged = !!root && root !== this.root;
+        if (rootChanged || ((reason === "project-new" || reason === "project-open") && root)) {
           this.resetWorkspaceState(root);
         }
         this.manifest = normalizeManifest(await ide.projectGet());
@@ -347,28 +884,67 @@ export const useProjectStore = defineStore("project", {
         else if (!this.root) this.root = "MCP";
         this.mapChrBindings = { ...(this.manifest.map_chr || {}) };
         await this.refreshTree();
-        if (reason === "project-new" || reason === "project-open") {
-          await this.openPrimarySource();
+        if (reason === "project-new" || reason === "project-open" || (reason === "game-scaffold" && rootChanged)) {
+          const wasReplaying = this.resourceHistoryReplaying;
+          this.resourceHistoryReplaying = true;
+          try {
+            await this.openPrimarySource();
+          } finally {
+            this.resourceHistoryReplaying = wasReplaying;
+          }
         }
-        const hasResourceTarget = changed.includes("resource") && extra?.path;
-        if (hasResourceTarget && reason === "song-patch") {
-          await this.openTracker(extra.path, {
-            pattern: typeof extra.pattern === "number" ? extra.pattern : 0,
-            row: typeof extra.row === "number" ? extra.row : 0,
-            channel: typeof extra.channel === "number" ? extra.channel : 0,
+        const resourceTargetPath = changed.includes("resource") ? extra?.path : undefined;
+        const hasResourceTarget = !!resourceTargetPath;
+        const targetExtra = hasResourceTarget ? extra : undefined;
+        if (extra?.path && changed.includes("source") && hasResourceTarget) {
+          const tab = this.tabs.find((t) => t.path === extra.path);
+          if (tab) {
+            tab.content = await ide.projectReadFile(extra.path);
+            tab.saved = tab.content;
+          }
+        }
+        if (resourceTargetPath && targetExtra && reason === "map-patch") {
+          const layer = targetExtra.layer === "tiles" || targetExtra.layer === "attr" || targetExtra.layer === "collision" ? targetExtra.layer : "";
+          const x = typeof targetExtra.x === "number" ? targetExtra.x : 0;
+          const y = typeof targetExtra.y === "number" ? targetExtra.y : 0;
+          await this.openMap(resourceTargetPath);
+          this.requestMapCellFocus(resourceTargetPath, x, y, layer, mapRectFocusFromExtra(targetExtra.rect));
+        } else if (resourceTargetPath && targetExtra && reason === "song-patch") {
+          const range = songRangeFocusFromExtra(targetExtra.range);
+          await this.openTracker(resourceTargetPath, {
+            pattern: typeof targetExtra.pattern === "number" ? targetExtra.pattern : 0,
+            row: typeof targetExtra.row === "number" ? targetExtra.row : 0,
+            channel: typeof targetExtra.channel === "number" ? targetExtra.channel : 0,
+            range: range ?? undefined,
+            lastRow: typeof targetExtra.last_row === "number" ? targetExtra.last_row : undefined,
+            lastChannel: typeof targetExtra.last_channel === "number" ? targetExtra.last_channel : undefined,
           });
-        } else if (hasResourceTarget && (reason === "resource-focus" || reason === "chr-patch" || reason === "map-patch")) {
-          await this.focusResource(extra.path, extra.kind, {
-            line: typeof extra.line === "number" ? extra.line : undefined,
-            tile: typeof extra.tile === "number" ? extra.tile : undefined,
-            x: typeof extra.x === "number" ? extra.x : undefined,
-            y: typeof extra.y === "number" ? extra.y : undefined,
-            layer: extra.layer === "tiles" || extra.layer === "attr" || extra.layer === "collision" ? extra.layer : "",
+        } else if (resourceTargetPath && targetExtra && reason === "chr-patch") {
+          await this.openChr(
+            resourceTargetPath,
+            typeof targetExtra.tile === "number" ? targetExtra.tile : undefined,
+            { forceReload: true },
+          );
+        } else if (
+          resourceTargetPath && targetExtra
+          && (reason === "resource-focus"
+            || reason === "source-patch"
+            || reason === "song-player-wire")
+        ) {
+          await this.focusResource(resourceTargetPath, targetExtra.kind ?? "auto", {
+            line: typeof targetExtra.line === "number" ? targetExtra.line : undefined,
+            tile: typeof targetExtra.tile === "number" ? targetExtra.tile : undefined,
+            x: typeof targetExtra.x === "number" ? targetExtra.x : undefined,
+            y: typeof targetExtra.y === "number" ? targetExtra.y : undefined,
+            pattern: typeof targetExtra.pattern === "number" ? targetExtra.pattern : undefined,
+            row: typeof targetExtra.row === "number" ? targetExtra.row : undefined,
+            channel: typeof targetExtra.channel === "number" ? targetExtra.channel : undefined,
+            layer: targetExtra.layer === "tiles" || targetExtra.layer === "attr" || targetExtra.layer === "collision" ? targetExtra.layer : "",
           });
         } else if ((reason === "resource-open" || reason === "resource-create") && extra?.path) {
           await this.openResource(extra.path, extra.kind);
         }
-        if (extra?.path && changed.includes("source")) {
+        if (extra?.path && changed.includes("source") && !hasResourceTarget) {
           const tab = this.tabs.find((t) => t.path === extra.path);
           if (tab) {
             tab.content = await ide.projectReadFile(extra.path);
@@ -376,7 +952,7 @@ export const useProjectStore = defineStore("project", {
           }
         }
         if (extra?.path && changed.includes("chr") && this.chr?.path === extra.path && !hasResourceTarget) {
-          await this.openChr(extra.path);
+          await this.openChr(extra.path, undefined, { forceReload: true });
         }
         if (extra?.path && changed.includes("map") && this.map?.path === extra.path && !hasResourceTarget) {
           await this.openMap(extra.path);
@@ -384,8 +960,20 @@ export const useProjectStore = defineStore("project", {
         if (extra?.path && changed.includes("music") && this.song?.path === extra.path && !hasResourceTarget) {
           await this.openTracker(extra.path);
         }
-        if (changed.includes("preview")) this.requestPreviewFocus();
-        this.status = `MCP 已更新：${reason}`;
+        if (changed.includes("preview")) {
+          this.markPreviewUpdated();
+          this.requestPreviewFocus();
+        }
+        if (reason === "game-verify") {
+          this.recordGameVerify(extra);
+          const runtimeOk = !!extra?.runtime?.running && !!extra?.runtime?.worker_running;
+          const nonblack = Number(extra?.frame?.nonblack ?? 0);
+          this.status = extra?.ok
+            ? `游戏验证通过 · 画面 ${nonblack} 非黑像素`
+            : `游戏验证失败${runtimeOk ? "" : " · 运行态异常"}`;
+        } else {
+          this.status = `MCP 已更新：${reason}`;
+        }
       } catch (e) {
         this.status = `MCP 同步失败：${e}`;
       }
@@ -417,23 +1005,23 @@ export const useProjectStore = defineStore("project", {
       this.status = "工程已保存";
     },
     // ---- editor tabs ----
-    async openFile(path: string, name: string) {
+    async openFile(path: string, name: string, resourceKind: Exclude<ResourceKind, ""> = "source") {
       const existing = this.tabs.find((t) => t.path === path);
       if (existing) {
         this.activePath = path;
         this.focusEditor++;
-        this.markActiveResource("source", path);
+        this.markActiveResource(resourceKind, path);
         return;
       }
       const content = await ide.projectReadFile(path);
       this.tabs.push({ path, name, content, saved: content });
       this.activePath = path;
       this.focusEditor++;
-      this.markActiveResource("source", path);
+      this.markActiveResource(resourceKind, path);
     },
     setActive(path: string) {
       this.activePath = path;
-      if (path) this.markActiveResource("source", path);
+      if (path) this.markActiveResource(this.resourceKindFor(path), path);
     },
     updateContent(path: string, content: string) {
       const t = this.tabs.find((x) => x.path === path);
@@ -456,9 +1044,9 @@ export const useProjectStore = defineStore("project", {
       this.status = "已保存全部";
     },
     // Open a file (if needed) and signal the editor to scroll to `line`.
-    async gotoSource(path: string, line: number | null) {
+    async gotoSource(path: string, line: number | null, resourceKind: Exclude<ResourceKind, ""> = "source") {
       const name = path.split("/").pop() || path;
-      await this.openFile(path, name);
+      await this.openFile(path, name, resourceKind);
       this.goto = { path, line: line ?? 1, seq: this.goto.seq + 1 };
     },
     async focusFirstDiagnostic() {
@@ -478,14 +1066,16 @@ export const useProjectStore = defineStore("project", {
       this.tabs.splice(i, 1);
       if (this.activePath === path) {
         this.activePath = this.tabs[Math.max(0, i - 1)]?.path ?? "";
-        if (this.activePath) this.markActiveResource("source", this.activePath);
-        else if (this.activeResource.kind === "source") this.clearActiveResource(path);
+        if (this.activePath) this.markActiveResource(this.resourceKindFor(this.activePath), this.activePath);
+        else this.clearActiveResource(path);
       }
     },
     closeAllTabs() {
       this.tabs = [];
       this.activePath = "";
-      if (this.activeResource.kind === "source") this.clearActiveResource();
+      if (this.activeResource.kind === "source" || (this.activeResource.kind === "music" && isAssemblyPath(this.activeResource.path))) {
+        this.clearActiveResource();
+      }
     },
     // sync editor tabs when a file is renamed/deleted in the tree
     onRenamed(from: string, to: string, newName: string) {
@@ -497,13 +1087,21 @@ export const useProjectStore = defineStore("project", {
       }
       if (this.activeResource.path === from || this.activeResource.path.startsWith(from + "/")) {
         const nextPath = replaceResourcePath(this.activeResource.path, from, to);
-        const prefix = this.activeResource.label.split(" ")[0] || "";
-        this.activeResource = { ...this.activeResource, path: nextPath, label: prefix ? `${prefix} ${nextPath}` : nextPath };
+        const kind = this.activeResource.kind;
+        this.activeResource = {
+          ...this.activeResource,
+          path: nextPath,
+          label: kind ? resourceLabel(kind, nextPath) : nextPath,
+        };
       }
+      this.updateResourceHistoryPath(from, to);
+      this.updateResourceFocusTargetPath(from, to);
     },
     onDeleted(path: string) {
       this.tabs.filter((t) => t.path === path || t.path.startsWith(path + "/")).forEach((t) => this.closeTab(t.path));
       this.clearActiveResource(path);
+      this.pruneResourceHistoryPath(path);
+      this.pruneResourceFocusTargetPath(path);
     },
     // ---- file tree ops ----
     async createEntry(relPath: string, isDir: boolean) {
@@ -607,13 +1205,13 @@ export const useProjectStore = defineStore("project", {
         }
         phase = "构建";
         this.status = "构建中…";
-        this.build = await ide.buildRun();
-        if (this.build.success) this.sourceMap = this.build.source_map;
+        const result = await ide.buildRun();
+        this.setBuildResult(result);
         await this.refreshTree(); // build/ output appears
-        this.status = this.build.success
-          ? `构建成功 → ${this.build.output}`
+        this.status = result.success
+          ? `构建成功 → ${result.output}`
           : `构建失败（${this.errorCount} 错误）`;
-        if (!this.build.success) await this.focusFirstDiagnostic();
+        if (!result.success) await this.focusFirstDiagnostic();
       } catch (e) {
         this.status = `${phase}失败：${e}`;
       } finally {
@@ -633,10 +1231,15 @@ export const useProjectStore = defineStore("project", {
         seq: this.chrTileFocus.seq + 1,
       };
     },
-    async openChr(path: string, focusTile?: number) {
-      const sheet = await ide.chrRead(path);
-      this.chr = { path, tiles: sheet.tiles, pixels: sheet.pixels };
-      this.chrSaved = JSON.stringify(sheet.pixels);
+    async openChr(path: string, focusTile?: number, options: { forceReload?: boolean } = {}) {
+      const keepDirtySheet = this.chr?.path === path && this.chrDirty && !options.forceReload;
+      const sheet = keepDirtySheet
+        ? { tiles: this.chr!.tiles, pixels: this.chr!.pixels }
+        : await ide.chrRead(path);
+      if (!keepDirtySheet) {
+        this.chr = { path, tiles: sheet.tiles, pixels: sheet.pixels };
+        this.chrSaved = JSON.stringify(sheet.pixels);
+      }
       if (this.map && !this.mapChrBindings[this.map.path]) {
         this.mapChrBindings[this.map.path] = path;
         await this.persistMapChrBinding(this.map.path, path);
@@ -671,13 +1274,21 @@ export const useProjectStore = defineStore("project", {
       this.status = `已保存 CHR ${this.chr.path}`;
     },
     // ---- map editor ----
-    requestMapCellFocus(path: string, x = 0, y = 0, layer: MapLayer | "" = "") {
+    requestMapCellFocus(path: string, x = 0, y = 0, layer: MapLayer | "" = "", rect?: MapRectFocus | null) {
       this.mapCellFocus = {
         path,
         x: Math.max(0, Math.floor(x || 0)),
         y: Math.max(0, Math.floor(y || 0)),
         layer,
+        rect: rect ? { ...rect } : null,
         seq: this.mapCellFocus.seq + 1,
+      };
+    },
+    requestMapTileBrushFocus(path: string, tile = 0) {
+      this.mapTileBrushFocus = {
+        path,
+        tile: Math.max(0, Math.floor(tile || 0)) & 0xff,
+        seq: this.mapTileBrushFocus.seq + 1,
       };
     },
     async openMap(path: string, focusCell?: { x?: number; y?: number; layer?: MapLayer | "" }) {
@@ -807,6 +1418,58 @@ export const useProjectStore = defineStore("project", {
       await this.openMap(target);
       return true;
     },
+    async findTileUsageForActiveChr(tile: number) {
+      if (!this.chr) return [];
+      const targetTile = Math.max(0, Math.floor(tile || 0)) & 0xff;
+      const usages: { map: string; x: number; y: number; count: number }[] = [];
+      for (const mapPath of this.mapsUsingActiveChr) {
+        try {
+          const data = await ide.mapRead(mapPath);
+          let first: { x: number; y: number } | null = null;
+          let count = 0;
+          for (let i = 0; i < data.tiles.length; i++) {
+            if ((data.tiles[i] & 0xff) !== targetTile) continue;
+            count++;
+            if (!first) first = { x: i % data.w, y: Math.floor(i / data.w) };
+          }
+          if (first) usages.push({ map: mapPath, x: first.x, y: first.y, count });
+        } catch (e) {
+          console.warn("scan map tile usage failed", mapPath, e);
+        }
+      }
+      return usages;
+    },
+    async openMapUsingActiveChrTile(tile: number) {
+      const usages = await this.findTileUsageForActiveChr(tile);
+      const first = usages[0];
+      if (!first) {
+        this.status = `图块 ${Math.max(0, Math.floor(tile || 0))} 尚未在绑定地图中使用`;
+        return false;
+      }
+      await this.openMap(first.map, { x: first.x, y: first.y, layer: "tiles" });
+      this.status = `图块 ${tile} 用于 ${first.map} · ${first.x},${first.y}（${first.count} 次）`;
+      return true;
+    },
+    async openMapUsingActiveChrTileBrush(tile: number) {
+      if (!this.chr) {
+        this.status = "未打开 CHR";
+        return false;
+      }
+      const targetTile = Math.max(0, Math.floor(tile || 0)) & 0xff;
+      const target = this.mapsUsingActiveChr[0] || this.manifest?.maps[0] || "";
+      if (!target) {
+        this.status = "没有可用地图";
+        return false;
+      }
+      await this.openMap(target);
+      if (this.chr && this.map) {
+        this.mapChrBindings[this.map.path] = this.chr.path;
+        await this.persistMapChrBinding(this.map.path, this.chr.path);
+      }
+      this.requestMapTileBrushFocus(target, targetTile);
+      this.status = `地图 ${target} 准备绘制图块 ${targetTile}`;
+      return true;
+    },
     // ---- converters ----
     async importPng() {
       const src = await ide.pickFile("PNG 图片", ["png", "PNG"]);
@@ -848,16 +1511,34 @@ export const useProjectStore = defineStore("project", {
       this.focusTracker++;
       this.markActiveResource("music", path);
     },
-    requestSongCellFocus(path: string, pattern = 0, row = 0, channel = 0) {
+    requestSongCellFocus(path: string, pattern = 0, row = 0, channel = 0, range?: SongRangeFocus | { lastRow?: number; lastChannel?: number }) {
+      const focusRow = Math.max(0, Math.floor(row || 0));
+      const focusChannel = Math.max(0, Math.min(4, Math.floor(channel || 0)));
+      const explicitRange = range && "row0" in range
+        ? {
+            row0: Math.max(0, Math.floor(range.row0)),
+            row1: Math.max(0, Math.floor(range.row1)),
+            channel0: Math.max(0, Math.min(4, Math.floor(range.channel0))),
+            channel1: Math.max(0, Math.min(4, Math.floor(range.channel1))),
+          }
+        : null;
+      const lastRow = !explicitRange && range && "lastRow" in range ? Math.max(0, Math.floor(range.lastRow ?? focusRow)) : focusRow;
+      const lastChannel = !explicitRange && range && "lastChannel" in range ? Math.max(0, Math.min(4, Math.floor(range.lastChannel ?? focusChannel))) : focusChannel;
       this.songCellFocus = {
         path,
         pattern: Math.max(0, Math.floor(pattern || 0)),
-        row: Math.max(0, Math.floor(row || 0)),
-        channel: Math.max(0, Math.min(4, Math.floor(channel || 0))),
+        row: focusRow,
+        channel: focusChannel,
+        range: explicitRange ?? {
+          row0: Math.min(focusRow, lastRow),
+          row1: Math.max(focusRow, lastRow),
+          channel0: Math.min(focusChannel, lastChannel),
+          channel1: Math.max(focusChannel, lastChannel),
+        },
         seq: this.songCellFocus.seq + 1,
       };
     },
-    async openTracker(path: string, focusCell?: { pattern?: number; row?: number; channel?: number }) {
+    async openTracker(path: string, focusCell?: { pattern?: number; row?: number; channel?: number; lastRow?: number; lastChannel?: number; range?: SongRangeFocus }) {
       const data = await ide.trackerLoad(path);
       this.song = { path, data };
       this.songSaved = JSON.stringify(data);
@@ -869,7 +1550,17 @@ export const useProjectStore = defineStore("project", {
         const rowMax = Math.max(0, (pattern?.rows.length ?? 1) - 1);
         const row = Math.max(0, Math.min(rowMax, Math.floor(focusCell.row ?? 0)));
         const channel = Math.max(0, Math.min(4, Math.floor(focusCell.channel ?? 0)));
-        this.requestSongCellFocus(path, patternIndex, row, channel);
+        const lastRow = Math.max(0, Math.min(rowMax, Math.floor(focusCell.lastRow ?? row)));
+        const lastChannel = Math.max(0, Math.min(4, Math.floor(focusCell.lastChannel ?? channel)));
+        const range = focusCell.range
+          ? {
+              row0: Math.max(0, Math.min(rowMax, Math.floor(focusCell.range.row0))),
+              row1: Math.max(0, Math.min(rowMax, Math.floor(focusCell.range.row1))),
+              channel0: Math.max(0, Math.min(4, Math.floor(focusCell.range.channel0))),
+              channel1: Math.max(0, Math.min(4, Math.floor(focusCell.range.channel1))),
+            }
+          : { lastRow, lastChannel };
+        this.requestSongCellFocus(path, patternIndex, row, channel, range);
         this.status = `乐曲 ${path} · P${patternIndex} R${row} C${channel}`;
       } else {
         this.status = `乐曲 ${path}`;
@@ -955,8 +1646,7 @@ export const useProjectStore = defineStore("project", {
       if (this.watching) return;
       if (!buildUnlisten) {
         buildUnlisten = await listen<ide.BuildResult>("build-updated", (e) => {
-          this.build = e.payload;
-          if (e.payload.success) this.sourceMap = e.payload.source_map;
+          this.setBuildResult(e.payload);
           this.refreshTree();
           this.status = e.payload.success
             ? `自动重建成功 → ${e.payload.output}`

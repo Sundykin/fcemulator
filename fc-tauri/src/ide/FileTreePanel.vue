@@ -72,14 +72,8 @@ function hasVisibleDescendant(node: FileNode, q: string): boolean {
 function onRowClick(node: FileNode) {
   if (node.is_dir) {
     expanded.has(node.path) ? expanded.delete(node.path) : expanded.add(node.path);
-  } else if (node.name.endsWith(".chr")) {
-    store.openChr(node.path).catch((e) => (store.status = "打开 CHR 失败：" + e));
-  } else if (node.path.startsWith("map/") && node.name.endsWith(".bin")) {
-    store.openMap(node.path).catch((e) => (store.status = "打开地图失败：" + e));
-  } else if (node.name.endsWith(".song.json")) {
-    store.openTracker(node.path).catch((e) => (store.status = "打开乐曲失败：" + e));
   } else {
-    store.openFile(node.path, node.name);
+    store.openResource(node.path).catch((e) => (store.status = "打开资源失败：" + e));
   }
 }
 

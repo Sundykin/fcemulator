@@ -13,6 +13,7 @@ const NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 
 const selRow = ref(0);
 const selCh = ref(0);
+const focusRange = ref<{ row0: number; row1: number; ch0: number; ch1: number } | null>(null);
 const octave = ref(3);
 const curInst = ref(0);
 const patIdx = ref(0);
@@ -28,6 +29,13 @@ const pattern = computed(() => song.value?.patterns[patIdx.value] ?? null);
 const activeCellLabel = computed(() => {
   const cell = pattern.value?.rows[selRow.value]?.[selCh.value];
   return `行 ${selRow.value.toString(16).toUpperCase().padStart(2, "0")} · ${CH[selCh.value]} · ${cell ? noteName(cell.note) : "···"}`;
+});
+const rangeLabel = computed(() => {
+  const range = focusRange.value;
+  if (!range) return "";
+  const rows = range.row1 - range.row0 + 1;
+  const channels = range.ch1 - range.ch0 + 1;
+  return rows === 1 && channels === 1 ? "" : `选区 ${rows}×${channels}`;
 });
 const songLabel = computed(() => store.song?.path ?? "未打开乐曲");
 const viewLabel = computed(() => view.value === "roll" ? "钢琴卷帘" : "Pattern");
@@ -179,6 +187,7 @@ function selectCell(r: number, c: number) {
   root.value?.focus({ preventScroll: true });
   selRow.value = r;
   selCh.value = c;
+  focusRange.value = null;
 }
 
 function clampInt(value: number, min: number, max: number): number {
@@ -204,8 +213,19 @@ function applyPendingSongCellFocus() {
   const p = song.value.patterns[patIdx.value];
   selRow.value = clampInt(focus.row, 0, Math.max(0, p.rows.length - 1));
   selCh.value = clampInt(focus.channel, 0, 4);
+  const range = focus.range;
+  const row0 = clampInt(range?.row0 ?? focus.row, 0, Math.max(0, p.rows.length - 1));
+  const row1 = clampInt(range?.row1 ?? focus.row, 0, Math.max(0, p.rows.length - 1));
+  const ch0 = clampInt(range?.channel0 ?? focus.channel, 0, 4);
+  const ch1 = clampInt(range?.channel1 ?? focus.channel, 0, 4);
+  focusRange.value = row0 === row1 && ch0 === ch1 ? null : { row0, row1, ch0, ch1 };
   focusSelectedPatternCell();
   return true;
+}
+
+function isRangeCell(row: number, channel: number): boolean {
+  const range = focusRange.value;
+  return !!range && row >= range.row0 && row <= range.row1 && channel >= range.ch0 && channel <= range.ch1;
 }
 
 function isEditableTarget(target: EventTarget | null): boolean {
@@ -370,6 +390,45 @@ function stopRollPaint() {
 function clearRollHover() {
   rollHover.value = null;
 }
+
+function publishTrackerContext() {
+  const current = store.song;
+  if (!current || !song.value) {
+    store.setEditorContext("music", null);
+    return;
+  }
+  const cell = selCell.value;
+  store.setEditorContext("music", {
+    kind: "music",
+    path: current.path,
+    view: view.value,
+    pattern: patIdx.value,
+    row: selRow.value,
+    channel: selCh.value,
+    channel_label: CH[selCh.value],
+    selection: focusRange.value ? {
+      row0: focusRange.value.row0,
+      row1: focusRange.value.row1,
+      channel0: focusRange.value.ch0,
+      channel1: focusRange.value.ch1,
+    } : null,
+    octave: octave.value,
+    instrument: curInst.value,
+    cell: cell ? {
+      note: cell.note,
+      instrument: cell.instrument,
+      volume: cell.volume,
+      fx: cell.fx ?? 0,
+      param: cell.param ?? 0,
+    } : null,
+    roll_hover: rollHover.value,
+    inspector_open: inspectorOpen.value,
+    playing: store.trackerPlaying,
+    dirty: store.songDirty,
+    active: store.activeResource.kind === "music" && store.activeResource.path === current.path,
+  });
+}
+
 watch([() => view.value, () => selCh.value, () => selRow.value, () => baseNote.value, pattern], () => {
   if (view.value === "roll") {
     nextTick(() => {
@@ -378,6 +437,29 @@ watch([() => view.value, () => selCh.value, () => selRow.value, () => baseNote.v
     });
   }
 }, { deep: true });
+watch([() => view.value, () => selRow.value, () => selCh.value], () => {
+  if (view.value === "pattern") focusSelectedPatternCell();
+});
+watch(
+  [
+    () => store.song?.path,
+    () => store.songDirty,
+    () => store.trackerPlaying,
+    () => store.activeResource.seq,
+    view,
+    patIdx,
+    selRow,
+    selCh,
+    focusRange,
+    octave,
+    curInst,
+    inspectorOpen,
+    rollHover,
+    selCell,
+  ],
+  publishTrackerContext,
+  { deep: true, flush: "post" },
+);
 watch([rollCellW, rollCellH], () => nextTick(drawRoll));
 watch(rollArea, (el) => {
   rollObserver?.disconnect();
@@ -389,7 +471,10 @@ watch(rollArea, (el) => {
   }
 }, { flush: "post" });
 onMounted(() => { if (view.value === "roll") { syncRollMetrics(); drawRoll(); } });
-onBeforeUnmount(() => rollObserver?.disconnect());
+onBeforeUnmount(() => {
+  store.setEditorContext("music", null);
+  rollObserver?.disconnect();
+});
 
 // instrument editing
 const inst = computed(() => song.value?.instruments[curInst.value] ?? null);
@@ -427,16 +512,20 @@ watch(() => store.song?.path, () => {
   undoStack.value = [];
   redoStack.value = [];
   rollHover.value = null;
+  focusRange.value = null;
   selRow.value = 0;
   selCh.value = 0;
   patIdx.value = 0;
   nextTick(applyPendingSongCellFocus);
+  nextTick(publishTrackerContext);
 });
 watch(() => store.songCellFocus.seq, () => {
   applyPendingSongCellFocus();
+  nextTick(publishTrackerContext);
 });
 onMounted(() => {
   applyPendingSongCellFocus();
+  publishTrackerContext();
 });
 </script>
 
@@ -486,6 +575,7 @@ onMounted(() => {
         <span class="crumb"><Icon name="music" :size="14" />{{ songLabel }}</span>
         <span class="crumb">{{ viewLabel }}</span>
         <span class="crumb">{{ activeCellLabel }}</span>
+        <span v-if="rangeLabel" class="crumb accent">{{ rangeLabel }}</span>
         <span class="crumb accent">{{ transportLabel }} · {{ patternSizeLabel }}</span>
         <span v-if="view === 'roll'" class="crumb">{{ rollHoverLabel }}</span>
       </div>
@@ -518,7 +608,7 @@ onMounted(() => {
               <div class="rownum">{{ r.toString(16).toUpperCase().padStart(2, '0') }}</div>
               <div
                 v-for="c in 5" :key="c"
-                class="cell" :class="{ sel: selRow === r && selCh === c - 1 }"
+                class="cell" :class="{ sel: selRow === r && selCh === c - 1, range: isRangeCell(r, c - 1) }"
                 @click="selectCell(r, c - 1)"
               >
                 <span class="note" :class="{ on: row[c-1].note }">{{ noteName(row[c - 1].note) }}</span>
@@ -586,6 +676,7 @@ onMounted(() => {
 .rownum { padding:3px 6px; color:var(--text-mute); text-align:right; }
 .row.beat { background:rgba(124,92,255,0.05); }
 .cell { display:flex; justify-content:space-between; padding:3px 8px; border-left:1px solid var(--border); cursor:pointer; }
+.cell.range { background:rgba(124,92,255,0.13); box-shadow:inset 0 0 0 1px rgba(124,92,255,0.2); }
 .cell.sel { background:var(--accent-soft); outline:1px solid var(--accent); }
 .note { color:var(--text-mute); }
 .note.on { color:var(--text); }

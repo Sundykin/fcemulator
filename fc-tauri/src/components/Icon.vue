@@ -13,6 +13,12 @@ const P: Record<string, string> = {
   save: '<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>',
   undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h9a7 7 0 0 1 0 14h-1"/>',
   redo: '<path d="m15 14 5-5-5-5"/><path d="M20 9h-9a7 7 0 0 0 0 14h1"/>',
+  rotateLeft: '<path d="M4 7v6h6"/><path d="M5.4 17a8 8 0 1 0 .6-10.6L4 8"/>',
+  rotateRight: '<path d="M20 7v6h-6"/><path d="M18.6 17a8 8 0 1 1-.6-10.6L20 8"/>',
+  arrowLeft: '<path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/>',
+  arrowRight: '<path d="M5 12h14"/><path d="M12 5l7 7-7 7"/>',
+  arrowUp: '<path d="M12 19V5"/><path d="M5 12l7-7 7 7"/>',
+  arrowDown: '<path d="M12 5v14"/><path d="M19 12l-7 7-7-7"/>',
   load: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
   cheat:
     '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/>',
@@ -44,9 +50,19 @@ const P: Record<string, string> = {
     '<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>',
   code: '<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>',
   file: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>',
+  copy:
+    '<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
+  clipboard:
+    '<path d="M9 4h6"/><path d="M9 4a3 3 0 0 1 6 0"/><rect x="5" y="4" width="14" height="18" rx="2"/><path d="M9 12h6"/><path d="M9 16h4"/>',
+  copyPlus:
+    '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M4 14H3a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"/><path d="M14 11v6"/><path d="M11 14h6"/>',
   folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
   hammer:
     '<path d="M14 7l5 5"/><path d="M17 4l3 3-7 7-3-3z"/><path d="M11 11L4 18a2 2 0 0 0 3 3l7-7"/>',
+  bucket:
+    '<path d="M4 14l8-8 7 7-8 8z"/><path d="M8 10l7 7"/><path d="M18 16.5c1.3 1.4 2 2.5 2 3.3a2 2 0 0 1-4 0c0-.8.7-1.9 2-3.3z"/>',
+  eraser:
+    '<path d="M7 21h10"/><path d="M19 13l-6 6a4 4 0 0 1-6 0l-2-2a4 4 0 0 1 0-6l6-6a4 4 0 0 1 6 0l2 2a4 4 0 0 1 0 6z"/><path d="M10 8l6 6"/>',
   plus: '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
   close: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
   chevron: '<polyline points="9 6 15 12 9 18"/>',

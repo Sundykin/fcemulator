@@ -19,7 +19,7 @@ watch(
 );
 
 type HealthLevel = "ok" | "warn" | "fail";
-type HealthAction = "saveAll" | "repairBindings" | "build" | "run";
+type HealthAction = "saveAll" | "repairBindings" | "build" | "run" | "verify";
 interface HealthItem {
   key: string;
   label: string;
@@ -117,16 +117,22 @@ async function runProject() {
   }
   if (store.build?.success && store.build.output) {
     await emu.openPath(`${store.root}/${store.build.output}`, true);
+    store.markPreviewUpdated();
     store.requestPreviewFocus();
     store.status = `运行中 → ${store.build.output}`;
   }
   tab.value = "health";
 }
 
+async function verifyProject() {
+  const result = await store.verifyGame();
+  if (result) tab.value = "health";
+}
+
 function actionDisabled(action?: HealthAction): boolean {
   if (!action) return true;
   if (action === "repairBindings") return !canRepairBindings.value;
-  if (action === "build" || action === "run") return store.building || !store.hasProject;
+  if (action === "build" || action === "run" || action === "verify") return store.building || !store.hasProject;
   return false;
 }
 
@@ -137,6 +143,7 @@ async function runHealthAction(action?: HealthAction) {
     if (action === "repairBindings") await repairMapBindings();
     if (action === "build") await buildProject();
     if (action === "run") await runProject();
+    if (action === "verify") await verifyProject();
   } catch (e) {
     store.status = `体检动作失败：${e}`;
   }
@@ -250,6 +257,22 @@ const healthItems = computed<HealthItem[]>(() => {
         : "",
     action: !previewMatchesBuild.value && build?.success ? "run" : undefined,
     actionLabel: !previewMatchesBuild.value && build?.success ? "运行" : undefined,
+  });
+  const verify = store.lastGameVerify;
+  const verifyStale = !!verify && (verify.buildSeq !== store.buildSeq || verify.previewSeq !== store.previewSeq);
+  const verifyFrame = Number(verify?.frame?.nonblack ?? 0);
+  items.push({
+    key: "verify",
+    label: "游戏验证",
+    value: !verify ? "未验证" : verifyStale ? "已过期" : verify.ok ? "通过" : "失败",
+    level: !verify ? "warn" : verifyStale ? "warn" : verify.ok ? "ok" : "fail",
+    detail: !verify
+      ? "构建、运行并检查画面是否非空"
+      : verifyStale
+        ? "构建或预览已变化，需要重新验证"
+        : `非黑像素 ${verifyFrame}`,
+    action: !verify || verifyStale || !verify.ok ? "verify" : undefined,
+    actionLabel: !verify || verifyStale || !verify.ok ? "验证" : undefined,
   });
 
   return items;

@@ -41,6 +41,7 @@ pub fn run() {
     builder
         .manage(EmuState::new())
         .manage(ProjectState::new())
+        .manage(ide_mcp::IdeUiState::new())
         .manage(BuildState::new())
         .manage(WatchState::new())
         .setup(|app| {
@@ -58,6 +59,8 @@ pub fn run() {
             emu::set_remove_sprite_limit,
             emu::runtime_stats,
             emu_mcp::emu_mcp_status,
+            ide_mcp::ide_ui_update,
+            ide_mcp::ide_verify_game_ui,
             emu::list_palettes,
             emu::set_palette,
             emu::palette_preview,
