@@ -641,6 +641,10 @@ impl Mmc3 {
             }
             Mmc3OuterBank::Mapper205 { block } => Self::mapper205_367_prg_bank(*block, bank),
             Mmc3OuterBank::Mapper367 { reg } => Self::mapper205_367_prg_bank(*reg, bank),
+            Mmc3OuterBank::Mapper370 { regs, .. } => {
+                let mask = if regs[0] & 0x20 != 0 { 0x0F } else { 0x1F };
+                (bank & mask) | (((regs[0] & 0x38) as usize) << 1)
+            }
             Mmc3OuterBank::Mapper208 { regs, submapper } => {
                 let base = if *submapper == 1 {
                     ((self.banks[6] as usize) >> 2) << 2
@@ -775,6 +779,57 @@ impl Mmc3 {
         ((reg as usize) << 7) | (bank & mask)
     }
 
+    fn mapper370_mode(regs: &[u8; 2]) -> u8 {
+        regs[0] & 0x07
+    }
+
+    fn mapper370_mirroring_from_bit(bit: u8) -> Mirroring {
+        if bit & 1 != 0 {
+            Mirroring::SingleScreenHigh
+        } else {
+            Mirroring::SingleScreenLow
+        }
+    }
+
+    fn mapper370_standard_mirroring(value: u8) -> Mirroring {
+        if value & 1 != 0 {
+            Mirroring::Horizontal
+        } else {
+            Mirroring::Vertical
+        }
+    }
+
+    fn mapper370_sync_ppu_mirroring(&mut self) {
+        if let Mmc3OuterBank::Mapper370 {
+            regs,
+            ppu_chr_bus,
+            mirroring_bits,
+            ..
+        } = &self.outer_bank
+        {
+            if Self::mapper370_mode(regs) == 1 {
+                self.mirroring =
+                    Self::mapper370_mirroring_from_bit(mirroring_bits[*ppu_chr_bus as usize]);
+            }
+        }
+    }
+
+    fn mapper370_sync_mirroring_after_mode_change(&mut self) {
+        let standard = matches!(
+            &self.outer_bank,
+            Mmc3OuterBank::Mapper370 { regs, .. } if Self::mapper370_mode(regs) != 1
+        );
+        if standard {
+            let mirror_reg = match &self.outer_bank {
+                Mmc3OuterBank::Mapper370 { mirror_reg, .. } => *mirror_reg,
+                _ => 0,
+            };
+            self.mirroring = Self::mapper370_standard_mirroring(mirror_reg);
+        } else {
+            self.mapper370_sync_ppu_mirroring();
+        }
+    }
+
     fn outer_chr_bank(&self, addr: u16, bank: usize) -> usize {
         match &self.outer_bank {
             Mmc3OuterBank::None => bank,
@@ -862,6 +917,14 @@ impl Mmc3 {
             Mmc3OuterBank::Mapper198 => bank,
             Mmc3OuterBank::Mapper205 { block } => Self::mapper205_367_chr_bank(*block, bank),
             Mmc3OuterBank::Mapper367 { reg } => Self::mapper205_367_chr_bank(*reg, bank),
+            Mmc3OuterBank::Mapper370 { regs, .. } => {
+                let mode = Self::mapper370_mode(regs);
+                let mut mask = if regs[0] & 0x04 != 0 { 0x7F } else { 0xFF };
+                if mode == 6 && bank & 0x80 != 0 {
+                    mask = 0xFF;
+                }
+                (bank & mask) | ((mode as usize) << 7)
+            }
             Mmc3OuterBank::Mapper208 { .. } => bank,
             Mmc3OuterBank::Mapper215 { regs } => {
                 if regs[0] & 0x40 != 0 {
@@ -912,6 +975,7 @@ impl Mmc3 {
         if old_chr_mode != self.chr_mode {
             self.rebuild_chr_layout();
             self.rebuild_txsrom_nametables();
+            self.mapper370_rebuild_chr_mirroring();
         }
     }
 
@@ -947,6 +1011,58 @@ impl Mmc3 {
         if reg <= 5 {
             self.rebuild_txsrom_nametables();
         }
+        self.mapper370_latch_chr_mirroring(reg, value);
+    }
+
+    fn mapper370_chr_mirroring_entries(&self, reg: usize, value: u8) -> ([(u16, u8); 2], usize) {
+        let base = ((self.bank_select & 0x80) as u16) << 5;
+        let bit = value >> 7;
+        let entries = match reg {
+            0 => [(base, bit), (base ^ 0x0400, bit)],
+            1 => [(base ^ 0x0800, bit), (base ^ 0x0C00, bit)],
+            2..=5 => [(base ^ (0x1000 + ((reg - 2) as u16) * 0x0400), bit), (0, 0)],
+            _ => [(0, 0), (0, 0)],
+        };
+        let count = if reg <= 1 {
+            2
+        } else if reg <= 5 {
+            1
+        } else {
+            0
+        };
+        (entries, count)
+    }
+
+    fn mapper370_latch_chr_mirroring(&mut self, reg: usize, value: u8) {
+        let (entries, count) = self.mapper370_chr_mirroring_entries(reg, value);
+        let mut new_mirroring = None;
+        if let Mmc3OuterBank::Mapper370 {
+            regs,
+            ppu_chr_bus,
+            mirroring_bits,
+            ..
+        } = &mut self.outer_bank
+        {
+            for (addr, bit) in entries.into_iter().take(count) {
+                let slot = (addr >> 10) as usize;
+                mirroring_bits[slot] = bit;
+                if Self::mapper370_mode(regs) == 1 && *ppu_chr_bus == slot as u8 {
+                    new_mirroring = Some(Self::mapper370_mirroring_from_bit(bit));
+                }
+            }
+        }
+        if let Some(mirroring) = new_mirroring {
+            self.mirroring = mirroring;
+        }
+    }
+
+    fn mapper370_rebuild_chr_mirroring(&mut self) {
+        if !matches!(self.outer_bank, Mmc3OuterBank::Mapper370 { .. }) {
+            return;
+        }
+        for reg in 0..=5 {
+            self.mapper370_latch_chr_mirroring(reg, self.banks[reg]);
+        }
     }
 
     fn reset_standard_registers(&mut self) {
@@ -976,6 +1092,9 @@ impl Mmc3 {
                         if let Mmc3OuterBank::Mapper126 { mirror, .. } = &mut self.outer_bank {
                             *mirror = value;
                         }
+                        if let Mmc3OuterBank::Mapper370 { mirror_reg, .. } = &mut self.outer_bank {
+                            *mirror_reg = value;
+                        }
                         self.mirroring = if let Mmc3OuterBank::Mapper126 { regs, mirror, .. } =
                             &self.outer_bank
                         {
@@ -986,6 +1105,12 @@ impl Mmc3 {
                                 1 => Mirroring::Horizontal,
                                 2 => Mirroring::SingleScreenLow,
                                 _ => Mirroring::SingleScreenHigh,
+                            }
+                        } else if let Mmc3OuterBank::Mapper370 { regs, .. } = &self.outer_bank {
+                            if Self::mapper370_mode(regs) == 1 {
+                                self.mirroring
+                            } else {
+                                Self::mapper370_standard_mirroring(value)
                             }
                         } else if value & 1 == 0 {
                             Mirroring::Vertical
@@ -1732,6 +1857,11 @@ impl MapperOps for Mmc3 {
     }
 
     fn peek_expansion(&self, addr: u16) -> Option<u8> {
+        if let Mmc3OuterBank::Mapper370 { regs, .. } = &self.outer_bank {
+            if (0x5000..=0x5FFF).contains(&addr) {
+                return Some(regs[1] << 7);
+            }
+        }
         if let Mmc3OuterBank::Mapper12 { regs } = &self.outer_bank {
             if (0x4100..=0x5FFF).contains(&addr) {
                 return Some(regs[2]);
@@ -1777,6 +1907,11 @@ impl MapperOps for Mmc3 {
     }
 
     fn peek_expansion_with_open_bus(&self, addr: u16, open_bus: u8) -> Option<u8> {
+        if let Mmc3OuterBank::Mapper370 { regs, .. } = &self.outer_bank {
+            if (0x5000..=0x5FFF).contains(&addr) {
+                return Some((open_bus & 0x7F) | (regs[1] << 7));
+            }
+        }
         if let Mmc3OuterBank::Mapper258 { .. } = &self.outer_bank {
             if (0x5000..=0x5FFF).contains(&addr) {
                 const PROTECTION: [u8; 8] = [0x00, 0x00, 0x00, 0x01, 0x02, 0x04, 0x0F, 0x00];
@@ -1871,6 +2006,11 @@ impl MapperOps for Mmc3 {
                 }
                 return;
             }
+            Mmc3OuterBank::Mapper370 { regs, .. } if (0x5000..=0x5FFF).contains(&addr) => {
+                regs[0] = addr as u8;
+                self.mapper370_sync_mirroring_after_mode_change();
+                return;
+            }
             _ => {}
         }
         if let Mmc3OuterBank::Mapper121 { regs } = &mut self.outer_bank {
@@ -1935,6 +2075,28 @@ impl MapperOps for Mmc3 {
 
     fn watches_ppu_bus(&self) -> bool {
         true // A12 rising edge clocks the scanline IRQ counter
+    }
+    fn notify_ppu_bus_pre(&mut self, addr: u16, _cycle: u64) {
+        let mut new_mirroring = None;
+        if let Mmc3OuterBank::Mapper370 {
+            regs,
+            ppu_chr_bus,
+            mirroring_bits,
+            ..
+        } = &mut self.outer_bank
+        {
+            if Self::mapper370_mode(regs) == 1 {
+                let slot = ((addr & 0x1FFF) >> 10) as usize;
+                *ppu_chr_bus = slot as u8;
+                new_mirroring = Some(Self::mapper370_mirroring_from_bit(mirroring_bits[slot]));
+            }
+        }
+        if let Some(mirroring) = new_mirroring {
+            self.mirroring = mirroring;
+        }
+    }
+    fn watches_ppu_bus_pre(&self) -> bool {
+        matches!(self.outer_bank, Mmc3OuterBank::Mapper370 { .. })
     }
     fn notify_a12(&mut self, addr: u16, cycle: u64) {
         self.mapper165_notify_ppu_addr(addr);
@@ -2046,6 +2208,20 @@ impl MapperOps for Mmc3 {
                 *reg = 0;
                 reset_standard = true;
             }
+            Mmc3OuterBank::Mapper370 {
+                regs,
+                mirror_reg,
+                ppu_chr_bus,
+                mirroring_bits,
+            } => {
+                regs[0] = 0;
+                regs[1] = if _soft { regs[1] ^ 1 } else { 1 };
+                *mirror_reg = 0;
+                *ppu_chr_bus = 0;
+                *mirroring_bits = [0; 8];
+                self.mirroring = Mirroring::Vertical;
+                reset_standard = true;
+            }
             Mmc3OuterBank::Mapper208 { regs, .. } => {
                 *regs = [0; 6];
                 regs[5] = 0x11;
@@ -2107,6 +2283,8 @@ impl MapperOps for Mmc3 {
         }
         if reset_standard {
             self.reset_standard_registers();
+            self.mapper370_rebuild_chr_mirroring();
+            self.mapper370_sync_mirroring_after_mode_change();
         }
     }
 }

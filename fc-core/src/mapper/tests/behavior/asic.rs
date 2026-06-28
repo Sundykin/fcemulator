@@ -358,7 +358,7 @@ fn mapper362_reuses_vrc4_with_reset_selected_outer_game() {
 }
 
 #[test]
-fn mmc3_long_tail_variants_258_266_267_291_321_334_361_364_366_367_373_use_outer_registers_and_dip_reads(
+fn mmc3_long_tail_variants_258_266_267_291_321_334_361_364_366_367_370_373_use_outer_registers_and_dip_reads(
 ) {
     let mut m258 = Mapper::new(258, 64, 32, Mirroring::Vertical, 0).expect("mapper 258");
     assert!(m258.watches_ppu_bus());
@@ -489,6 +489,23 @@ fn mmc3_long_tail_variants_258_266_267_291_321_334_361_364_366_367_373_use_outer
     assert_eq!(m373.prg_index(0xC004), 0x122 * 0x2000 + 4);
     m373.reset(true);
     assert_eq!(m373.prg_index(0x8004), 4);
+
+    let mut m370 = Mapper::new(370, 256, 512, Mirroring::Vertical, 0).expect("mapper 370");
+    assert!(m370.watches_ppu_bus());
+    assert!(m370.watches_ppu_bus_pre());
+    assert_eq!(m370.peek_expansion_with_open_bus(0x5000, 0x35), Some(0xB5));
+    m370.write_expansion(0x503D, 0x00);
+    m370.write_register(0x8000, 0x06);
+    m370.write_register(0x8001, 0x2A);
+    m370.write_register(0x8000, 0x02);
+    m370.write_register(0x8001, 0xC5);
+    assert_eq!(m370.prg_index(0x8004), 0x7A * 0x2000 + 4);
+    assert_eq!(m370.chr_index(0x1004), 0x2C5 * 0x0400 + 4);
+    m370.write_expansion(0x5001, 0x00);
+    m370.notify_ppu_bus_pre(0x1000, 0);
+    assert_eq!(m370.mirroring(), Mirroring::SingleScreenHigh);
+    m370.reset(true);
+    assert_eq!(m370.peek_expansion_with_open_bus(0x5000, 0x35), Some(0x35));
 }
 
 #[test]

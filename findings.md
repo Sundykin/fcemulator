@@ -429,3 +429,9 @@
 - The board's active difference is a reset-selected `game` latch. Game 0 derives PRG outer bits from CHR bank 0 (`chr0 >> 3 & 0x30`) and CHR outer bits from CHR bank 0 (`chr0 & 0x180`); game 1 forces PRG outer `0x40` and CHR outer `0x200`.
 - FCEUmm only installs the reset hook for PRG-ROM larger than 512KB, so small mapper 362 carts should not clear VRC registers on soft reset. The first pass models this with a `mapper362_reset_select` flag.
 - `VRC4_init(..., useRepeatBit=0, ...)` means IRQ acknowledge does not copy bit0 into enable; keeping the existing enable state is more accurate than treating `$F003` as a disable.
+
+## Mapper 370 MMC3 PPU-hook Findings
+- Mapper 370 / F600 in FCEUmm `370.c:21-95` is still an MMC3 board: high-register writes, A12 IRQ, register reset, PRG/CHR cwrap/pwrap, and A000 mirroring latch all fit the existing `Mmc3` core plus a new outer-bank state variant.
+- Its unique behavior is timing-sensitive mirroring. In mode 1, `PPU_hook` records the current PPU address slot (`addr & 0x1FFF >> 10`) and selects single-screen page 0/1 from the high bit latched by the corresponding CHR bank write. That needs a pre-fetch `MapperOps::notify_ppu_bus_pre` so the mapper can change mirroring before the PPU resolves the read/write address.
+- CHR outer banking follows `(value & mask) | (mode << 7)`, where bit2 selects `0x7F/0xFF` mask and mode 6 with CHR bit7 set forces mask `0xFF`; the outer OR is still mode 6's `0x300`, not a larger bank number.
+- `$5000-$5FFF` writes use the CPU address low byte as `EXPREGS[0]`, not the written value. Reads expose only solderpad bit7 (`EXPREGS[1] << 7`) while open-bus reads preserve bits 0-6. Soft reset toggles the solderpad bit and resets standard MMC3 registers.

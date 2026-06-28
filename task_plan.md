@@ -170,6 +170,7 @@ Phase 17: Mapper compatibility gap closure
 - [x] Add MMC3 long-tail mapper 367
 - [x] Add MMC3 long-tail mapper 373
 - [x] Add VRC4 reset-selected long-tail mapper 362
+- [x] Add MMC3 PPU-bus mirroring mapper 370
 - **Status:** in_progress
 
 ### Phase 18: Mapper board compatibility layer

@@ -509,6 +509,19 @@ impl Mmc3 {
         m
     }
 
+    /// Mapper 370 — F600 / Golden Mario Party II 6-in-1, an MMC3 multicart
+    /// with outer PRG/CHR banking and PPU-bus-selected single-screen mirroring.
+    pub(in crate::mapper) fn new_370(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
+        let mut m = Mmc3::new(prg_16k, chr_8k, mirroring);
+        m.outer_bank = Mmc3OuterBank::Mapper370 {
+            regs: [0, 1],
+            mirror_reg: 0,
+            ppu_chr_bus: 0,
+            mirroring_bits: [0; 8],
+        };
+        m
+    }
+
     /// Mapper 76 — Namco 109 / MMC3 command and IRQ core with custom CHR cwrap.
     pub(in crate::mapper) fn new_76(prg_16k: usize, chr_8k: usize, mirroring: Mirroring) -> Self {
         let mut m = Mmc3::new(prg_16k, chr_8k, mirroring);

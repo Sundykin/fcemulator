@@ -25,6 +25,7 @@ const MAPPER_CORRECTIONS: &[MapperCorrection] = &[
 
 #[derive(Debug, Clone, Copy)]
 struct MapperCaps {
+    watches_ppu_bus_pre: bool,
     watches_ppu_bus: bool,
     clocks_cpu: bool,
     clocks_hblank: bool,
@@ -36,6 +37,7 @@ struct MapperCaps {
 impl MapperCaps {
     fn from_mapper(mapper: &Mapper) -> Self {
         Self {
+            watches_ppu_bus_pre: mapper.watches_ppu_bus_pre(),
             watches_ppu_bus: mapper.watches_ppu_bus(),
             clocks_cpu: mapper.clocks_cpu(),
             clocks_hblank: mapper.clocks_hblank(),
@@ -75,6 +77,10 @@ pub struct Cartridge {
     #[serde(default)]
     pub submapper: u8,
     pub mapper: Mapper,
+    /// Cached `mapper.watches_ppu_bus_pre()` — lets the PPU skip pre-fetch
+    /// mapper notifications for ordinary boards.
+    #[serde(skip)]
+    pub mapper_watches_ppu_bus_pre: bool,
     /// Cached `mapper.watches_ppu_bus()` — lets the PPU skip the per-fetch
     /// `notify_a12` call for mappers that don't react to the PPU bus. Derived
     /// state, re-set on load via `refresh_mapper_caps`.
@@ -311,6 +317,7 @@ impl Cartridge {
             mapper_number,
             submapper,
             mapper,
+            mapper_watches_ppu_bus_pre: mapper_caps.watches_ppu_bus_pre,
             mapper_watches_ppu_bus: mapper_caps.watches_ppu_bus,
             mapper_clocks_cpu: mapper_caps.clocks_cpu,
             mapper_clocks_hblank: mapper_caps.clocks_hblank,
@@ -332,6 +339,7 @@ impl Cartridge {
     /// replaces `mapper` wholesale (the cache is `#[serde(skip)]`).
     pub fn refresh_mapper_caps(&mut self) {
         let mapper_caps = MapperCaps::from_mapper(&self.mapper);
+        self.mapper_watches_ppu_bus_pre = mapper_caps.watches_ppu_bus_pre;
         self.mapper_watches_ppu_bus = mapper_caps.watches_ppu_bus;
         self.mapper_clocks_cpu = mapper_caps.clocks_cpu;
         self.mapper_clocks_hblank = mapper_caps.clocks_hblank;
@@ -888,6 +896,18 @@ mod tests {
         rom
     }
 
+    /// Build a minimal NES 2.0 mapper-370 image: 2×16K PRG + 1×8K CHR.
+    fn mapper370_rom() -> Vec<u8> {
+        let mut rom = vec![0u8; 16 + 2 * 0x4000 + 0x2000];
+        rom[0..4].copy_from_slice(&INES_MAGIC);
+        rom[4] = 2;
+        rom[5] = 1;
+        rom[6] = 0x20; // mapper low nibble = $2
+        rom[7] = 0x78; // mapper middle nibble = $7, NES 2.0 marker
+        rom[8] = 0x01; // mapper high nibble = $1 => $172 / 370
+        rom
+    }
+
     /// Build a minimal mapper-91 iNES image: 2×16K PRG + 1×8K CHR.
     fn mapper91_rom() -> Vec<u8> {
         let mut rom = vec![0u8; 16 + 2 * 0x4000 + 0x2000];
@@ -914,6 +934,7 @@ mod tests {
     fn mapper_watches_ppu_bus_cache_set_and_refreshed() {
         let cart = Cartridge::from_bytes(&mmc3_rom()).expect("mmc3 rom");
         // MMC3 hooks the PPU bus → cache must be set at construction.
+        assert!(!cart.mapper_watches_ppu_bus_pre);
         assert!(cart.mapper_watches_ppu_bus);
         assert!(!cart.mapper_clocks_cpu);
         assert!(!cart.mapper_clocks_hblank);
@@ -924,20 +945,37 @@ mod tests {
         // refresh_mapper_caps must restore it from the (correct) mapper so the
         // PPU's notify_a12 fast path keeps clocking the MMC3 IRQ.
         let mut loaded = cart;
+        loaded.mapper_watches_ppu_bus_pre = true;
         loaded.mapper_watches_ppu_bus = false;
         loaded.mapper_clocks_cpu = false;
         loaded.mapper_clocks_hblank = true;
         loaded.mapper_has_chr_read = false;
         loaded.mapper_has_nametable_chr_mapping = true;
         loaded.refresh_mapper_caps();
+        assert!(!loaded.mapper_watches_ppu_bus_pre);
         assert!(loaded.mapper_watches_ppu_bus);
         assert!(!loaded.mapper_clocks_cpu);
         assert!(!loaded.mapper_clocks_hblank);
         assert!(!loaded.mapper_has_chr_read);
         assert!(!loaded.mapper_has_nametable_chr_mapping);
 
+        let mapper370 = Cartridge::from_bytes(&mapper370_rom()).expect("mapper370 rom");
+        assert_eq!(mapper370.mapper_number, 370);
+        assert!(mapper370.mapper_watches_ppu_bus_pre);
+        assert!(mapper370.mapper_watches_ppu_bus);
+        assert!(!mapper370.mapper_clocks_cpu);
+        assert!(!mapper370.mapper_clocks_hblank);
+
+        let mut loaded370 = mapper370;
+        loaded370.mapper_watches_ppu_bus_pre = false;
+        loaded370.mapper_watches_ppu_bus = false;
+        loaded370.refresh_mapper_caps();
+        assert!(loaded370.mapper_watches_ppu_bus_pre);
+        assert!(loaded370.mapper_watches_ppu_bus);
+
         // NROM does not hook the bus.
         let empty = Cartridge::empty();
+        assert!(!empty.mapper_watches_ppu_bus_pre);
         assert!(!empty.mapper_watches_ppu_bus);
         assert!(!empty.mapper_clocks_cpu);
         assert!(!empty.mapper_clocks_hblank);

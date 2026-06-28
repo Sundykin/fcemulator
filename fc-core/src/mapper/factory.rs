@@ -316,6 +316,7 @@ impl Mapper {
             366 => Mapper::Mmc3(Mmc3::new_366(prg_16k, chr_8k, mirroring)),
             367 => Mapper::Mmc3(Mmc3::new_367(prg_16k, chr_8k, mirroring)),
             368 => Mapper::Mapper368(Mapper368::new(mirroring)),
+            370 => Mapper::Mmc3(Mmc3::new_370(prg_16k, chr_8k, mirroring)),
             373 => Mapper::Mmc3(Mmc3::new_373(prg_16k, chr_8k, mirroring)),
             360 => Mapper::Mapper360(Mapper360::new(submapper)),
             213 => Mapper::AddrLatch16k(AddrLatch16k::new_with_mirroring(

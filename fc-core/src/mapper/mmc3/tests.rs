@@ -137,6 +137,54 @@ fn mapper373_serial_outer_regs_can_pair_prg_windows() {
 }
 
 #[test]
+fn mapper370_uses_outer_banks_solderpad_and_ppu_selected_mirroring() {
+    let mut mapper = Mmc3::new_370(256, 512, Mirroring::Vertical);
+    assert!(mapper.watches_ppu_bus());
+    assert!(mapper.watches_ppu_bus_pre());
+    assert_eq!(
+        mapper.peek_expansion_with_open_bus(0x5000, 0x35),
+        Some(0xB5)
+    );
+
+    mapper.write_register(0xA000, 0x01);
+    assert_eq!(mapper.mirroring(), Mirroring::Horizontal);
+
+    mapper.write_expansion(0x503D, 0x00);
+    mapper.write_register(0x8000, 0x06);
+    mapper.write_register(0x8001, 0x2A);
+    mapper.write_register(0x8000, 0x02);
+    mapper.write_register(0x8001, 0xC5);
+    assert_eq!(mapper.prg_index(0x8004), 0x7A * 0x2000 + 4);
+    assert_eq!(mapper.chr_index(0x1004), 0x2C5 * 0x0400 + 4);
+
+    mapper.write_expansion(0x5006, 0x00);
+    mapper.write_register(0x8000, 0x02);
+    mapper.write_register(0x8001, 0xC5);
+    assert_eq!(mapper.chr_index(0x1004), 0x3C5 * 0x0400 + 4);
+
+    mapper.write_expansion(0x5001, 0x00);
+    mapper.write_register(0x8000, 0x00);
+    mapper.write_register(0x8001, 0x00);
+    mapper.write_register(0x8000, 0x02);
+    mapper.write_register(0x8001, 0x80);
+    mapper.notify_ppu_bus_pre(0x0000, 0);
+    assert_eq!(mapper.mirroring(), Mirroring::SingleScreenLow);
+    mapper.notify_ppu_bus_pre(0x1000, 1);
+    assert_eq!(mapper.mirroring(), Mirroring::SingleScreenHigh);
+    mapper.write_register(0x8001, 0x00);
+    assert_eq!(mapper.mirroring(), Mirroring::SingleScreenLow);
+
+    mapper.write_expansion(0x5002, 0x00);
+    assert_eq!(mapper.mirroring(), Mirroring::Horizontal);
+    mapper.reset(true);
+    assert_eq!(
+        mapper.peek_expansion_with_open_bus(0x5000, 0x35),
+        Some(0x35)
+    );
+    assert_eq!(mapper.prg_index(0x8004), 4);
+}
+
+#[test]
 fn mapper47_low_latch_selects_outer_bank_and_can_fall_through() {
     let mut mapper = Mmc3::new_47(32, 32, Mirroring::Vertical, 0);
 

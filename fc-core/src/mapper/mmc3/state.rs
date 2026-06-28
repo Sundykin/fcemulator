@@ -99,6 +99,12 @@ pub(super) enum Mmc3OuterBank {
     Mapper367 {
         reg: u8,
     },
+    Mapper370 {
+        regs: [u8; 2],
+        mirror_reg: u8,
+        ppu_chr_bus: u8,
+        mirroring_bits: [u8; 8],
+    },
     Mapper208 {
         regs: [u8; 6],
         submapper: u8,

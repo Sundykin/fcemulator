@@ -214,6 +214,14 @@ pub trait MapperOps {
     /// PPU dot counter). MMC3 uses the A12 (bit 12) rising edge to clock its
     /// scanline IRQ counter; other mappers ignore it.
     fn notify_a12(&mut self, _addr: u16, _cycle: u64) {}
+    /// Notify the mapper before a PPU read/write is resolved. Most PPU-bus
+    /// observers need the post-fetch hook above, but a few multicarts change
+    /// nametable mirroring from the address that is about to be read.
+    fn notify_ppu_bus_pre(&mut self, _addr: u16, _cycle: u64) {}
+    /// Whether [`MapperOps::notify_ppu_bus_pre`] has work to do.
+    fn watches_ppu_bus_pre(&self) -> bool {
+        false
+    }
     /// Whether this mapper reacts to addresses on the PPU bus, i.e. whether
     /// `notify_a12` does anything (MMC3 A12 IRQ, MMC2/4 CHR latch, MMC5). The PPU
     /// caches this once and skips the per-fetch `notify_a12` call entirely for

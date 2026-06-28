@@ -1638,3 +1638,21 @@
   - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 79/79.
   - `cargo test -p fc-core`: PASS, 294/294.
   - `cargo test`: PASS, workspace tests.
+
+### Mapper 370 MMC3 PPU-hook Long-tail Batch
+- Started: 2026-06-28 CST.
+- Added mapper 370 / F600 / Golden Mario Party II 6-in-1 as an MMC3 outer-bank variant in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs`, following FCEUmm `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/370.c:21-95`.
+- Added `MapperOps::notify_ppu_bus_pre()` plus cached `Cartridge::mapper_watches_ppu_bus_pre` so the PPU can notify mapper 370 before resolving nametable/pattern access. Ordinary MMC3, MMC2/4, MMC5, JY, and mapper 272 remain on the existing post-fetch PPU bus path.
+- Mapper 370 covers `$5000-$5FFF` address-latched mode writes, solderpad bit7 reads/open-bus preservation, PRG/CHR outer wrappers including mode-6 CHR mask exception, A000 mirroring latch outside mode 1, PPU-address-slot selected single-screen mirroring in mode 1, CHR bank high-bit mirroring latches, and reset solderpad toggle plus standard MMC3 reset.
+- Wired mapper 370 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper/factory.rs`, added mapper-local/facade/capability/cache tests, and refreshed mapper gap/reference docs. Supported mapper count is now 271 and remaining four-reference union gap is 222.
+- Verification so far:
+  - `cargo test -p fc-core mapper::mmc3::tests::mapper370_uses_outer_banks_solderpad_and_ppu_selected_mirroring -- --nocapture`: PASS, 1/1.
+  - `cargo test -p fc-core cartridge::tests::mapper_watches_ppu_bus_cache_set_and_refreshed -- --nocapture`: PASS, 1/1.
+  - `cargo test -p fc-core mapper::tests::capability -- --nocapture`: PASS, 4/4.
+  - `cargo test -p fc-core mapper::tests::behavior::asic::mmc3_long_tail_variants_258_266_267_291_321_334_361_364_366_367_370_373_use_outer_registers_and_dip_reads -- --nocapture`: PASS, 1/1.
+  - `cargo fmt --check`: PASS.
+  - `git diff --check`: PASS.
+  - `cargo check -p fc-core`: PASS.
+  - `cargo test -p fc-core mapper::mmc3::tests -- --nocapture`: PASS, 59/59.
+  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 80/80.
+  - `cargo test -p fc-core`: PASS, 296/296.

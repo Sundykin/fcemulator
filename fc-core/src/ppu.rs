@@ -1008,6 +1008,9 @@ impl Ppu {
 
     fn ppu_read_for(&mut self, cart: &mut Cartridge, addr: u16, access: ChrAccess) -> u8 {
         let addr = addr & 0x3FFF;
+        if cart.mapper_watches_ppu_bus_pre {
+            cart.mapper.notify_ppu_bus_pre(addr, self.master_cycle);
+        }
         let v = match addr {
             0x0000..=0x1FFF => cart.ppu_read_for(addr, access),
             0x2000..=0x3EFF => cart
@@ -1038,6 +1041,9 @@ impl Ppu {
 
     fn ppu_write(&mut self, cart: &mut Cartridge, addr: u16, value: u8) {
         let addr = addr & 0x3FFF;
+        if cart.mapper_watches_ppu_bus_pre {
+            cart.mapper.notify_ppu_bus_pre(addr, self.master_cycle);
+        }
         if cart.mapper_watches_ppu_bus {
             cart.mapper.notify_a12(addr, self.master_cycle);
         }

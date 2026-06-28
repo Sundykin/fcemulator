@@ -305,6 +305,12 @@ impl MapperOps for Mapper {
     fn notify_a12(&mut self, addr: u16, cycle: u64) {
         dispatch!(self, m => m.notify_a12(addr, cycle))
     }
+    fn notify_ppu_bus_pre(&mut self, addr: u16, cycle: u64) {
+        dispatch!(self, m => m.notify_ppu_bus_pre(addr, cycle))
+    }
+    fn watches_ppu_bus_pre(&self) -> bool {
+        dispatch!(self, m => m.watches_ppu_bus_pre())
+    }
     fn watches_ppu_bus(&self) -> bool {
         dispatch!(self, m => m.watches_ppu_bus())
     }

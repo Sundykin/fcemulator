@@ -254,6 +254,7 @@ fn watches_ppu_bus_matches_notify_a12_overrides() {
         (366, true),   // Mapper 366 MMC3 A12 IRQ
         (367, true),   // Mapper 367 MMC3 A12 IRQ
         (368, false),  // Mapper 368 IRQ is CPU-clocked
+        (370, true),   // Mapper 370 MMC3 A12 IRQ plus pre-fetch mirroring hook
         (373, true),   // Mapper 373 MMC3 A12 IRQ
         (184, false),  // Sunsoft 184
         (4, true),     // MMC3
@@ -265,6 +266,29 @@ fn watches_ppu_bus_matches_notify_a12_overrides() {
         let submapper = if num == 34 { 2 } else { 0 };
         let m = Mapper::new(num, 2, 1, mir, submapper).expect("construct mapper");
         assert_eq!(m.watches_ppu_bus(), expected, "mapper {num}");
+    }
+}
+
+/// Locks the `watches_ppu_bus_pre` table to mappers that need notification
+/// before the PPU fetch resolves. Most PPU-bus mappers only need post-fetch
+/// A12/latch notification; mapper 370 changes mirroring based on the address
+/// being fetched, so it must run before nametable/pattern resolution.
+#[test]
+fn watches_ppu_bus_pre_matches_pre_fetch_overrides() {
+    let mir = Mirroring::Horizontal;
+    let cases = [
+        (0u16, false), // NROM
+        (4, false),    // plain MMC3 only needs post-fetch A12 edges
+        (5, false),    // MMC5 watches PPU bus, but not through the pre hook
+        (9, false),    // MMC2 CHR latch is post-fetch
+        (10, false),   // MMC4 CHR latch is post-fetch
+        (90, false),   // JY ASIC PPU hooks use normal notify_a12 path
+        (272, false),  // Mapper 272 watches PA13 after the fetch address
+        (370, true),   // F600 single-screen mirroring follows PPU address slot
+    ];
+    for (num, expected) in cases {
+        let m = Mapper::new(num, 2, 1, mir, 0).expect("construct mapper");
+        assert_eq!(m.watches_ppu_bus_pre(), expected, "mapper {num}");
     }
 }
 
@@ -520,6 +544,7 @@ fn clocks_cpu_matches_cpu_clock_overrides() {
         (366, false),  // Mapper 366 uses PPU A12 edges
         (367, false),  // Mapper 367 uses PPU A12 edges
         (368, true),   // Mapper 368 IRQ counter clocks per CPU cycle
+        (370, false),  // Mapper 370 uses PPU A12/pre-fetch hooks
         (373, false),  // Mapper 373 uses PPU A12 edges
         (184, false),  // Sunsoft 184
     ];
@@ -793,6 +818,7 @@ fn clocks_hblank_matches_hblank_clock_overrides() {
         (366, false),
         (367, false),
         (368, false),
+        (370, false),
         (373, false),
     ];
     for (num, expected) in cases {
