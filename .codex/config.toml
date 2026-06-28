@@ -5,3 +5,9 @@ args = ["mcp"]
 [mcp_servers.fc-tauri]
 command = "/Users/sunmeng/workspace/fc/target/debug/fc"
 args = ["tauri-bridge"]
+
+[mcp_servers.fc-tauri.tools.tauri_ping]
+approval_mode = "approve"
+
+[mcp_servers.fc-tauri.tools.tauri_eval]
+approval_mode = "approve"
