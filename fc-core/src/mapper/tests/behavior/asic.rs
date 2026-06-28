@@ -338,6 +338,26 @@ fn mapper308_uses_vrc2_banks_and_custom_cpu_irq() {
 }
 
 #[test]
+fn mapper362_reuses_vrc4_with_reset_selected_outer_game() {
+    let mut m362 = Mapper::new(362, 64, 128, Mirroring::Horizontal, 0).expect("mapper 362");
+    assert!(!m362.watches_ppu_bus());
+    assert!(m362.clocks_cpu());
+
+    m362.write_register(0xB000, 0x05);
+    m362.write_register(0xB001, 0x10);
+    m362.write_register(0x8000, 0x06);
+    m362.write_register(0xA000, 0x07);
+    assert_eq!(m362.prg_index(0x8004), 0x26 * 0x2000 + 4);
+    assert_eq!(m362.prg_index(0xE004), 0x2F * 0x2000 + 4);
+    assert_eq!(m362.chr_index(0x0004), 0x105 * 0x0400 + 4);
+
+    m362.reset(true);
+    assert_eq!(m362.prg_index(0x8004), 0x40 * 0x2000 + 4);
+    assert_eq!(m362.prg_index(0xE004), 0x4F * 0x2000 + 4);
+    assert_eq!(m362.chr_index(0x0004), 0x200 * 0x0400 + 4);
+}
+
+#[test]
 fn mmc3_long_tail_variants_258_266_267_291_321_334_361_364_366_367_373_use_outer_registers_and_dip_reads(
 ) {
     let mut m258 = Mapper::new(258, 64, 32, Mirroring::Vertical, 0).expect("mapper 258");

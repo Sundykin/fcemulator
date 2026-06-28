@@ -310,6 +310,7 @@ impl Mapper {
             357 => Mapper::Mapper357(Mapper357::new()),
             358 => Mapper::JyAsic(JyAsic::new(prg_16k, chr_8k, JyAsicVariant::Mapper358)),
             361 => Mapper::Mmc3(Mmc3::new_361(prg_16k, chr_8k, mirroring)),
+            362 => Mapper::Vrc4(Vrc4::new_362(prg_16k, chr_8k)),
             363 => Mapper::Mapper363(Mapper363::new()),
             364 => Mapper::Mmc3(Mmc3::new_364(prg_16k, chr_8k, mirroring)),
             366 => Mapper::Mmc3(Mmc3::new_366(prg_16k, chr_8k, mirroring)),

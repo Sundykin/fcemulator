@@ -28,6 +28,18 @@ impl Default for VrcIrqKind {
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+enum VrcBoardVariant {
+    Standard,
+    Mapper362,
+}
+
+impl Default for VrcBoardVariant {
+    fn default() -> Self {
+        Self::Standard
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 struct Vrc24Config {
     a0_mask: u16,
     a1_mask: u16,
@@ -35,11 +47,15 @@ struct Vrc24Config {
     #[serde(default)]
     irq_kind: VrcIrqKind,
     chr_shift: u8,
+    #[serde(default = "default_use_repeat_bit")]
+    use_repeat_bit: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Vrc4 {
     config: Vrc24Config,
+    #[serde(default)]
+    variant: VrcBoardVariant,
     prg_8k: usize,
     chr_1k: usize,
     prg: [u8; 2], // $8000 / $A000 PRG select (8KB)
@@ -55,7 +71,15 @@ pub struct Vrc4 {
     irq_prescaler: u16,
     #[serde(default)]
     mapper273_irq_mask: u8,
+    #[serde(default)]
+    mapper362_game: u8,
+    #[serde(default)]
+    mapper362_reset_select: bool,
     irq_pending: bool,
+}
+
+fn default_use_repeat_bit() -> bool {
+    true
 }
 
 impl Vrc4 {
@@ -63,6 +87,7 @@ impl Vrc4 {
         let prg_8k = (prg_16k * 2).max(2);
         Vrc4 {
             config: Self::config_for(mapper, submapper),
+            variant: VrcBoardVariant::Standard,
             prg_8k,
             chr_1k: (chr_8k * 8).max(8),
             // $8000 starts at bank 0; $A000 at bank 1 ($C000/$E000 fixed).
@@ -77,6 +102,8 @@ impl Vrc4 {
             irq_cycle_mode: false,
             irq_prescaler: 0,
             mapper273_irq_mask: 0,
+            mapper362_game: 0,
+            mapper362_reset_select: false,
             irq_pending: false,
         }
     }
@@ -89,6 +116,7 @@ impl Vrc4 {
             is_vrc4: false,
             irq_kind: VrcIrqKind::Mapper273,
             chr_shift: 0,
+            use_repeat_bit: true,
         };
         mapper
     }
@@ -96,6 +124,17 @@ impl Vrc4 {
     pub(super) fn new_308(prg_16k: usize, chr_8k: usize) -> Self {
         let mut mapper = Self::new(23, prg_16k, chr_8k, 3);
         mapper.config.irq_kind = VrcIrqKind::Mapper308;
+        mapper
+    }
+
+    pub(super) fn new_362(prg_16k: usize, chr_8k: usize) -> Self {
+        let mut mapper = Self::new(23, prg_16k, chr_8k, 3);
+        mapper.config.is_vrc4 = true;
+        mapper.config.irq_kind = VrcIrqKind::Vrc4;
+        mapper.config.use_repeat_bit = false;
+        mapper.variant = VrcBoardVariant::Mapper362;
+        mapper.prg = [0, 0];
+        mapper.mapper362_reset_select = prg_16k > 32;
         mapper
     }
 
@@ -131,6 +170,7 @@ impl Vrc4 {
             is_vrc4,
             irq_kind,
             chr_shift,
+            use_repeat_bit: true,
         }
     }
 
@@ -146,6 +186,50 @@ impl Vrc4 {
         let bit0 = usize::from(addr & self.config.a0_mask != 0);
         let bit1 = usize::from(addr & self.config.a1_mask != 0);
         (bit1 << 1) | bit0
+    }
+
+    fn vrc_prg_bank(&self, slot: u16) -> usize {
+        let slot = if slot & 1 == 0 && self.prg_swap {
+            slot ^ 2
+        } else if slot & 2 != 0 {
+            slot
+        } else {
+            slot
+        };
+
+        if slot & 2 != 0 {
+            self.prg_8k - 2 + (slot as usize & 1)
+        } else {
+            self.prg[slot as usize & 1] as usize
+        }
+    }
+
+    fn outer_prg_bank(&self, bank: usize) -> usize {
+        match self.variant {
+            VrcBoardVariant::Standard => bank,
+            VrcBoardVariant::Mapper362 => {
+                if self.mapper362_game & 1 != 0 {
+                    (bank & 0x0F) | 0x40
+                } else {
+                    let chr0 = self.chr[0] as usize;
+                    (bank & 0x0F) | ((chr0 >> 3) & 0x30)
+                }
+            }
+        }
+    }
+
+    fn outer_chr_bank(&self, bank: usize) -> usize {
+        match self.variant {
+            VrcBoardVariant::Standard => bank,
+            VrcBoardVariant::Mapper362 => {
+                if self.mapper362_game & 1 != 0 {
+                    (bank & 0x1FF) | 0x200
+                } else {
+                    let chr0 = self.chr[0] as usize;
+                    (bank & 0x07F) | (chr0 & 0x180)
+                }
+            }
+        }
     }
 
     fn clock_irq_counter(&mut self) {
@@ -217,22 +301,14 @@ impl Vrc4 {
 
 impl MapperOps for Vrc4 {
     fn prg_index(&self, addr: u16) -> usize {
-        let last = self.prg_8k - 1;
         let region = (addr - 0x8000) / 0x2000; // 0..=3 (8KB each)
-        let bank = match (region, self.prg_swap) {
-            (0, false) => self.prg[0] as usize, // $8000 swappable
-            (0, true) => last - 1,              // $8000 fixed to second-to-last
-            (1, _) => self.prg[1] as usize,     // $A000 always swappable
-            (2, false) => last - 1,             // $C000 fixed to second-to-last
-            (2, true) => self.prg[0] as usize,  // $C000 swappable
-            _ => last,                          // $E000 always fixed to last
-        };
+        let bank = self.outer_prg_bank(self.vrc_prg_bank(region));
         (bank % self.prg_8k) * 0x2000 + (addr & 0x1FFF) as usize
     }
 
     fn chr_index(&self, addr: u16) -> usize {
         let slot = ((addr >> 10) & 7) as usize; // 1KB slot 0..=7
-        let bank = (self.chr[slot] >> self.config.chr_shift) as usize;
+        let bank = self.outer_chr_bank((self.chr[slot] >> self.config.chr_shift) as usize);
         (bank % self.chr_1k) * 0x400 + (addr & 0x3FF) as usize
     }
 
@@ -286,7 +362,9 @@ impl MapperOps for Vrc4 {
                             }
                             // $F003: IRQ acknowledge
                             _ => {
-                                self.irq_enable = self.irq_enable_after_ack;
+                                if self.config.use_repeat_bit {
+                                    self.irq_enable = self.irq_enable_after_ack;
+                                }
                                 self.irq_pending = false;
                             }
                         }
@@ -337,6 +415,34 @@ impl MapperOps for Vrc4 {
     fn clear_irq(&mut self) {
         self.irq_pending = false;
     }
+
+    fn reset(&mut self, soft: bool) {
+        if !matches!(self.variant, VrcBoardVariant::Mapper362) {
+            return;
+        }
+        if soft && !self.mapper362_reset_select {
+            return;
+        }
+
+        if soft && self.mapper362_reset_select {
+            self.mapper362_game ^= 1;
+        } else if !soft {
+            self.mapper362_game = 0;
+        }
+
+        self.prg = [0, 0];
+        self.chr = [0, 1, 2, 3, 4, 5, 6, 7];
+        self.mirroring = Mirroring::Vertical;
+        self.prg_swap = false;
+        self.irq_latch = 0;
+        self.irq_counter = 0;
+        self.irq_enable = false;
+        self.irq_enable_after_ack = false;
+        self.irq_cycle_mode = false;
+        self.irq_prescaler = 0;
+        self.mapper273_irq_mask = 0;
+        self.irq_pending = false;
+    }
 }
 
 #[cfg(test)]
@@ -345,6 +451,10 @@ mod tests {
 
     fn chr_bank(mapper: &Vrc4, slot: u16) -> usize {
         mapper.chr_index(slot * 0x400) / 0x400
+    }
+
+    fn prg_bank(mapper: &Vrc4, addr: u16) -> usize {
+        mapper.prg_index(addr) / 0x2000
     }
 
     #[test]
@@ -543,5 +653,40 @@ mod tests {
             mapper.cpu_clock();
         }
         assert!(!mapper.irq());
+    }
+
+    #[test]
+    fn mapper_362_toggles_outer_game_on_soft_reset_and_reuses_vrc4_banks() {
+        let mut mapper = Vrc4::new_362(64, 128);
+
+        mapper.write_register(0xB000, 0x05);
+        mapper.write_register(0xB001, 0x10);
+        mapper.write_register(0x8000, 0x06);
+        mapper.write_register(0xA000, 0x07);
+
+        assert_eq!(prg_bank(&mapper, 0x8000), 0x26);
+        assert_eq!(prg_bank(&mapper, 0xA000), 0x27);
+        assert_eq!(prg_bank(&mapper, 0xC000), 0x2E);
+        assert_eq!(prg_bank(&mapper, 0xE000), 0x2F);
+        assert_eq!(chr_bank(&mapper, 0), 0x105);
+
+        mapper.reset(true);
+        assert_eq!(prg_bank(&mapper, 0x8000), 0x40);
+        assert_eq!(prg_bank(&mapper, 0xE000), 0x4F);
+        assert_eq!(chr_bank(&mapper, 0), 0x200);
+
+        mapper.write_register(0xF000, 0x00);
+        mapper.write_register(0xF002, 0x06);
+        mapper.write_register(0xF003, 0x00);
+        for _ in 0..256 {
+            mapper.cpu_clock();
+        }
+        assert!(mapper.irq());
+
+        let mut small = Vrc4::new_362(32, 128);
+        small.write_register(0x8000, 0x06);
+        assert_eq!(prg_bank(&small, 0x8000), 0x06);
+        small.reset(true);
+        assert_eq!(prg_bank(&small, 0x8000), 0x06);
     }
 }

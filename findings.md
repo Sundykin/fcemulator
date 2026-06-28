@@ -423,3 +423,9 @@
 - Mapper 373 in FCEUmm `mmc3.c:591-598` is a mapper 45 derivative: it reuses `M45CW`, `M45Write`, `M45Reset`, and `M45Power`, but swaps in `M373PW`.
 - `M373PW` keeps mapper 45's PRG AND/OR formula unless outer register 2 bit5 is set. In paired mode, only writes for `$8000/$A000` directly update banks, while `$C000/$E000` mirror those source banks with `| 0x02`.
 - Existing MMC3 architecture is sufficient if mapper 373 gets its own `Mmc3OuterBank` variant: share mapper45 serial register helpers, keep mapper45 behavior unchanged, and let mapper 373 reset standard MMC3 registers per FCEUmm `M45Reset()`.
+
+## Mapper 362 VRC4 Long-tail Findings
+- Mapper 362 in FCEUmm `362.c:31-58` is a VRC4 board variant, not a new mapper core: it uses VRC4 address lines `0x01/0x02`, standard VRC PRG/CHR registers, and CPU-cycle VRC IRQs.
+- The board's active difference is a reset-selected `game` latch. Game 0 derives PRG outer bits from CHR bank 0 (`chr0 >> 3 & 0x30`) and CHR outer bits from CHR bank 0 (`chr0 & 0x180`); game 1 forces PRG outer `0x40` and CHR outer `0x200`.
+- FCEUmm only installs the reset hook for PRG-ROM larger than 512KB, so small mapper 362 carts should not clear VRC registers on soft reset. The first pass models this with a `mapper362_reset_select` flag.
+- `VRC4_init(..., useRepeatBit=0, ...)` means IRQ acknowledge does not copy bit0 into enable; keeping the existing enable state is more accurate than treating `$F003` as a disable.

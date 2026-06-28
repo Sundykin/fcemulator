@@ -169,6 +169,7 @@ Phase 17: Mapper compatibility gap closure
 - [x] Add long-tail mapper batch 363 / 364 / 368
 - [x] Add MMC3 long-tail mapper 367
 - [x] Add MMC3 long-tail mapper 373
+- [x] Add VRC4 reset-selected long-tail mapper 362
 - **Status:** in_progress
 
 ### Phase 18: Mapper board compatibility layer
@@ -219,7 +220,7 @@ Phase 17: Mapper compatibility gap closure
 | Use team-mode research to choose the next mapper batch | Low-risk latch candidates start with 149/122/133; MMC3 candidates should start with helper refactoring then 49; external-device boards such as 99/111/157/188/209/211 should wait for dedicated peripheral hooks |
 | Build a board compatibility layer before pushing the long tail | Reference mapper code is short because mature emulators hide handler registration, bank setup, IRQ units, reset hooks, and side-effect reads in their board framework; reproducing that layer should make future mapper work mostly mechanical |
 | Start CPU handler work as private `Cartridge` helpers | The existing `MapperOps` methods already cover expansion, low, and high ranges; centralizing priority/order first reduces later mapper glue without widening the public trait too early |
-| Batch pure latch/MMC3/fixed-bank long-tail boards before deeper composite boards | Mapper 363, 364, and 368 fit existing bus-conflict, low-register, CPU-clock, and MMC3 outer-bank hooks; 362/369/370/372+ should wait for VRC4/composite/PPU-hook or CHR-RAM architecture where needed |
+| Add VRC4 board variants as an outer wrapper instead of standalone clones | Mapper 362 only changes VRC4 repeat-bit/reset behavior and final PRG/CHR mask/OR formulas; adding `VrcBoardVariant` preserves normal VRC2/VRC4 behavior while preparing later VRC4 long-tail boards |
 
 ## Errors Encountered
 | Error | Attempt | Resolution |

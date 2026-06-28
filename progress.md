@@ -1623,3 +1623,18 @@
   - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 78/78.
   - `cargo test -p fc-core`: PASS, 292/292.
   - `cargo test`: PASS, workspace tests.
+
+### Mapper 362 VRC4 Long-tail Batch
+- Started: 2026-06-28 CST.
+- Added mapper 362 as a VRC4 board variant in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/vrc4.rs`, following FCEUmm `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/362.c:31-58` and VRC helper behavior from `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/asic_vrc2and4.c:71-99,137-180,197-203,230-260`.
+- Extended the VRC4 architecture with `VrcBoardVariant`, VRC final PRG/CHR outer wrappers, and `use_repeat_bit` configuration while preserving default VRC2/VRC4 behavior through serde defaults.
+- Mapper 362 covers VRC4 address lines `0x01/0x02`, CPU-clock VRC IRQs with repeat-bit disabled, reset-selected outer game banking for large PRG ROMs, VRC register clear on reset, and no-reset-hook behavior for <=512KB PRG ROMs.
+- Wired mapper 362 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper/factory.rs`, added VRC-local/facade/capability tests, and refreshed mapper gap/reference docs. Supported mapper count is now 270 and remaining four-reference union gap is 223.
+- Verification so far:
+  - `cargo fmt --check`: PASS.
+  - `cargo test -p fc-core mapper::vrc4::tests -- --nocapture`: PASS, 10/10.
+  - `cargo test -p fc-core mapper::tests::capability -- --nocapture`: PASS, 3/3.
+  - `git diff --check`: PASS.
+  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 79/79.
+  - `cargo test -p fc-core`: PASS, 294/294.
+  - `cargo test`: PASS, workspace tests.
