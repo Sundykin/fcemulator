@@ -1,437 +1,527 @@
-# Findings & Decisions
+# Findings: Creative IDE Engine Maturity
 
-## Requirements
-- Inspect APU, PPU, and other hardware emulation for accuracy improvement opportunities.
-- Use the repository's available test ROMs to measure precision.
-- Implement practical accuracy improvements when a safe, test-backed fix is found.
-- Keep core architecture clean: no IO in `fc-core`, no per-game hacks, and preserve CPU/PPU/APU lock-step timing.
+## Current Requirements From User
+- Continue in the existing worktree, independently from other active work.
+- Optimize IDE frontend operation experience toward a mature game development IDE engine.
+- Improve basic project management, resource editing, music editing, and map editing.
+- Fix discontinuity between map editor and resource/CHR binding logic.
+- Make map editor operations comfortable.
+- Make resource/CHR editor operations comfortable.
+- Make music editor operations smooth.
+- Editors should adapt to 100% of the usable parent area, then transform output data as needed. They should not expose tiny raw pixel/native-scale editing surfaces.
+- Runtime verification for this goal should use the real Tauri app and bundled MCP tools, not browser automation.
 
-## Research Findings
-- `rg --files` did not list `.nes`/test-ROM paths, so accuracy ROMs may be untracked or ignored rather than absent.
-- Key core hardware files are `fc-core/src/cpu.rs`, `fc-core/src/bus.rs`, `fc-core/src/ppu.rs`, `fc-core/src/apu.rs`, and `fc-core/src/mapper.rs`.
-- `fc-cli/src/main.rs` contains `test` and `testsuite` subcommands; README mentions passing selected MMC3 blargg tests.
-- Filesystem scan found extensive local ROM suites under `nes-test-roms/`, including APU tests (`apu_test`, `blargg_apu_2005.07.30`, `dmc_tests`, `apu_reset`), PPU tests (`ppu_vbl_nmi`, `vbl_nmi_timing`, `sprite_hit_tests_2005.10.05`, `sprite_overflow_tests`, `ppu_open_bus`, `ppu_read_buffer`, `blargg_ppu_tests_2005.09.15b`), CPU timing/interrupt tests, DMC DMA tests, and MMC3 IRQ tests.
-- Baseline: `cargo test` passes and `cargo build -p fc-cli` succeeds.
-- Baseline APU: `nes-test-roms/apu_test/rom_singles` passes 4/8. Failures say frame IRQ and length timing are too late, and DMC rate 0 period is too long.
-- Baseline PPU: `nes-test-roms/ppu_vbl_nmi/rom_singles` passes 0/10, with messages centered on VBL period, VBL set/clear timing, NMI control/suppression, and odd/even frame skip timing.
-- Baseline MMC3: `nes-test-roms/mmc3_irq_tests` timed out under `$6000` testsuite; need alternate `mmc3_test` baseline or protocol confirmation before using these as fix targets.
-- CPU cycle fix results: after correcting BRK/RTS/RTI cycle paths, `instr_misc/03-dummy_reads` passes, `ppu_vbl_nmi/01-vbl_basics` passes, `ppu_vbl_nmi/09-even_odd_frames` passes, and `apu_test/8-dmc_rates` passes. This confirms CPU instruction-cycle accuracy was contaminating hardware timing tests.
-- Remaining APU failures after CPU fix are frame sequencer phase failures: `4-jitter`, `5-len_timing`, and `6-irq_flag_timing` now report "too soon", pointing to `$4017` write delay/frame-counter phase rather than DMC period tables.
-- `instr_timing/1-instr_timing` now reports only unsupported/unimplemented unofficial opcode timing failures (e.g. `0B`, `2B`, `4B`, `6B`, `8B`, `93`, `9B`, `9C`, `9E`, `9F`, `AB`, `BB`, `CB`), while official/NOP sections complete.
-- APU frame sequencer fix: `apu_test/rom_singles` now passes 8/8 after modeling `$4017` delayed frame-counter reset, frame IRQ timing window, and 5-step mode idle/third half-frame boundary.
-- PPU VBL/NMI improved from 0/10 to 3/10 after CPU cycle correction, but remaining failures are detailed VBL/NMI edge behavior (`vbl_set_time`, immediate NMI delay, suppression, on/off timing, and odd-frame enable timing).
-- PPU VBL/NMI improved further to 4/10 after delaying CPU-visible immediate NMI from `$2000` writes by one CPU poll; `04-nmi_control` now passes.
-- Removed leftover `FC_TRACE` VBL debug prints from `fc-core/src/ppu.rs`.
+## CHR Tile Clipboard Findings
+- After Phase 57/58, CHR tiles can be transformed by humans and agents, but frame/sprite iteration still needs fast tile-level duplication. Without copy/paste, users must redraw a near-identical 8x8 tile or use lower-level MCP patches.
+- The CHR editor already stores a decoded `pixels` array and saves through `store.saveChr()`, so a tile clipboard can copy exactly 64 palette-slot values and write them back through the same undo/dirty/save path as transforms.
+- Duplicate-to-next is the common animation workflow: preserve the current tile as a base frame, copy it to the adjacent tile, select that target, then edit pixels/transforms for the next frame.
+- Visible toolbar buttons are important here because `Ctrl/⌘+C/V/D` is discoverable only after documentation; compact copy/paste/duplicate icons keep the operation available without consuming the drawing workspace.
+- Same-resource focusing must not silently discard unsaved CHR edits. Ordinary resource focus/navigation should preserve an already-open dirty sheet, while explicit external CHR patch/refresh events can force a disk reload because they represent an outside write.
 
-## Technical Decisions
-| Decision | Rationale |
-|----------|-----------|
-| Establish baseline before changing core code | Needed to distinguish existing failures from regressions introduced by fixes |
-| Prioritize CPU cycle correction before PPU/APU micro-timing | PPU/APU test ROMs rely on precise CPU delay loops; wrong CPU cycles create false hardware failures |
-| Preserve CLI expanded `$6000` output | Longer ROM failure text made hardware test failures actionable and is useful for future accuracy work |
+## Music Active-Context Selection Findings
+- Phase 54 already makes `TrackerPanel.vue` publish `ui.active_editor.selection={row0,row1,channel0,channel1}` after batch/phrase patches, and `ide_wait_ui_context` can wait for those range fields.
+- Before this slice, `ide_patch_active_context` for music accepted only `scope=cell|phrase`; agents could see a Tracker range but still had to expand it into `cells[]` manually to edit every selected cell.
+- The natural backend path is to expand the visible selection into `cells[]` and delegate to existing `patch_song_cells`, preserving the same `.song.json` write, manifest registration, `song-patch` IPC event, visible focus, and range highlighting behavior.
+- If a patch changes cell contents but preserves the same visible selection, `ide_wait_ui_context` should include a minimum UI sequence to avoid matching the pre-patch snapshot. `ide_patch_active_context` now returns `wait_min_seq = ui_seq + 1` for that follow-up wait pattern.
 
-## Issues Encountered
-| Issue | Resolution |
-|-------|------------|
-| Existing save states may lack new APU frame reset fields | Added serde defaults for new fields |
+## Source Active-Context Selection Findings
+- `EditorPanel.vue` previously published only the active CodeMirror cursor line to `ui.active_editor`. That was enough for single-line patches, but not for replacing a selected code block through the IDE MCP.
+- CodeMirror already reports `selection.main.from/to/head`, so the frontend can publish a line-range selection without changing the editor model or source file format.
+- `ide_patch_active_context` can reuse the existing `patch_source` primitive for source selections by resolving the visible range into `line=line0` and `delete=line1-line0+1`, preserving source registration and visible source focus behavior.
 
-## Resources
-- `/Users/sunmeng/workspace/fc/AGENTS.md` instructions supplied by user.
-- `/Users/sunmeng/workspace/fc/fc-cli/src/main.rs`
-- `/Users/sunmeng/workspace/fc/fc-core/src`
-- `/Users/sunmeng/workspace/fc/nes-test-roms`
+## CHR Tile Transform Findings
+- `ChrEditorPanel.vue` already supported pencil/eraser/fill/picker, undo/redo, responsive zoom, sheet navigation, and horizontal/vertical flip.
+- Retro sprite/tile iteration still lacked common tile-level transforms: 90-degree rotation and one-pixel nudging. Without those, small sprite alignment edits require repainting many pixels by hand.
+- The editor stores CHR pixels as decoded 8x8 palette-slot arrays and dirty state is derived from comparing `store.chr.pixels` to the saved snapshot, so tile transforms can remain frontend-only and preserve the existing `.chr` NES 2bpp save path.
+- The safest implementation is a shared selected-tile transform helper that snapshots undo once, rewrites the 64 decoded pixels, redraws the zoom/sheet canvases, and lets the existing save path encode the result.
 
-## Visual/Browser Findings
-- No visual/browser findings yet.
+## IDE MCP CHR Transform Findings
+- After Phase 57, human users can rotate/flip/nudge CHR tiles in the visible editor, but programming agents still only had whole-tile replacement or individual pixel patching.
+- A semantic MCP tile-transform tool avoids forcing agents to hand-calculate 64-pixel arrays for common art operations, while still keeping resource editing inside the Tauri-hosted IDE MCP instead of the DOM bridge.
+- Existing CHR MCP paths already decode NES 2bpp planar bytes into 64-pixel tile arrays, write through `encode_sheet`, register `project.toml` manifest entries, and emit `chr-patch` so the visible editor refreshes and focuses the tile.
+- `ide_transform_chr_tile` can reuse that exact backend path with `op=rotate_cw|rotate_ccw|flip_h|flip_v|shift_left|shift_right|shift_up|shift_down` and optional `wrap` for shift operations.
 
-## Continued Accuracy Pass
-- After prior commits, `ppu_vbl_nmi` remaining failures are precise edge timing cases: NMI delivery around VBlank set/clear (`05`, `07`, `08`) and odd-frame skipped-dot enable/disable boundaries (`10`).
-- Current NMI model latches PPU NMI immediately during `Bus::tick`, while `$2000` writes that cause immediate NMI use `nmi_delay_polls`. Failure output suggests NMI delivery and `$2000` write boundary timing are still early near the edge.
+## Map Keyboard Navigation Findings
+- `MapEditorPanel.vue` already supported selection rectangles, copy/paste of tile-layer selections, resource binding, pan/zoom, brush/rect/fill/picker tools, and semantic `focus_cell` publication.
+- Before this slice, arrow keys did not move the map focus or selection. Users had to re-click cells with the mouse to adjust paste anchors or grow a selection by one cell, which makes tile layout slower than a mature map editor should be.
+- The existing `selection` rectangle is also the anchor for copy/paste and `ui.active_editor.focus_cell`, so keyboard navigation should update that same state rather than adding another cursor model.
+- Navigation should not mutate map data or push undo snapshots; it only adjusts visible editor focus/selection and scrolls the focused cell into view.
 
-## PPU VBL/NMI Fix Findings
-- Adding a two-PPU-dot delayed NMI output inside `Ppu` makes NMI edge behavior match `05-nmi_timing`, `07-nmi_on_timing`, and `08-nmi_off_timing`; clearing the NMI line before the delay expires cancels the pending interrupt.
-- Sampling rendering enable at pre-render dot 338 for the odd-frame skipped-dot decision fixes `10-even_odd_timing` while preserving `09-even_odd_frames`.
-- After these changes, `ppu_vbl_nmi/rom_singles/*.nes` passes 10/10.
+## Map Selection Content Move Findings
+- Phase 59 made Map selection frames keyboard-addressable, but Alt+Arrow only moved the frame; it did not move the tile contents inside the selection.
+- When arranging room layouts, a mature tile editor needs a quick "move selected tiles one cell" operation so users can shift platforms/walls without copy-paste-clear choreography.
+- The existing tile-layer selection clipboard logic already shows how to read a rectangular tile block. A content move can reuse the same tile-layer data shape, push one undo snapshot, clear the old rectangle, write the block into the shifted rectangle, and keep the selection focused on the new location.
+- This operation should be tile-layer-only and should not alter attr/collision data implicitly; attribute/collision movement can be designed separately when layer-specific semantics are clearer.
 
-## MMC3/MMC6 Fix Findings
-- `mmc3_test/6-MMC6.nes` expects a MMC6-family zero-reload edge case: after the counter naturally reaches 0 while the reload latch is already 0, the following natural reload-to-0 edge must not re-assert IRQ. Explicit `$C001` reset reload-to-0 still asserts IRQ.
-- Modeling that suppresses the repeated zero reload and raises `mmc3_test` from 4/6 to 5/6; remaining failure is `4-scanline_timing`, likely tied to dot-accurate PPU render fetch/A12 phase.
+## Map Selection Duplicate Findings
+- After content move support, repeated map layout still benefits from a fast duplicate operation: platforms, walls, decorations, and repeated room motifs should be stampable without switching to copy/paste and manually choosing an anchor.
+- `Cmd/Ctrl+Shift+Arrow` can reuse the selected rectangle size to copy the tile block into the adjacent same-size slot in the requested direction. That makes right/down repetition predictable for tileset-style level construction.
+- Unlike content move, duplicate-and-shift should not clear the source rectangle. It should push undo only when the target region actually changes, then focus the newly duplicated rectangle so repeated shortcuts can tile a pattern across the map.
+- This should remain tile-layer-only for the same reason as content move: implicit attribute/collision duplication can surprise users until layer-specific semantics are designed.
 
-## Remaining MMC3 Scanline Timing Analysis
-- `mmc3_test/4-scanline_timing.nes` still fails at subtest #2 after PPU NMI and MMC6 fixes.
-- Temporary tracing showed mapper-visible sprite pattern fetches currently occur in a burst at dot 257 for each scanline (`addr=1FF0/1FF8` repeated), while the known roadmap calls out the need to distribute sprite fetches across dots 257-320.
-- A local experiment that only delayed mapper A12 notification without replacing the sprite fetch/evaluation model did not make the test pass; the remaining fix likely needs a real dot-scheduled sprite fetch unit and CPU IRQ sampling recheck, not a small standalone mapper tweak.
+## Map Selection Fill Findings
+- Once Map selections are keyboard-addressable, moving and duplicating them still leaves a common region-editing gap: applying the current brush value to the whole selected area requires switching to rectangle/fill tools and using the mouse.
+- `Enter` is a compact selected-region commit gesture: it can fill the current selection with the active layer's current value, while `Shift+Enter` or `Alt+Enter` clears that selected area.
+- The selection tool should not force the Map editor back to the tile layer. Keeping the active layer lets the same keyboard rectangle workflow apply to tiles, 2x2 attribute cells, and collision flags without changing the map binary format.
+- Because attribute writes are stored per 2x2 block through the existing `setCellValue` path, filling an attribute selection over individual cells intentionally follows the same semantics as current mouse painting.
 
-## Unofficial Opcode / Dummy Read Fix Findings
-- `instr_misc/04-dummy_reads_apu.nes` timed out because several tested unofficial opcodes were still treated as single-byte fallback NOPs, leaving operand bytes to execute as bogus instructions and preventing the ROM from completing.
-- Implemented missing unofficial immediate ALU opcodes (`0B`, `2B`, `4B`, `6B`, `8B`, `AB`, `CB`) plus indexed/store/load opcodes (`93`, `9B`, `9C`, `9E`, `9F`, `BB`) with proper operand fetches and dummy-read addressing paths.
-- `instr_misc` + `instr_timing` now pass 6/6, including full `04-dummy_reads_apu` and unofficial instruction timing.
+## Initial Code Findings
+- Overall IDE shell is `fc-tauri/src/views/IdeView.vue`, using Dockview panels: tree, editor, CHR, map, tracker, build, preview, inspect.
+- `IdeView.vue` starts only explorer + source editor by default. CHR/map/tracker panels open when the store focus flags change.
+- Map editor is `fc-tauri/src/ide/MapEditorPanel.vue`.
+  - It already has `mapWrap`, `ResizeObserver`, `mapViewport`, `cellPx`, and `effectiveCellPx` computed from available area.
+  - It still has a manual `zoom = 2` model and display label. Need inspect template/CSS to see if canvas actually fills the panel or is constrained by surrounding layout.
+  - It exposes `chrChoices` and `boundChrForActiveMap`, so map-to-CHR binding exists in store/API, but continuity depends on UI and store actions.
+- CHR editor is `fc-tauri/src/ide/ChrEditorPanel.vue`.
+  - It already computes a responsive single-tile `zoomSize` from `zoomStage`, with min 160 and multiples of 8.
+  - Need inspect template/CSS to see if sheet browser or zoom stage is constrained.
+- Music editor is `fc-tauri/src/ide/TrackerPanel.vue`.
+  - Piano roll has `rollArea`, `ResizeObserver`, and responsive `rollCellW/H` based on available area.
+  - Pattern view may still be dense/table-driven and needs template/CSS inspection.
+- Current plan should focus on actual template/CSS constraints rather than assuming the script lacks resize logic.
 
-## Branch/Interrupt Follow-up Notes
-- Tried to scope `cpu_interrupts_v2/5-branch_delays_irq`; failure begins in `test_jmp`, not just the taken-branch special case, so remaining issues likely involve APU frame IRQ phase and CPU interrupt sampling together. Deferred rather than making speculative changes.
-- Tried narrow BRK/NMI vector hijack experiments locally; they partially reproduced `2-nmi_and_brk` middle rows but regressed `3-nmi_and_irq`, so all such experiments were reverted. A proper fix needs a per-cycle interrupt sequence model.
-- NESdev CPU interrupt references describe two separate stages that the old model collapsed: IRQ/NMI lines are sampled each CPU cycle and the resulting internal detector output is polled at instruction-specific T0/T2 points. For most instructions the poll uses the detector output from the previous CPU cycle, so an IRQ asserted during an instruction's final cycle must not be serviced immediately before the next opcode.
-- CLI/SEI/PLP poll IRQ with the old I flag value, because the flag write occurs after the poll point; RTI restores I before its poll and therefore has immediate IRQ inhibition behavior.
-- BRK, IRQ, and NMI sequences do not perform ordinary instruction polling, but a pending/detected NMI can select the NMI vector during BRK/IRQ vectoring while preserving the status byte already pushed by the sequence.
-- Taken non-page-crossing branches are special: their last cycle is not the interrupt poll point, so an IRQ detected only on that last cycle is deferred until after the next instruction.
-- Implemented and committed the poll-point model in `49e82c1`. This raised `cpu_interrupts_v2` from 1/5 to 4/5 while preserving `ppu_vbl_nmi` 10/10, `apu_test` 8/8, and `mmc3_test/3-A12_clocking` PASS.
-- Remaining `cpu_interrupts_v2/4-irq_and_dma` is not solved by merely moving OAM DMA cycles into CPU helpers; a local experiment with CPU-driven OAM DMA did not change the target output and was reverted before commit. The missing piece is likely the RDY halt/get/put DMA arbitration model rather than normal instruction polling.
-- A second OAM DMA experiment that queued `$4014` in `Bus` and let `Cpu` run halt/alignment/get/put cycles preserved other CPU interrupt tests but still left `4-irq_and_dma` failing, with the same key output. A narrow attempt to let DMA-end IRQ samples influence the next poll fixed no stable target and regressed early DMA windows; it was reverted. Conclusion: implement OAM/DMC DMA as a unified RDY/get/put-cycle arbiter, not as an OAM-only function relocation or late poll override.
+## Live Emulator MCP Findings
+- The branch already contains a live emulator MCP server in `fc-tauri/src-tauri/src/emu_mcp.rs`.
+- This server is started from the Tauri app setup and binds `/tmp/fc-tauri-emu-mcp.sock`.
+- `fc emu-mcp` is a stdio-to-socket bridge to that in-process server; it does not create a separate hidden emulator core.
+- Live MCP tools call the same `EmuState` used by the visible player and IDE preview, including ROM load, controller input, stepping, screenshots, memory reads/writes, breakpoints, event dumps, and heatmaps.
+- The backend emits `emu-mcp-updated` after state-changing tools so the Vue shell can refresh ROM/runtime/status state.
+- New frontend status wiring listens for `emu-mcp-status`, actively queries `emu_mcp_status()` after mount, and displays a compact live MCP indicator in the player toolbar.
+- `.mcp.json` now maps `fc-emu` to `target/debug/fc emu-mcp`, so the default emulator MCP name drives the visible Tauri emulator UI. The old headless `fc mcp` path remains available as `fc-emu-core`.
+- Runtime verification loaded `/Users/sunmeng/workspace/fc/roms/SuperMarioBro.nes` through `target/debug/fc emu-mcp`; Tauri store switched to `mode=player`, `view=main`, `rom=SuperMarioBro.nes`, and `liveMcp.lastReason=emu_load_rom`.
 
-## PPU Open-Bus Decay Findings
-- `ppu_open_bus/ppu_open_bus.nes` failed at subtest #3 because `Ppu::open_bus` held the last register value forever.
-- The test readme describes a PPU-local 8-bit decay register: writes refresh all bits; reads only refresh bits that are defined by the addressed register.
-- Implemented per-bit decay deadlines using the PPU dot counter, no refresh for write-only register reads, high-bit-only refresh for `$2002`, full refresh for `$2004`, and palette `$2007` reads that preserve high open-bus bits while refreshing low palette bits.
-- Also modeled OAM attribute-byte reads with bits 2-4 forced clear, which is part of the same open-bus suite.
-- `ppu_open_bus` now passes while `ppu_vbl_nmi`, `ppu_read_buffer`, `apu_test`, `instr_misc/instr_timing`, and workspace Rust tests remain green. `mmc3_test` remains at the known 5/6, with only `4-scanline_timing` failing.
+## Project Resource Flow Findings
+- `FileTreePanel.vue` now treats the file tree as a resource navigator, with manifest-backed resource chips for source/CHR/map/music and a compact active-resource readout.
+- Resource classification now prefers `project.toml` manifest membership over extension guesses, so exported music `.s` files remain music resources instead of being shown as source just because of the extension.
+- Map rows surface their CHR binding inline (`→ chr/...`) and missing bindings are visually marked. CHR rows surface how many maps currently depend on that sheet.
+- Context menu flow now supports binding a map to the current/default CHR and binding a CHR row to the current map, reusing the existing store `bindChrToMap` persistence path.
+- Runtime verification with `/tmp/fc-resource-flow-verify` showed resource chips `全部4|源码1|CHR2|地图1|音乐0`, `room.bin→ chr/alt.chr`, and `alt.chr1 地图` after rebinding.
+- Rebinding `map/room.bin` to `chr/alt.chr` updated both Pinia `mapChrBindings` and `/tmp/fc-resource-flow-verify/project.toml` `[map_chr]`.
+- `IdeView.vue` now keeps a compact always-visible save/build/preview loop indicator in the top bar. It remains visible even when Build and Preview dock panels are closed.
+- The loop indicator uses fixed-width icon+short-code chips (`已/未/待/成/跑/旧`) with full text in `title` and `aria-label`, avoiding toolbar overflow in the 1040px runtime viewport.
+- Runtime verification through the project Tauri MCP showed initial `保存:已保存 / 构建:未构建 / 预览:待构建`, post-build `构建:build/game.nes / 预览:待运行`, and post-run `预览:运行中`, while both build and preview panels were closed.
 
-## APU Reset State Findings
-- `apu_reset` initially mixed real core failures with CLI false timeouts because these ROMs request reset with `$6000=$81`; the CLI testsuite now waits six frames and calls `ControlDeck::reset()` when that status appears.
-- After reset protocol support, the real failures showed missing APU reset effects: `$4015` channel enables and frame IRQ were not cleared on soft reset, and the frame counter did not behave as an effective `$4017` write before reset-vector code runs.
-- Added `Apu::reset()` and routed `ControlDeck::reset()` through it. Reset preserves the last `$4017` mode/inhibit value, clears channel enables and frame IRQ, and advances the frame sequencer by a small reset-start offset matching the ROM's expected 9-cycle delay.
-- `apu_reset/*.nes` now passes 6/6, with `4017_timing` reporting delay 9. Existing APU, PPU, CPU timing, and mapper regression suites remain unchanged.
+## Current Implementation Slice
+- Map editor now gives the canvas wrapper the full body area and moves the tile/CHR resource panel into an overlay drawer.
+- Map context details are surfaced in a narrow context bar: current map path, bound CHR path, selection, and hover coordinate.
+- The tile resource drawer can be toggled from the toolbar, keeping map-to-CHR context visible without permanently reducing canvas layout width.
 
-## CPU Reset Semantics Findings
-- `cpu_reset/registers.nes` failed because `Cpu::reset()` reused power-on initialization: it reset A/X/Y/P/SP/cycles to startup values.
-- The reset test expects hardware soft reset semantics: A/X/Y unchanged, P only ORs the I flag, SP decrements by 3 without stack writes, and PC reloads from the reset vector.
-- Split CPU startup into `power_on()` for `ControlDeck::new/load_rom()` and `reset()` for soft reset. This keeps power-on values intact while making reset-button behavior match the ROM.
-- `cpu_reset/*.nes` now passes 2/2; APU reset and major timing suites remain green.
+## Map Editor Comfort Findings
+- `MapEditorPanel.vue` already has brush/rect/fill/picker/select tools, undo/redo, copy/paste selection, wheel zoom, and space/middle-button panning.
+- The current canvas sizing uses `effectiveCellPx = max(manual zoom, fit-to-parent cell size)`, so small maps avoid raw 8px display, but the UI does not expose clear Fit/Fill/Manual view modes.
+- The toolbar is overloaded in one horizontal row: layer, tools, CHR binding, zoom, brush size, dimensions, grid, layer-specific selectors, undo/redo/resources/save all compete for width.
+- The tile palette drawer is already an overlay, but its canvas is fixed at 16 columns x 16px tiles, so it does not adapt to drawer width like the CHR editor sheet browser does.
+- Hover feedback is a generic white single-cell outline. Attribute edits actually affect 2x2 blocks, and collision/attribute layers need stronger layer-specific feedback for confidence.
+- Map save/output path remains `store.saveMap()` -> `ide.mapWrite()` -> Rust `MapData::encode()`, so frontend view-mode changes can preserve the existing map `.bin` format.
 
-## Unified DMA Arbiter Follow-up Findings
-- The committed unified DMA arbiter kept broad regressions green (`cpu_interrupts_v2` 5/5, `apu_test` 8/8, `ppu_vbl_nmi` 10/10, `mmc3_test` 5/6 with only known `4-scanline_timing`), but DMC-specific ROMs exposed two issues:
-  - DMC sample request generation was level-like and too early for synchronization ROMs; DMC load/reload DMA needs to be a one-shot request with distinct start phases.
-  - DMC dummy/alignment cycles must repeat the held CPU read for `$2007` to see 2-3 extra reads, but controller `$4016/$4017` must not shift on every alignment retry.
-- Implemented DMC load/reload request kinds:
-  - Load DMA is scheduled from `$4015` DMC enable when the buffer is empty and starts on the appropriate get phase.
-  - Reload DMA is scheduled when the output unit consumes the sample buffer and starts on the appropriate put phase.
-- Changed CPU read/internal cycles so a DMC request that matures during `bus.tick()` can halt that same halt-able CPU cycle before the CPU read commits.
-- Added a Bus read mode for DMC alignment retries: `$2007` remains a real side-effect read, while `$4016/$4017` use controller peek so only the DMC dummy read double-clocks the controller.
-- `dmc_dma_during_read4` ROMs are not scored correctly by the CLI `$6000` testsuite path, but frame screenshots show:
-  - `dma_4016_read.nes`: PASS with expected `08 08 07 08 08`.
-  - `dma_2007_read.nes`: allowed output `33 44` and allowed CRC `159A7A8F`.
-  - `dma_2007_write.nes`: PASS.
-  - `read_write_2007.nes`: PASS.
-  - `double_2007_read.nes`: allowed output/CRC.
-- `sprdma_and_dmc_dma` now reaches its result screen instead of timing out, but still fails. Remaining table values are close to expected ranges but still off in several T+ rows, so the next precision target is DMC/OAM overlap cadence during OAM DMA, not basic DMC read side effects.
+## CHR Editor Findings
+- `fc-tauri/src/ide/ChrEditorPanel.vue` already had a responsive single-tile zoom canvas, undo/redo, palette slots, fill/picker/pencil tools, and a separate tile-sheet overview.
+- The main usability issue was template/CSS layout: the zoom editor and tile sheet were permanent grid columns, so the sheet consumed a large fraction of the dock panel even when the user needed a full drawing surface.
+- The tile sheet was fixed to 16 columns, which wastes width in large panels and becomes cramped in narrow panels.
+- The current CHR data path is local to `store.chr.pixels` and `store.saveChr()` writes the same project `.chr` format, so layout/selection changes can remain frontend-only.
 
-## MMC3 Scanline Timing Fix Findings
-- `mmc3_test/4-scanline_timing.nes` was still failing after DMA fixes because PPU sprite pattern fetches were visible to the mapper as a burst at dot 257 instead of the hardware's 257-320 sprite fetch window.
-- Splitting sprite evaluation from sprite pattern fetches lets OAM selection still happen at dot 257 while CHR reads and mapper A12 notifications occur in the eight sprite fetch slots. This fixed the `$2000=$08` half of the scanline timing test while preserving `3-A12_clocking`.
-- The `$2000=$10` half then showed the first background-driven IRQ one PPU dot late. Moving background pattern reads one dot earlier made the pre-render/background A12 edge align with the ROM's constants.
-- After the change, `mmc3_test/*.nes` passes 6/6 for the first time in this pass. APU, PPU VBL/NMI, CPU interrupt, DMC/OAM DMA overlap, PPU read-buffer/open-bus, and CPU instruction timing regressions remain green.
+## Music Editor Findings
+- `fc-tauri/src/ide/TrackerPanel.vue` already had undo/redo, keyboard note entry, tracker save/preview/export, effect editing, and a ResizeObserver-driven piano roll.
+- The main layout problem was that the instrument/effect inspector permanently occupied a right column, reducing both Pattern and piano-roll editing width.
+- The roll view already computed cell metrics from `rollArea`, so turning the inspector into an overlay lets the existing metric code scale to the full parent area.
+- Tracker data remains `store.song.data`; `saveTracker()`, `playSong()`, and `exportTracker()` keep using the same backend APIs, so this pass only changes editor layout and context display.
 
-## DMC Request Lifetime Findings
-- `read_joy3/thorough_test.nes` panics in `Dmc::supply()` with `bytes_remaining == 0`, proving the bus-side DMC DMA copy can outlive the APU-side DMC request.
-- The likely sequence is a one-byte DMC request copied into the DMA arbiter, followed by `$4015` disabling or restarting DMC before the arbiter performs the get. APU clears `dma_pending`, but the Bus still completes its cached DMC get and calls `dmc_supply`.
-- The clean fix is to treat the APU DMC request as the authority: bus-cached DMC requests must be cancelled if the APU no longer reports the same `(addr, kind)`, and the final supply path should validate the same token before mutating DMC state.
+## Creative MCP Authoring Findings
+- Before this slice, the live IDE MCP could write source files, CHR sheets, maps, map→CHR bindings, build, run, press buttons, and read memory, but it could not semantically read/write tracker `.song.json` resources.
+- Direct MCP song writes need to register the song path in `project.toml` so manifest-backed resource counts and filters stay coherent.
+- The build pipeline only assembles `manifest.music` entries ending in `.s` or `.asm`, so keeping `.song.json` in the music resource list does not make ca65 try to assemble JSON.
+- Frontend `syncFromIdeMcp()` needed a `changed.includes("music")` branch so an already-open tracker panel reloads when an agent updates the song through MCP.
+- `ide_write_file` previously wrote arbitrary text files but did not register new `src/*.s` / `.asm` files in `manifest.sources`, so agent-created source modules could be visible in the tree but excluded from builds.
+- The same applies to agent-written `music/*.s` / `.asm`: build-pipeline already assembles registered music assembly sources, but `ide_write_file` must register them for the next build to include them.
 
-## CPU Execution Space Findings
-- `cpu_exec_space/test_cpu_exec_space_apu.nes` fails at `$4020` because Bus routes `$4020..$5FFF` into `Cartridge::cpu_read`, which currently returns `0` for unimplemented expansion space. For NROM/no expansion hardware, this region should preserve CPU open bus.
-- `cpu_exec_space/test_cpu_exec_space_ppuio.nes` fails test #5 because one-byte opcodes executed from PPU I/O do not perform the real second-cycle read of the byte after the opcode. `RTS` fetched from `$2001` should also read `$2002`, which resets the PPUADDR high/low latch; current `io()` cycles tick time but do not touch the bus.
-- The clean fix is to add an explicit CPU `dummy_fetch` read cycle for implied/accumulator/stack one-byte instructions, while leaving genuine internal address/stack/branch cycles as `io()`.
+## End-To-End MCP Simple Game Findings
+- The IDE MCP can now author a small retro game project without using Tauri DOM scripting: `ide_new_project`, `ide_read/write_file`, `ide_read/write_chr`, `ide_read/write_map`, `ide_bind_map_chr`, `ide_write_song`, `ide_build`, `ide_run`, `ide_press_buttons`, and `ide_read_memory` covered the full loop.
+- Phase 9 verification created `AgentSimpleGame`, patched `src/main.s`, replaced CHR target tiles 5-8 with a star pattern, added a map collision wall with a gap, wrote `music/agent_theme.song.json`, wrote `music/agent_marker.s`, built `build/game.nes`, and loaded it into the live Tauri preview.
+- The generated ROM evidence was concrete: `build/game.nes` existed at 40976 bytes, `chr/sprites.chr` stayed 8192 bytes, `map/room.bin` stayed 2164 bytes, the CHR star pixels matched, and the map had 29 blocked collision cells.
+- `ide_run` already loaded the ROM into `EmuState`, but the Dockview Preview panel did not mount unless the UI opened it. `project.ts` now bumps `focusPreview` on MCP `changed.includes("preview")`, and `IdeView.vue` watches it to call `showPanel("preview")`.
+- Tauri UI verification after the fix showed `mode=studio`, `rom=game.nes`, `previewPanel=true`, active Dockview panel `preview`, and one visible 1024x960 canvas displayed at about 524x393 CSS pixels.
+- Live `fc emu-mcp` verification read the same visible Tauri emulator state: mapper 0 NROM, running worker/audio runtime, nonzero CPU/PPU counters, and CPU memory changing after preview input.
+- Live `emu_capture_screen` returned a 256x240 PNG with 3376 bytes, 6 unique colors, and 6968 nonblack pixels, confirming the emulator MCP frame path is not a hidden blank core.
 
-## Unofficial Immediate Opcode Findings
-- `instr_test-v3/all_instrs.nes` and `instr_test-v5/all_instrs.nes` now fail at unofficial opcode `$AB` (`ATX #n`), while both `official_only` ROMs pass.
-- Current `$AB` implementation computes `A = X & imm; X = A`, but the blargg all-instruction checksum suite names `$AB` as `ATX #n` and tests full `P/A/X/Y/S/operand` state across many values. The next fix should use the suite-backed ATX semantics rather than a loose fallback.
+## Active Resource Tracking Findings
+- `FileTreePanel.vue` previously inferred the current resource by sorting `focusEditor`, `focusChr`, `focusMap`, and `focusTracker`. Those counters are independent, so equal or stale values can make the resource summary/highlight disagree with the most recent user action.
+- The project store now owns `activeResource` and `resourceFocusSeq`. Actions that actually change creative focus call `markActiveResource()`: source open/tab switch, CHR open/create, map open/create/resize/rebind, and tracker open/create/import.
+- Rename and delete now maintain active-resource consistency: renaming the active resource updates its path/label, and deleting it clears the selection.
+- Runtime Tauri verification showed the file tree summary and active row follow this sequence exactly: `src/main.s` → `map/room.bin` → `chr/sprites.chr` → `music/active_check.song.json` → source tab reactivated.
+- Rename/delete verification showed `music/active_check.song.json` became `music/renamed_active.song.json` in both manifest and active-resource UI, then deleting it cleared the summary back to `未选中资源`.
 
-## Unofficial Opcode CRC Findings
-- Reproduced the `instr_test-v5/source/03-immediate.s` CRC path offline and matched known-good checksums for `LDA`, `LDX`, `LDY`, `DOP`, `AAC`, `ASR`, `ARR`, and `AXS`. This made the `$AB` result trustworthy rather than speculative.
-- The v3/v5 `ATX #n` checksum expects `$AB` to behave like immediate `LAX`: `A = imm`, `X = imm`, with Z/N set from the value. The previous `A = X & imm` implementation fails that suite.
-- After fixing `$AB`, `instr_test-v3/v5 all_instrs` advanced to `SYA abs,X` / `SXA abs,Y`. Reproducing `07-abs_xy` CRC offline showed that normal `STA`, `TOP`, and `LAX abs,Y` already matched, but the unstable stores need their final write address high byte derived from `(base_high + 1) & register`, not the already indexed effective high byte.
-- A shared unstable indexed store helper keeps the dummy read timing from normal absolute-indexed stores while applying the unstable high-address/value mask in one place.
+## Build-Time Autosave Findings
+- `project.build_()` previously auto-saved dirty source editor tabs only. Dirty CHR/map/song state could remain in memory while the build pipeline read stale files from disk.
+- Build now enters a save phase before invoking `ide.buildRun()`: it saves dirty source tabs, CHR, map, and tracker song resources, then starts the actual build.
+- Runtime verification edited CHR pixels, map tile/collision, and tracker song data in memory, left them dirty, then called `build_()` directly. Before build: CHR/map/song were dirty; after build: all dirty flags were false and `build/game.nes` succeeded.
+- IDE MCP readback after the build proved persistence: CHR first pixels were `[1, 2, 0, 0]`, map tile 0 was `7`, map collision 0 was `1`, song name was `Autosave Theme Built`, and the first tracker cell had note `33` volume `15`.
 
-## Sprite Overflow Findings
-- The old `sprite_overflow_tests` are screen-result ROMs, not `$6000` scorer ROMs. Screenshot checks showed `1.Basics`, `2.Details`, and `5.Emulator` already pass, while `4.Obscure` failed #2 and `3.Timing` fails #5.
-- `4.Obscure` documents the hardware overflow bug: after 8 sprites have filled secondary OAM, if the next sprite is not in range, the PPU checks subsequent sprite bytes 1/2/3/0/... as Y coordinates. The previous implementation simply checked each sprite's real Y byte and therefore missed this pathological overflow.
-- Modeling the post-full secondary OAM byte-phase scan inside `evaluate_sprites` fixes `4.Obscure` while preserving sprite hit tests, MMC3 scanline timing, CPU interrupt DMA, APU, PPU VBL/NMI, and DMC/OAM DMA regressions.
-- Remaining `sprite_overflow_tests/3.Timing` failure #5 is a separate fine timing issue: overflow is set too late for the first scanline. Fixing that likely needs dot-level sprite evaluation timing, not another final-state prediction tweak.
-- `3.Timing` passed after scheduling `$2002.5` during the visible scanline's sprite-evaluation window instead of waiting until dot 257. The schedule uses the hardware-shaped scan cost: misses advance by 2 PPU dots, copied in-range sprites advance by 8 dots, and the 9th in-range candidate asserts overflow during its evaluation.
-- This preserves the existing dot-257 sprite selection/pattern fetch model for rendering and MMC3 A12 while exposing the overflow flag early enough for CPU reads that poll mid-scanline.
+## Build Panel Preview Findings
+- Top-level IDE Run already opens the Preview panel directly, and MCP `ide_run` uses `focusPreview`; BuildPanel health run loaded the ROM but did not ask Dockview to mount Preview.
+- The project store now exposes `requestPreviewFocus()` and both MCP preview sync and BuildPanel health run use that same signal.
+- Runtime verification closed Preview, opened Build health, clicked the `运行` action, and observed Preview mount as the active Dockview panel with one visible canvas.
+- The same run updated the loop chips to `已 / 成 / 跑`, loaded `game.nes`, and live `fc emu-mcp` reported mapper 0, running worker state, and advancing PPU frame count.
 
-## PAL APU Frame Sequencer Findings
-- `pal_apu_tests/04.clock_jitter.nes` fails visually with `APU CLOCK JITTER FAILED: #2`, meaning the PAL frame IRQ flag is visible too soon.
-- `pal_apu_tests/readme.txt` documents PAL mode 0 delays as 8315/8314/8312/8314/8314 and says `07.irq_flag_timing` expects the frame IRQ flag three reads in a row at 33255 CPU clocks after `$4017=$00`.
-- The current APU frame sequencer is NTSC-only: mode 0 events are hardcoded around 7457/14913/22371/29828-29830 and mode 1 around 7457/14913/22371/37281/44739/52195.
-- Existing NTSC test ROMs establish the internal coordinate offset: the external read at 29831 corresponds to the current internal event at 29829. Applying the same coordinate system to PAL makes the second half-frame/IRQ event at internal 33253, externally visible at 33255.
-- DMC and noise still use NTSC rate tables; that is a separate PAL accuracy target. The current PAL failure is specifically frame IRQ timing, so this pass should not mix in DMC/noise table changes.
-- After adding PAL frame timing, `pal_apu_tests/10.len_halt_timing` and `11.len_reload_timing` exposed a second issue: APU length halt/reload writes that land on the half-frame boundary need write-vs-length-clock arbitration. Reads should see the length clock at the existing boundary, but same-boundary writes to halt/reload are applied after the length clock; length reload during the clock is ignored when the counter is non-zero.
-- Implemented the boundary behavior inside `Apu` rather than in CPU/Bus: channel writes split immediate non-length side effects from queued length-side effects, and the queue is drained after frame sequencer/reset-triggered half clocks in the same APU tick.
+## Collision-Free Resource Default Findings
+- `FileTreePanel.vue` previously reused fixed new-resource defaults such as `chr/sprites.chr`, `map/level1.bin`, and `music/theme.song.json` even when those resources already existed in the project tree.
+- New-resource prompts now query the live file tree before opening and suggest the next available path for source, CHR, map, and song resources.
+- The path incrementer preserves compound suffixes by splitting at the first dot, so `music/theme.song.json` becomes `music/theme2.song.json`.
+- Trailing numeric stems are incremented naturally, so `map/level1.bin` becomes `map/level2.bin` instead of `map/level12.bin`; non-numbered stems still append `2`, e.g. `chr/sprites.chr` -> `chr/sprites2.chr`.
+- Runtime verification used `target/debug/fc ide-mcp` to create/open `/tmp/fc-default-names-NNyfNv`, then write existing `src/new_module.s`, `chr/sprites2.chr`, `map/level1.bin`, and `music/theme.song.json`.
+- After reloading the Tauri webview to pick up the updated component code, the live FileTreePanel component reported collision-free defaults: `src/new_module2.s`, `chr/sprites3.chr`, `map/level2.bin`, and `music/theme2.song.json`.
 
-## PAL 2A07 DMC/Noise Findings
-- After PAL frame timing, `fc-core/src/apu.rs` still used NTSC-only DMC rate and noise period tables.
-- Public NESdev APU documentation lists separate PAL 2A07 DMC rate and noise period tables. Implementing these is a region/hardware difference, not a per-ROM compatibility tweak.
-- PAL 2A07 also fixes the NTSC DMC extra-read defect that corrupts controller and some PPU-register reads during DMC DMA. The clean architecture point is `Region`, so `Bus` now asks the region whether DMC conflict reads have external side effects.
-- `apu_test/rom_singles/8-dmc_rates.nes` is an NTSC rate ROM. It still passes under NTSC and fails under PAL with "Rate 0's period is too short", which confirms PAL rate selection rather than indicating a regression.
-- `read_joy3/thorough_test.nes` must be run without `--autostart`; holding Start/Right intentionally makes its "empty controller reads as 0" check fail. With no input, it passes.
+## Primary Source Load Findings
+- New/open project flows previously reset all editor tabs and left the source panel empty, even for demo/template projects whose manifest already declares `src/main.s`.
+- The project store now opens the first manifest source after UI `newProject`, UI `openProject`, and IDE MCP `project-new` / `project-open` sync.
+- Runtime verification created `/tmp/fc-primary-source-9XAzdF` through `target/debug/fc ide-mcp`, switched the real Tauri app to studio mode, and found `tabs=[src/main.s]`, `activePath=src/main.s`, active resource `源码 src/main.s`, the CodeMirror editor mounted with source text, and the empty editor hint hidden.
+- Reopening the same project through IDE MCP after closing tabs again restored `src/main.s` as the active editor tab, confirming both project-new and project-open sync paths behave the same.
 
-## PAL/Dendy CPU-to-PPU Ratio Findings
-- `Bus::tick()` still advanced the PPU by exactly 3 dots for every CPU cycle, even in PAL/Dendy regions.
-- The project spec requires PAL 5:16 CPU/PPU timing. With fixed 3:1 stepping, a PAL 312-line frame consumed about 29,761 CPU cycles instead of about 27,901, making PAL video timing too slow relative to CPU/APU.
-- Implemented a region-selected rational PPU dot accumulator in `Bus::tick`: NTSC remains exactly 3/1, while PAL/Dendy use 16/5 PPU dots per CPU cycle. APU still clocks once per CPU cycle, and DMA arbitration remains CPU-cycle based.
-- PAL APU screen-result ROMs still pass after the ratio correction, and NTSC timing suites remain unchanged.
+## Build Diagnostic Focus Findings
+- The build pipeline already parses ca65 diagnostics with `file` and `line`, and the store already had `gotoSource()`, but a failed manual build did not automatically move the editor to the first actionable diagnostic.
+- `EditorPanel.vue` only reloaded CodeMirror when tab count changed, so active-tab content replaced externally by store/MCP paths could leave the visible editor stale.
+- The editor now watches the active tab content and reloads only when the CodeMirror document differs, keeping external source writes visible without reloading on every local keystroke.
+- Manual build failure now calls `focusFirstDiagnostic()`, opening the diagnostic source and scrolling/selecting the reported line.
+- Runtime verification inserted `BROKEN_OPCODE_FOR_DIAG` into `src/main.s`, built through the real Tauri store, and observed one ca65 diagnostic at `src/main.s:2`, `goto={path:"src/main.s", line:2}`, the active CodeMirror line equal to the broken source line, and saved tab content matching disk after build autosave.
+- BuildPanel verification started from the Health tab, ran its build action, and confirmed the panel switched to Diagnostics with the error row visible while the editor stayed focused on the failing source line.
 
-## MMC5 Mapper Findings
-- Local MMC5 ROMs are:
-  - `nes-test-roms/mmc5test/mmc5test.nes`: mapper 5, 16KB PRG, 8KB CHR.
-  - `nes-test-roms/mmc5test_v2/mmc5test.nes`: mapper 5, 32KB PRG, 16KB CHR.
-  - `nes-test-roms/exram/mmc5exram.nes`: mapper 5, 16KB PRG, 8KB CHR.
-- Current failure is at ROM load: `unsupported mapper 5`.
-- Existing mapper trait only covers `$8000..$FFFF` register writes and CHR/PRG index translation. MMC5 needs mapper-visible `$5000..$5FFF` reads/writes for ExRAM, multiplication, IRQ, and config registers.
-- `exram/mmc5exram.asm` uses `$5100`, `$5101`, `$5104`, `$5105`, `$5127`, `$512B`, `$5200`, `$5204`, and executable ExRAM at `$5C00`.
-- `mmc5test_v2/mmc5test.asm` uses `$5101`, `$5104`, `$5105`, `$5106`, `$5107`, `$5120..$512B`, `$5200`, `$5204`, and ExRAM at `$5C00`.
-- The first clean implementation target is a practical MMC5 subset: PRG/CHR banking, ExRAM CPU access and extended attributes, fill-mode nametable reads, multiplier, and basic scanline IRQ. MMC5 audio and split-screen should stay out of the first patch unless a local test ROM requires them.
-- NESdev MMC5 notes used for this pass:
-  - `$5104` mode `%10` makes ExRAM CPU read/write RAM and disables ExRAM-as-nametable reads, matching `mmc5exram`'s executable ExRAM setup.
-  - `$5105=$44` is vertical CIRAM mapping; `mmc5exram` therefore expects text from ordinary CIRAM nametables, not ExRAM nametable substitution.
-  - `$5128..$512B` background CHR registers still obey `$5101` CHR bank size. In the first-pass code, the background path ignored `$5101` and always treated them as 1KB registers, which mis-mapped pattern-table `$1000` in CHR mode 0.
+## Preview Input Focus Findings
+- PreviewPanel already rendered a responsive Pixi canvas and handled keyboard input when focused, but top-level IDE Run only opened the panel; the user still had to click the preview stage before controller keys worked.
+- Top-level Run now reuses `store.requestPreviewFocus()`, matching BuildPanel run and MCP preview sync.
+- PreviewPanel watches the project preview-focus signal, ROM path changes, and stage mounting; it retries focus after Dockview layout settles so the stage becomes active after a run opens the panel.
+- Runtime verification created `/tmp/fc-preview-focus3-XA5W0W`, ran the demo through the real Tauri IdeView `doRun()`, and observed Preview as the active Dockview panel, `.stage.focused`, hint text `试玩中`, and a visible 438 x 328.5 canvas.
+- Keyboard verification dispatched `ArrowRight` to the focused stage and saw `held=["ArrowRight"]` plus `lastSentInput=128`, then keyup cleared `held` and returned `lastSentInput=0`.
 
-## Enhanced Sprite Display Planning Findings
-- NES hardware limitation: the PPU evaluates sprites into secondary OAM and can render only 8 sprites on a scanline. When more are present, later sprites are dropped for that scanline and `$2002.5` sprite overflow behavior is exposed to software.
-- Many games intentionally rotate OAM priority across frames so different sprites get dropped each frame; on real hardware this produces the familiar "sprite flicker" that preserves gameplay visibility under the 8-sprite limit.
-- Emulator precedent: FCEUX documents an option to allow more than 8 sprites per scanline, explicitly calling out that it reduces flicker but differs from real NES behavior. Mesen-style modern emulator UIs commonly expose the same kind of "remove/disable sprite limit" video enhancement.
-- Current project structure:
-  - `fc-core/src/ppu.rs` stores current scanline sprites as `[SpriteUnit; 8]` and `sprite_fetch_addr: [u16; 8]`.
-  - `evaluate_sprites()` stops accepting visible sprites after 8 and still models overflow behavior.
-  - `fetch_sprite_pattern()` performs exactly 8 fetch slots, preserving MMC3 A12 timing and PPU behavior.
-  - `render_pixel()` only scans `0..sprite_count`, so visual flicker comes directly from the hardware-limited sprite list.
-- Architecture implication: default PPU behavior must remain hardware-accurate for test ROMs, mapper IRQ timing, sprite overflow tests, and games that rely on flicker. Flicker reduction should be a video/render enhancement toggle that changes only final compositing, not CPU-visible status, sprite overflow, DMA/OAM state, or PPU bus fetch timing.
+## IDE MCP Visible Resource Focus Findings
+- Before this slice, IDE MCP could mutate project files/resources and run builds, but it had no semantic tool for asking the visible IDE to open the source/CHR/map/music editor that corresponds to an agent-authored resource.
+- `ide_open_resource` now emits an IPC refresh event with `reason=resource-open`, `changed=["project","resource"]`, and the target resource path/kind. The Rust MCP validates that the path is project-relative and exists before notifying the UI.
+- The project store handles `resource-open` through existing editor actions (`openFile`, `openChr`, `openMap`, `openTracker`), so resource focus follows the same Dockview and active-resource state path as user file-tree clicks.
+- `AppShell.vue` now switches the visible Tauri shell to studio mode for IDE MCP project/resource/source/CHR/map/music updates. This keeps the in-process MCP as the programming-agent interface and avoids relying on the `fc-tauri` DOM bridge for normal creative operations.
+- Runtime verification from launcher used only `target/debug/fc ide-mcp` plus the live Tauri bridge for inspection: `ide_new_project`, `ide_write_song`, and rapid `ide_open_resource` calls for source/CHR/map/music switched the shell to studio, mounted editor/tree/CHR/map/tracker panels, and left the final active panel on tracker with active resource `music/open_check.song.json`.
+- The first rapid-open verification exposed an async race: map loading completed after the music event and stole active focus. Queueing `syncFromIdeMcp()` fixed it; the repeat run ended on the requested music resource.
+- A follow-up MCP `ide_build`/`ide_run` succeeded, opened Preview, focused the preview stage, and live `fc emu-mcp` reported the same running mapper 0 ROM with advancing CPU/PPU state.
 
-## Chinese RPG Mapper Compatibility Findings
-- `10302_吞食天地2.nes` has SHA1 `5887a09e920685944fcb21394497e02d8d4e228f`, iNES mapper 4, 640KB PRG-ROM, CHR-RAM, horizontal mirroring, and battery-backed RAM. It currently renders a gray screen while the CPU continues executing.
-- `10306_第二次超级机器人大战.nes` has SHA1 `0f00406be0f5b81b2730802692759c2671cb140a`, iNES mapper 74, 256KB PRG-ROM, 256KB CHR-ROM, vertical mirroring, and battery-backed RAM. The title/menu renders, but the reported dialogue text issue still needs an input-driven in-game reproduction.
-- Mapper 4/74 initial mirroring previously hardcoded horizontal in `Mmc3::new`; passing the cartridge header mirroring into the MMC3 constructor is a clean default-state correction. Runtime `$A000` mirroring writes still override it.
-- `10302` writes executable helper code/data into `$5000-$54FF` and jumps/calls there. Adding mapper-owned 4KB low WRAM at `$5000-$5FFF` for large CHR-RAM MMC3 clone boards makes the ROM reach its title screen instead of gray-screening.
-- FCEUX/libretro mapper 74 (`TW MMC3+VRAM Rev. A`) routes only CHR bank values exactly `8` or `9` to a 2KB CHR-RAM page; all other values use CHR-ROM. TQROM/mapper119 is the separate MMC3 variant where bank bit 6 selects CHR-ROM vs 8KB CHR-RAM.
-- After correcting mapper74 writes to follow the same `8/9` rule, `10306` still reaches the title screen, and a scripted 7200-frame run reaches the map/status scene. CHR-RAM debug output contains uploaded digits/letters and the HP text renders, but map background remains a dense repeated square-tile pattern. That points beyond simple "no CHR-RAM uploads" and toward wrong board identification, bank selection, or nametable/decompression state.
-- `10306` standard ROM CRC32 is `D0F6CBCF` and SHA1 is `0f00406be0f5b81b2730802692759c2671cb140a`. It does not match the FCEUX/libretro known mapper74 CRC corrections for `Di 4 Ci - Ji Qi Ren Dai Zhan` (`054BD3E9`) or `Ji Jia Zhan Shi` (`496AC8F7`).
-- FCEUX/libretro and Nestopia identify `Dai-2-Ji - Super Robot Taisen (Chinese)` as TW MMC3+VRAM Rev. C / mapper 194. Mapper 194 is the same MMC3 family but routes CHR bank values `0/1` to a 2KB CHR-RAM window. Adding mapper 194 support and a CRC32 mapper correction for this dump changes `fc info` to mapper 194 and restores the dynamic Chinese status/window text in debug nametable output.
-- MMC3's power/reset bank registers should start as `[0,2,4,5,6,7,0,1]` (matching mature emulator implementations), not all zero. Updating this default also made the local `mmc3_test` suite pass 6/6, including the previously failing `4-scanline_timing`.
-- Remaining 10306 observation after mapper194: the actual framebuffer at the scripted 7200-frame map scene still shows repeated background square tiles. A temporary render-start trace showed realtime rendering starts with `t=0000`, so the visible screen is drawing nametable 0's repeated `C4/C5/...` tile region, while the debug nametable view shows readable status/window text in another nametable region. This is now a separate scroll/scene/IRQ-timing investigation rather than a simple CHR-RAM upload failure.
+## IDE MCP Build Feedback Findings
+- Before this slice, `ide_build` emitted build results and the frontend stored them, but it did not explicitly request the visible Build panel or reuse the manual-build diagnostic focus path.
+- The project store now applies external MCP build results through one action: it updates `build`, refreshes `sourceMap` on success, refreshes the tree, sets a clear MCP build status, requests Build panel focus, and focuses the first source diagnostic when a build fails.
+- The Build panel now watches a store-level focus signal and opens the requested tab. Failed MCP builds select Problems; successful MCP builds select Health.
+- Runtime verification created `/tmp/fc-mcp-build-diag-*`, wrote an invalid `src/main.s`, and invoked `ide_build` through `target/debug/fc ide-mcp`. The real Tauri IDE showed Build at the bottom with the `src/main.s:2` diagnostic row visible while the editor was focused on `BROKEN_OPCODE_FOR_MCP_BUILD`.
+- A follow-up MCP source fix and `ide_build` succeeded; the visible Build panel switched to Health, `build/game.nes` was recorded, and the source map contained 5 line entries.
 
-## Mapper Gap Closure Findings
-- Current mapper support before this pass was 98 mapper numbers. Comparing against FCEUX, FCEUmm, Mesen2, and Nestopia produced a union of 493 mapper numbers, with 395 missing before the first batch.
-- FCEUmm dominates the long tail with NES 2.0 and unlicensed board variants, so raw union count is not a good implementation order by itself.
-- Mapper 72, 79, 80, and 82 were present in FCEUX, FCEUmm, and Nestopia and had small, localized latch/Taito register behavior, making them a good first batch.
-- Mapper 72 is a Jaleco PRG16 fixed-high + CHR8 latch. FCEUmm accepts `$6000-$FFFF` writes, while FCEUX wires high writes; the implementation supports both low and high paths.
-- Mapper 79 is a NINA-style PRG32/CHR8 latch. FCEUmm gates expansion writes by `addr & 0x100`; FCEUX also wires high writes, so the implementation supports both.
-- Mapper 80 and 82 use Taito low registers around `$7EF0`. Mapper 80 owns a gated 256-byte WRAM window at `$7F00-$7FFF`; mapper 82 swaps pattern halves when `ctrl&2` is set.
+## Map/CHR Binding Navigation Findings
+- Before this slice, the map editor surfaced the bound CHR path and automatically loaded it for preview, but the user still had to use the file tree to jump into the CHR editor.
+- The project store now exposes `mapsUsingActiveChr`, `openBoundChrForActiveMap()`, and `openMapUsingActiveChr()`, keeping binding navigation on the same open/focus path as normal resource clicks.
+- The Map editor context bar now includes an "打开 CHR" action next to the binding chip. It is disabled when the active map has no CHR binding.
+- The CHR editor context bar now shows the first map using the active CHR, plus a count when there are multiple dependent maps, and includes an "打开地图" action.
+- Runtime verification with `/tmp/fc-map-chr-nav-*` showed the real Tauri Map editor context bar displaying `chr/sprites.chr` and an enabled "打开 CHR" button. Calling the store action opened the CHR panel with `mapsUsingActiveChr=["map/room.bin"]`; calling the reverse action returned to the Map panel with the same binding intact.
 
-## Mapper Mechanical Pass Findings 2026-06-22
-- Mechanical mapper rollout is feasible for pure PRG/CHR/mirroring latch boards: mapper 75 is a direct VRC1 register translation and only needs existing `MapperOps` methods.
-- Mapper 206 is a small Namco108 subset: FCEUX/FCEUmm mask high writes with `addr & 0x8001`, use command/data registers only, initialize PRG regs 6/7 to 0/1, mask CHR regs 0/1 as 2KB banks and regs 2-5 as 1KB banks, and fix the last two PRG 8KB pages. Existing `MapperOps` is sufficient.
-- Mapper 207 reuses the Taito X1-005 register window but enables alternate nametable mirroring: `7EF0` bit7 controls nametables 0/1 and `7EF1` bit7 controls nametables 2/3; ordinary mirroring writes are ignored. Existing CIRAM nametable hooks are sufficient.
-- Mapper support count after adding 206/207 is 121 against the four-reference union, leaving 372 mapper numbers missing by the current broad-counting checklist.
-- Mapper 192 and 195 are direct `MMC3_ChrRam` parameter variants in Mesen2 and match FCEUX/FCEUmm CHR-RAM window behavior well enough for a first pass: 192 maps CHR banks 8..B to 4KB CHR-RAM, and 195 maps banks 0..3 to 4KB CHR-RAM. The newer FCEUmm mapper 195 PPU-write intercept remains a later precision item.
-- Mapper 232 / BF9096 fits a small Codemasters-style PRG16 block/page mapper; mapper 228 / Action Enterprises fits existing expansion RAM and reset hooks; mapper 255 fits the existing address-latch family.
-- Team-mode research split remaining mapper work into: low-risk latch/discrete candidates (`122,128,133,144,146,148,149,150,154,155,156,166,167,168,108`), MMC3/internal-helper candidates (`49,114,115,121`), and architecture-first targets (`68` nametable-to-CHR, `157/159` EEPROM/Datach, `99` VS system, `111` flash, `164` PEC peripheral behavior).
-- Mapper 68 / Sunsoft-4 can be implemented cleanly by adding `MapperOps::nametable_chr_index()`: the mapper returns a CHR byte index for `$2000-$2FFF` when control bit 4 selects CHR-backed nametables, while `Cartridge` resolves that index through CHR-ROM or CHR-RAM. This keeps mapper logic storage-free and avoids widening the PPU hot path for ordinary mappers by caching `has_nametable_chr_mapping`.
-- Mapper 68 first pass covers PRG16, four 2KB CHR banks, mirroring mode, and nametable CHR page selection. Mesen2/FCEUX also model external PRG/licensing timer details; those remain a precision follow-up because they are orthogonal to the nametable-to-CHR architecture hook.
-- Team-mode low-risk ordering from Engineer A: start with `149,122,133`, then `146,148,144`, then `154,155,108`, then `166/167`, `156`, and leave `128/150/168` for later due to reference conflicts, DIP/open-bus reads, or IRQ/CHR-RAM details.
-- Team-mode MMC3 ordering from Engineer B: first refactor standard MMC3 write helpers, then implement mapper `49`, then `115`, `114`, and finally `121`. The current `Mmc3OuterBank` layer is not enough for write remap/protection/slot override variants.
-- Team-mode architecture-risk ordering from Engineer C: `185,187,189,191,193,196,208,245,254` are A-grade mechanical/mapper-variant targets; `159,197,198,199,210` need small mapper/variant work; `99,111,157,188,209,211,164` should wait for VS/input, flash/EEPROM/barcode/microphone, or generic PPU read-side-effect architecture.
-- Mapper 76 is an MMC3-derived board with custom CHR wrapping. It can be implemented as a small standalone MMC3-like mapper, but repeated MMC3 derivatives would benefit from a configurable MMC3 wrapper/variant interface.
-- Mapper 91 differs by reference: FCEUX/FCEUmm model an HBlank IRQ hook, while Mesen2 uses MMC3 IRQ machinery through low-register writes. Exact support should avoid a CPU-cycle approximation unless tests prove it is acceptable.
-- Mapper 116 multiplexes VRC2/MMC3/MMC1 modes and needs A12 IRQ behavior; it is possible with current hooks but large enough to implement after simpler mapper batches.
-- Mapper 253 uses VRC-like CHR nibble registers, a 2KB CHR-RAM window selected by CHR bank values, and CPU-clocked scanline-ish IRQ. It fits current hooks better than mapper 91 but is not a pure latch mapper.
-- Mapper 76 is now implemented as an MMC3 variant via a dedicated `Mmc3ChrLayout::Mapper76` instead of duplicating MMC3 PRG/IRQ logic. This is the preferred pattern for later MMC3-derived mappers such as 37/44/45/47/52/114 where possible.
-- Mapper 91 required a new scanline-synchronous architecture hook: `MapperOps::hblank_clock()` plus a cached `Cartridge::mapper_clocks_hblank` gate. The bus calls it at visible scanline dot 260, matching FCEUX/FCEUmm `GameHBIRQHook` style without adding per-dot enum dispatch for ordinary mappers.
-- Mapper 91 fixed PRG banks are `0x0E/0x0F` plus optional FCEUmm submapper-1 outer bank, not “last two physical banks” for all PRG sizes. The unit test now locks this to avoid conflating FCEUX's `~1/~0` notation with the newer submapper path.
-- The mapper gap checklist now counts 105 supported mapper numbers after adding 75, 76, and 91; remaining <=255 priority shifts to 116/253 and then mapper 95/207 or the VRC/MMC3-derived batch.
-- Team-mode mapper pass added mapper 21/22/23/37/44/47/52/253 and refactored mapper 25 through the same VRC2/VRC4 configuration table. The supported mapper count is now 113.
-- VRC2/VRC4 boards are best modeled as one configurable implementation: submapper-specific address line masks select the chip register bits, mapper 22 applies a CHR bank right shift, VRC2 variants disable PRG swap/IRQ, and ambiguous submapper 0 follows the reference OR-address-line heuristic.
-- MMC3-derived mapper 37/44/47/52 fit a reusable `Mmc3OuterBank` layer over the existing MMC3 core. This avoids duplicating A12 IRQ behavior while still allowing board-specific low-register latches and outer PRG/CHR wrapping.
-- Mapper 114 should not be folded into this first `Mmc3OuterBank` batch mechanically: references show remapped high-register protocol and IRQ register addresses, so it deserves a separate implementation pass.
-- Mapper 253 fits current `MapperOps` hooks: regular high-register writes, CPU-clock IRQ, and mapper-owned CHR-RAM read/write overrides are enough for the FCEUX/Mesen2 behavior. Remaining precision deltas are FCEUX's 341-PPU-dot IRQ accumulator and FCEUmm's later 252/253 VRC4-style PPU write-intercept CHR-RAM mask behavior.
-- Mapper 116 is best implemented as an independent SL12 composite mapper instead of reusing `Mmc1`/`Mmc3`/`Vrc4` instances directly. It must retain VRC2, MMC3, and MMC1 register sets simultaneously and switch behavior with the low mode register.
-- Mapper 116 can use existing `MapperOps` hooks: low/expansion writes for `$4100` mode selection, high writes for the active ASIC, and cached `watches_ppu_bus=true` so A12 IRQs work after runtime switching into MMC3 mode. No new mapper trait method was needed for the first-pass FCEUX/Mesen2/Nestopia behavior.
-- FCEUmm has newer mapper 116 submapper behavior: submapper 2 shifts MMC1 PRG bank selection and submapper 3 rotates games on reset with PRG/CHR AND/OR masks. This pass records those as future precision work rather than mixing them into the baseline SL12 implementation.
-- Mapper 114 should be a future MMC3 protocol variant, not just another `Mmc3OuterBank`: references remap high-register writes and IRQ register addresses, and require region-aware forced PRG mode.
-- Mapper 45 is the next best mechanical target after 116: it mostly fits a `Mmc3OuterBank::Mapper45` style extension. Mapper 64 should be separate RAMBO-1 logic using existing CPU/A12 hooks. Mapper 68 should wait for a nametable-to-CHR read path because Sunsoft-4 maps CHR into nametable space.
-- Mapper 45 fits the existing `Mmc3OuterBank` layer cleanly: FCEUX, FCEUmm, Mesen2, and Nestopia all model it as normal MMC3 behavior plus four serially written low-registers that mask/OR PRG and CHR bank numbers. The first pass intentionally omits the optional FCEUX/FCEUmm open-bus read side effect until a concrete ROM requires it.
-- Mapper 64 / Tengen RAMBO-1 has MMC3-like PRG/CHR banking but a different register model: register `0xF` controls the third switchable PRG page, bit 5 selects 1KB CHR mode using extra regs 8/9, bit 6 swaps PRG order, bit 7 swaps CHR halves, and `$C001.0` selects CPU-cycle IRQ vs PPU A12 IRQ. Current `MapperOps` is sufficient if the mapper advertises both `clocks_cpu` and `watches_ppu_bus` unconditionally and ignores the inactive source internally.
-- Mapper 64 IRQ precision should follow Mesen2/Nestopia/FCEUmm's modern trigger-on-reach-zero model with IRQ assertion delay, not old FCEUX underflow-only behavior. CPU mode clocks every four CPU cycles; PPU mode clocks on filtered A12 rises.
-- Mapper 68 / Sunsoft-4 should remain deferred until the nametable path can resolve CHR-backed nametable fetches in `Cartridge`; the existing `MapperOps::nametable_read` hook only sees CIRAM and cannot access CHR ROM/RAM backing memory.
-- Next low-risk mapper order after 64 is `119`, then `95` / `118`: these reuse existing MMC3/CHR-RAM or nametable hook machinery. `114/115/121` should wait for a stronger internal MMC3 variant/write-remap layer.
-- Mapper 119 / TQROM fits a generalized MMC3 CHR-RAM window: bank numbers `$40..$7F` select an 8KB mapper-owned CHR-RAM region, while other bank numbers continue to select CHR-ROM. The same internal `Mmc3ChrRamWindow` shape can later cover Mesen2's mapper 191/192/195 variants.
-- Mapper 95 / Namco 108 Rev. B is best modeled separately from mapper 88: PRG banking is Namco108/MMC3-like with fixed last two 8KB PRG pages, CHR registers 0/1 are 2KB banks and 2..5 are 1KB banks, and CHR register bit5 selects CIRAM page 0/1 for nametable pairs. FCEUX/FCEUmm implement this through a PPU hook/global mirror cache; Mesen2's `Namco108_95` maps it as per-nametable pages, which fits this project's existing `MapperOps::nametable_*` hooks.
-- Mapper 118 / TxSROM/TLSROM/TKSROM can reuse the MMC3 core: PRG banking, CHR banking, and A12 IRQ remain normal MMC3, but CHR bank bit7 is masked out of the CHR-ROM page and stored as per-nametable CIRAM A10. Ordinary `$A000` mirroring writes must be ignored for this variant.
-- Low-risk latch batch `122/133/149` is a good team-mode mechanical template: mapper 122 is fixed PRG32 plus two A0-selected 4KB CHR latches; mapper 133 / Sachen SA72008 uses one latch value for PRG32 bit2 and CHR8 bits0-1 with Mesen2's low-write gate; mapper 149 / Sachen SA0036 is fixed PRG32 plus CHR8 bit7.
-- After `122/133/149`, the next low-risk mechanical candidates remain `146/148/144`, followed by `154/155/108`; MMC3 protocol variants `49/115/114/121` should still wait for MMC3 write-helper refactoring so later variants do not duplicate timing-sensitive IRQ/bank logic.
-- Low-risk batch `144/146/148` exposed two useful architecture details: mapper 144 needs a per-mapper bus-conflict transform instead of plain AND, and `$4100-$5FFF` writes in this project flow through `write_expansion()` rather than `write_low_register()`.
+## IDE MCP Project State Radar Findings
+- `ide_get_state` already existed, but it only returned raw `root`, `manifest`, `tree`, and socket data. A programming agent still had to infer resource classes, map↔CHR relationships, missing files, build freshness, and diagnostics itself or ask the Tauri DOM bridge.
+- `BuildState` previously held only the cancel flag and build mutex, so the backend had no authoritative "last build result" for `ide_get_state` to report.
+- `BuildState` now stores the latest `BuildResult` from direct Tauri builds, file-watch rebuilds, and IDE MCP builds. This keeps build summary state consistent across human and agent entry points.
+- `ide_get_state` now adds a semantic `resources` section with counts, per-resource existence, map `bound_chr`, CHR `used_by_maps`, missing resources, unbound maps, and orphan CHR sheets.
+- `ide_get_state` now adds a `build` section with last build success, diagnostics, log tail, step/source-map counts, output bytes, and `output_status`.
+- `output_status` distinguishes `current`, `existing_unverified`, `stale_after_failed_build`, and missing cases. This matters because a failed build can leave an older `build/game.nes` on disk; agents should not treat that as a current artifact.
+- Runtime verification used real `npm --prefix fc-tauri run tauri dev` plus `target/debug/fc ide-mcp`. A clean demo project returned 3 resources, `map/room.bin -> chr/sprites.chr`, `output_status=current`, 40976 output bytes, and 444 source-map rows after build.
+- Runtime verification also deliberately wrote `BROKEN_OPCODE_FOR_STATE` into `src/main.s`. The failed build left the old ROM on disk but `ide_get_state` returned `last.success=false`, one `src/main.s:1` diagnostic, and `output_status=stale_after_failed_build`.
+- Real Tauri store inspection through the project MCP showed the same failed build was visible in the UI state: studio mode, active `src/main.s`, Build panel requested diagnostics, and status `MCP 构建失败（1 错误）`.
 
-## Mapper Long-tail Pass Findings 2026-06-26
-- Reference scan for the next `>255` candidates showed `268` (Coolboy) and `269` (Games Xplosion) are MMC3-family outer-register boards with PRG/CHR wrapping, optional CHR-RAM/protection, and in mapper 269's case CHR data synthesized from unscrambled PRG bytes. They should wait for a stronger MMC3 wrapper/alternate CHR backing layer rather than becoming standalone clones.
-- Mapper `270` is implemented in FCEUmm's `onebus.c` as a OneBus-derived board with CPU/PPU/MMC3 mangling and CHR-RAM overlay. It is an architecture target, not a clean latch/IRQ mapper.
-- Mapper `272` is a bootleg VRC-style board with two PRG8 registers, eight nibble-paired CHR1 registers, PAL-chip mirroring override, and an IRQ that clocks on PPU PA13 falling edges until 84 clocks.
-- Mapper `330` is a Contra/Gryzor bootleg board with three PRG8 registers, eight CHR1 registers, four per-nametable CIRAM page registers, 8KB WRAM, and a CPU-cycle IRQ counter that asserts when its 15-bit counter crosses `0x8000`.
-- Existing mapper hooks are sufficient for a first-pass `272/330` batch: `notify_a12` can observe mapper 272's PA13 edges, `cpu_clock` covers mapper 330's IRQ accumulator, and `nametable_*` hooks cover mapper 330 per-page CIRAM routing without widening `MapperOps`.
-- Mapper `297` is a composite MMC1/Mapper70 board in FCEUmm `mmc1.c:499-557`, not a separate ASIC. It fits the existing MMC1 module if the serial write path is factored into a helper and high-register writes dispatch to either MMC1 or Mapper70 latch based on mode bit0.
-- Mapper `297` uses `$4120` as the mode register. Mode bit0 selects MMC1 serial behavior; mode bit0 clear selects Mapper70-style PRG16/CHR8 latch with vertical mirroring. FCEUmm power-on runs Mapper70 `Sync()` then `GenMMC1Power()`, so the effective initial mapping is MMC1 reset until a Mapper70 mode/latch write re-syncs that branch.
+## Map Selected Tile To CHR Focus Findings
+- Before this slice, the Map editor's "打开 CHR" action opened the bound CHR sheet but the CHR editor always reset to tile 0. This broke the natural workflow of painting a map tile and immediately editing that tile's pixels.
+- The project store now has a `chrTileFocus` signal containing `path`, `tile`, and `seq`. It is separate from `focusChr`, so Dockview can open the CHR panel and the CHR editor can still consume a pending tile request after mounting.
+- `openChr(path, focusTile)` clamps tile requests to the sheet's valid range, updates active-resource state, and records the requested tile focus.
+- `MapEditorPanel.vue` now passes its current `selTile` to `openBoundChrForActiveMap(selTile)`.
+- Initial runtime verification found a mount-order race: the store signal reached `tile=7`, but a newly mounted CHR editor displayed tile 0. `ChrEditorPanel.vue` now applies pending tile focus on signal changes, CHR path changes, and component mount.
+- Runtime verification with a real Tauri demo project showed Map selected tile 11 opened `chr/sprites.chr` with the CHR editor context bar reading `图块 11 / 511`.
+- Runtime verification also sent tile 9999 and confirmed it clamps to `图块 511 / 511`, avoiding out-of-range editor state.
 
-## Mapper 265/277/280/283 Research Findings
-- Mapper 265 / BMC-T-262 is a pure high-register latch board in FCEUmm `libretro-fceumm/src/boards/265.c:27-52`, with address-derived outer PRG bits, data low 3-bit bank, mirroring from address bit 1, optional same-bank PRG16 mode from address bit 7, and an address lock once latched address bit 13 is set. Mesen2 `T262.h:33-47` and Nestopia `NstBoardBmcT262.cpp:74-86` confirm the outer/base + inner bank split and mirroring behavior.
-- Mapper 277 is FCEUmm-only in the local references (`libretro-fceumm/src/boards/277.c:27-50`). It resets/powers latch data to `0x08`, maps PRG16 either as NROM-256 pair, same-bank PRG16, or UNROM-style fixed-high depending on latch data bits, keeps CHR8 fixed, uses header mirroring when bit3 is clear, and ignores future writes once bit5 is set.
-- Mapper 280 is FCEUmm-only in the local references (`libretro-fceumm/src/boards/280.c:23-69`). It has `latchAddr`, `latchData`, `mode`, and `submapper`; reset toggles mode for PRG sizes larger than 32 x 16KB. Mode 0 has address-selected PRG32 or mirrored PRG16 and conditionally makes CHR-RAM read-only when address bit7 is set. Mode 1 uses fixed-high PRG16 with bank source from data or address for submapper 1.
-- Mapper 283 / BMC-GS-2004 maps a fixed low `$6000-$7FFF` PRG-ROM page and a high PRG32 register. FCEUmm `libretro-fceumm/src/boards/283.c:31-52` uses low bank 31 except 17 x 16KB PRG uses bank 32; Mesen2 `Gs2004.h:16-25` defaults low bank `0x20` and high PRG32 `0x07 << 2`; Nestopia `NstBoardRcm.cpp:60-69,89-91` confirms low PRG-ROM exposure and hard-reset to last PRG32 bank.
-- Mapper long-tail batch `301/340/341/343` can be implemented without new mapper trait hooks. FCEUmm models all four through `asic_latch`: high-address writes latch address/data, mapper 301/343 add `$5000-$5FFF` register writes, mapper 301 toggles an outer half on reset, mapper 340 selects NROM vs UNROM mode from latched address bit 5, and mapper 341 submapper 1 only accepts latch-address updates when `A7..A4 == $A`.
-- Mapper 144 can share Color Dreams banking with mapper 11 once PRG low nibble support and bit0-only conflict are modeled. Mapper 146/148 share SA016-1M bank decoding, differing only by low expansion writes versus high register writes.
-- Next mechanical batch should move to `154/155/108`; keep `166/167`, `156`, and the later A-grade mechanical set behind that. MMC3 protocol variants still need helper refactoring first.
+## IDE MCP Semantic Resource Focus Findings
+- `ide_open_resource` is enough to show a resource editor, but a game-writing agent often needs to land on the exact code line, CHR tile, or map cell it just wrote.
+- The new `ide_focus_resource` tool stays inside the Tauri-hosted IDE MCP and emits `resource-focus` through the same `ide-mcp-updated` IPC path as other creative operations.
+- Source focus reuses the existing `gotoSource()` and CodeMirror `goto` signal, so diagnostics and MCP location requests share one path.
+- CHR focus reuses the `chrTileFocus` signal added for Map→CHR navigation, preserving Dockview mount-order safety.
+- Map focus now has its own `mapCellFocus` signal with `path`, `x`, `y`, optional `layer`, and `seq`. The Map editor consumes it on signal changes, mount, and map path changes, then highlights/selects the target cell and scrolls it into view.
+- This keeps normal programming-agent work on the IDE MCP instead of requiring the Tauri DOM bridge to poke component-local state.
 
-## Mapper Architecture Planning Findings 2026-06-22
-- Mapper 适配耗时的核心瓶颈不是单个 mapper 的业务代码量，而是本项目缺少成熟模拟器里的 board compatibility layer。参考项目中的几百行 mapper 通常依赖隐藏的 handler 注册、bank helper、IRQ 单元、reset hook、open-bus/side-effect 读和 expansion audio 接口。
-- 当前 `MapperOps` 的 `prg_index()` / `chr_index()` 模型适合性能和普通 mapper，但对低地址 PRG-ROM、mapper register read、reset-selected bank、A12/CPU/HBlank 多时钟 IRQ、CHR-ROM/CHR-RAM 混合窗口和复合 ASIC 需要大量板卡局部胶水。
-- 后续应先建设 BankMap helper、CPU address handler helper、IRQ 单元库、MMC3 variant layer、reset/power/side-effect 标准层和 expansion audio 接口，再进入更大规模 mapper 机械翻译。
-- 规划文档已新增到 `docs/Mapper-架构优化计划.md`，作为 Phase 18 的执行依据。
-- CPU 地址 handler 第一层已落在 `Cartridge` 私有 helper：`$4018-$5FFF` expansion、`$6000-$7FFF` low、`$8000-$FFFF` high 的 read/peek/write 路由现在集中表达 PRG-RAM、低地址 PRG-ROM、mapper register read、open-bus、patch 和 bus-conflict 顺序。这个阶段刻意不新增公开 trait API，先把后续 mapper 103/120、170/234、230/233 需要的行为入口收拢到一个地方。
-- MMC3 写协议 helper 已拆成 `write_bank_select()` / `write_bank_data()` / `write_standard_register()`，并以 mapper 49/114/115/121 作为第一批协议变体验证：49 使用 outer latch，114 使用高区写重映射与 cmd_pending，115 使用低区 PRG/CHR/protection regs，121 使用 protection LUT、scramble 与 override regs。
-- `fc-core/src/mapper/bank.rs` 已作为 BankMap 初版落地，先提供无状态 PRG/CHR page index helper，避免 serde 状态迁移风险；ColorDreams/GxROM 与 Sachen 小家族已迁移，用来验证 helper 不改变现有 mapper 行为。
-- Mapper 108 是 FDS 转换类低区 PRG-ROM 窗口板：`$6000-$7FFF` 映射一个可切换 8KB PRG-ROM bank，`$8000-$FFFF` 固定到最后 32KB，`$8000-$8FFF` 和 `$F000-$FFFF` 写入选择低区 bank。
-- Mapper 154 可复用现有 Namco118/Namco108 bank 译码，只在 `$8000` command write 的 bit6 上加入单屏 mirroring 选择。这个模式验证了“在既有 board helper 外面加很薄的 board quirk”是可行的。
-- Mapper 155 当前按 MMC1 变体接入并标记忽略 WRAM disable。因为本项目 MMC1 还没有建模 PRG-RAM disable gating，所以现在行为等同 mapper 1；后续若补 PRG-RAM 使能/禁用路径，155 的标记会阻止误套普通 MMC1 的 disable bit。
-- Mapper 156 / OpenCorp Daou306 不需要新架构：现有 high-register write、CHR1 bank helper、PRG-RAM 默认低区路径和 reset hook 足够覆盖参考实现的第一版。
-- Mapper 166/167 / Subor 也可用现有 `MapperOps` 直接落地。两者共用四个 register 与 outer/inner PRG XOR 公式，只在 NROM-like 模式 bank order 和 fixed high bank 上由 mapper ID 区分；FCEUmm 的 `regs[0].bit0` mirroring 被纳入第一版。
-- `fc-core/src/mapper/bank.rs` 现在包含 `ChrRamWindow` / `ChrBankSource`，把 CHR-ROM/CHR-RAM 混合窗口从 MMC3 局部逻辑抽成通用基础设施；mapper 74/119/192/194/195 已迁移作为验证，后续 MMC3-like CHR-RAM window 变体可直接声明 bank 范围和 RAM 尺寸。
-- IRQ helper 第一刀应先抽 MMC3 A12：所有 MMC3 变体 4/37/44/45/47/49/52/74/76/114/115/118/119/121/192/194/195 共享同一个 A12 filter/reload/enable/pending 逻辑，适合迁移到 `Mmc3A12Irq`。VRC4、RAMBO-1、JY/HBlank、FME7 和若干 `basic/irq.rs` CPU counter 语义不同，应作为后续 helper 分层，不和 MMC3 A12 混抽。
-- A12 边沿滤波可以作为比 IRQ counter 更底层的共享件：MMC3 使用 9 PPU-dot低电平门限，RAMBO-1 使用 30，Mapper117 原逻辑 `>10` 等价于 helper 的 `>=11`。把 `A12EdgeFilter` 作为可序列化 flatten 字段，可先去掉重复 `a12_prev/a12_low_since`，同时不混合各板卡的 counter/reload/delay 语义。
-- CPU-cycle IRQ helper 的第一层适合覆盖简单 up-counter：mapper 43 计到 4096 后触发并停用，mapper 50 计到 0x1000 后触发并停用，mapper 106 从寄存器值递增到 0 溢出后触发并停用。`CpuCycleIrq` 目前只承载 enabled/counter/pending、low/high byte 写入、阈值触发和 wrap-to-zero 触发；mapper 18/65/67/73/VRC4/RAMBO 等 reload/prescaler/delay 语义仍应独立抽取。
-- Mapper 185 / CNROM copy-protection 可以用现有 mapper-owned CHR read/write override 表达：参考 FCEUX/FCEUmm 在 CHR disabled 时映射 dummy 8KB CHR page 且填充 `0xFF`，本项目等价地让 `chr_read()` 返回 `Some(0xFF)` 并消费写入。
-- Mapper 189 是非常薄的 MMC3 outer PRG latch 变体：低区 `$4120-$7FFF` 写 `value | (value >> 4)`，PRG 以 32KB outer bank 选择，CHR bank 和 A12 IRQ 继续复用普通 MMC3。这个形态验证了 MMC3 variant layer 能继续吸收小 clone board。
-- Mapper 193 / MEGA-SOFT War in the Gulf 是独立 discrete board：`$6000-$6003` 四个低区 register 分别控制 CHR4、CHR2、CHR2 和 `$8000` PRG8，`$A000/$C000/$E000` 固定到 `0x0D/0x0E/0x0F`。现有 low-register write hook 足够，不需要新架构。
-- Mapper 191 的第一版可直接复用 `ChrRamWindow(0x80..=0xFF, 2KB)`，与 FCEUX 和 Mesen2 的参数化 MMC3 CHR-RAM board 对齐。FCEUmm 2025 版本增加了 submapper 与低区 PRG 行为，记录为后续精修，而不阻塞基础兼容面。
-- Mapper 245 是 MMC3 thin variant：CHR bank 写只保留低 3 位，CHR register 0 的 bit1 作为 PRG outer bit 加到 8KB PRG bank bit6。现有 `Mmc3OuterBank` 可以承载，无需新 mapper 架构。
-- Mapper 196 需要的是 MMC3 write protocol remap，而不是新 mapper trait：高区地址线先折叠到普通 MMC3 register 地址，低区 `$6000-$6FFF` 写启用 PRG32 latch。现有 `write_standard_register()` helper 和 `Mmc3OuterBank` 足够表达。
-- Mapper 254 验证了低区 PRG-RAM 组合读 hook 的价值：参考实现读取 `$6000-$7FFF` WRAM 后按保护寄存器 XOR，本项目的 `read_low_register_with_prg_ram()` 可以直接表达，不需要 Cartridge 泄露更多存储细节给 mapper。
-- Mapper 187 / 208 继续验证 MMC3 variant layer 的方向：两者都不是新 CPU/PPU 时钟模型，而是 MMC3 core 外层的 PRG/CHR wrapper、低/扩展区 protection registers、register read 和少量写协议门控。现有 expansion/low/high handler helper 足够承载，后续同类 MMC3 clone 应优先挂在 `Mmc3OuterBank`。
-- Mapper 48 是 Taito TC0190 的 HBlank IRQ 变体：普通 `$8000-$BFFF` bank 写与 mapper 33 共享，`$C000-$FFFF` 单独处理 IRQ latch/counter/enable 和 `$E000` mirroring；现有 `MapperOps::hblank_clock()` 架构可以直接承载。
-- Mapper 158 是 RAMBO-1 的 board 变体而不是新 IRQ 单元：PRG/CHR/CPU-vs-A12 IRQ 继续复用 mapper 64，差异只在 `$8001` 写入时把 CHR bank bit7 映射到 per-nametable CIRAM page，并忽略 `$A000` 普通 mirroring 写。现有 mapper-owned nametable read/write hook 可以表达，不需要新增 CHR-backed nametable 接口。
-- Mapper 158 参考实现存在 bit 极性差异：FCEUmm/Mesen2 直接使用 `value >> 7`，Nestopia 的 `T800037::UpdateChr()` 对 nametable page 做 `^ 1`。当前第一版按 FCEUmm/Mesen2 直接语义实现，Nestopia 差异已记录为后续具体 ROM 证据驱动的精修项。
-- Mapper 188 虽曾被归在外设风险组，但参考实现实际只需要固定 low-register read value 和 PRG latch；现有 `read_low_register()` / `peek_low_register()` 已足够表达，不需要先建设麦克风或输入外设接口。
-- Mapper 197 适合作为 MMC3 CHR layout 变体，而不是完整新 mapper：FCEUX/FCEUmm 的核心差异在 2KB CHR cwrap，PRG 和 A12 IRQ 继续复用普通 MMC3。FCEUmm submapper 3 还包含低寄存器 outer PRG/CHR 扩展，当前记录为后续精修。
-- Mapper 198 验证了现有 `new_with_low_wram()` 可复用到 MMC3 clone board：低区 `$5000-$5FFF` WRAM 不需要新 Cartridge API，PRG pwrap 只是在 `outer_prg_bank()` 里对 bank `>= 0x50` 做 mask。
-- Mapper 199 不适合和 197/198 混在同一机械批次：FCEUX 的 board 文件包含 mixed CHR-RAM/EXPREGS side effects，FCEUmm 则简化为 unbanked CHR-RAM 与 `$5000-$5FFF` WRAM。应先确认目标 ROM 或选择主参考后再落地。
-- Mapper 35 证明 `A12EdgeFilter` 可以继续承载非 MMC3 的 MMC3-style A12 IRQ：PRG/CHR/mirroring register 是独立 JYASIC 逻辑，但 IRQ edge filter 不需要重复实现。
-- Mapper 221 证明当前 CPU high-read open-bus hook 已足够表达未焊接 PRG bank：mode latch 和 PRG latch 仍在 address-latch mapper 内部，读路径只在选中越界 16KB PRG bank 时返回 open bus。
-- Mapper 96 证明现有 `notify_a12()` 快路径需要按“PPU bus notify”理解，而不是只按 A12 IRQ 命名理解：Oeka Kids 的 PPU hook 监听 nametable 地址 `$2000-$2FFF` 来更新 CHR low 4KB latch，能力位 `watches_ppu_bus()` 仍可复用，不需要新增专用 latch trait。
-- Mapper 12 适合继续作为 MMC3 variant，而不是独立 mapper：PRG、普通 CHR bank register、mirroring 和 A12 IRQ 完全复用 MMC3，只在 `$4100-$5FFF` expansion register 上给 pattern table 两半补 CHR bank bit8，并提供 language latch read/reset toggle。FCEUmm 的 submapper 1 跳转 FFE_Init，先记录为后续独立兼容路径。
-- Mapper 8 / 31 说明一部分剩余 P2 缺口仍可机械推进：mapper 8 是单 latch PRG16/CHR8，mapper 31 是 `$5000-$5FFF` 低地址 register 选择八个 4KB PRG slot。现有 high-register write、expansion write 和 page index hooks 已足够表达，不需要新增架构。
-- Mapper 28 / Action 53 是独立 multicart board 而不是普通 address latch：它用 `$5000-$5FFF` 先选择 `reg`，再由高区写更新 `chr/prg/mode/outer`，PRG16 映射由 `mode & 0x3c` 的 12 种组合决定。现有 expansion write、reset hook 和 mirroring enum 足够表达第一版，不需要新 trait。
-- Mapper 29 / Sealie Computing 可以作为小型 latch board 直接落地：参考实现一致指向低 16KB PRG 可切、末 16KB PRG 固定、CHR8 两位 latch 和 32KB CHR-RAM 默认容量。第一版按 FCEUX/Mesen2 的 `$8000-$FFFF` register 窗口保留普通 `$6000-$7FFF` WRAM；FCEUmm 的 `$6000-$FFFF` latch 写窗口差异记录为后续精修项。
-- Mapper 51 / 11-in-1 Ball Games 验证了现有 low-register + low-PRG-ROM hook 可以表达 `$6000-$7FFF` 同时作为写寄存器窗口和 PRG-ROM 读窗口的板卡，不需要扩 MapperOps。高区写更新 bank 和部分 mode，低区写更新 mode，reset 恢复 `bank=0, mode=2`。
-- Mapper 81 / NTDEC N715062 仍属于现有 latch 架构可直接承载的板卡：FCEUmm 的 `Latch_Init` 隐含保存写地址和写数据，本项目等价拆成 `addr_latch` / `data_latch`，无需新增 trait hook。
-- Mapper 104 / Pegasus 5-in-1 也不需要扩 MapperOps：PRG16 双 register、固定 CHR8、固定 vertical mirroring 和 reset defaults 都在 mapper 内部完成；参考里的 8KB WRAM mapping 由本项目 Cartridge 低区 PRG-RAM fallback 覆盖。
-- Mapper 175 验证了现有高区 `read_register()` side-effect hook 足以表达“读 PRG-ROM 同时更新 mapper latch”的板卡：读 `$FFFC` 时提交延迟 PRG bank，debugger `peek` 路径不触发副作用。
-- Mapper 177 是纯 PRG32 latch 板卡，参考实现的 8KB WRAM 不需要新低区映射 hook，继续由 Cartridge 默认 PRG-RAM 路径提供。
-- Mapper 250 进一步验证 MMC3 写协议 helper 方向正确：参考实现只把 CPU 地址线折成普通 MMC3 register address/data，然后复用 GenMMC3/MMC3 core；本项目的 `write_standard_register()` 可以直接承载，不需要扩 `MapperOps`。
-- Mapper 205 继续适合挂在 `Mmc3OuterBank`：低区 `$6000-$7FFF` 只选择 outer block，PRG/CHR wrapper 按 block 做 mask/OR，普通 MMC3 A12 IRQ 不变；FCEUX 的 split-ROM/solder-pad 分支需要更细 ROM-chip 元数据，当前按 Mesen2/FCEUmm single-ROM 语义落第一版。
-- Mapper 249 是 MMC3 security permutation 变体：`$5000` expansion register 只影响 PRG/CHR page number 置换，IRQ、mirroring 和标准 MMC3 register 写路径不变，继续说明 `Mmc3OuterBank` 能承载这类 clone board。
-- `fc-core/src/mapper/mmc3.rs` 的下一步扩展瓶颈已经从公开 facade 转为 MMC3 内部模块边界。将 MMC3 state enum / protection LUT 拆到 `mmc3/state.rs`、构造器拆到 `mmc3/constructors.rs`、行为测试拆到 `mmc3/tests.rs` 后，主文件保留热路径和行为实现，后续新增 MMC3 clone 时可以优先改构造器与 outer/state 定义，不必继续撑大单文件。
-- `MapperOps::write_register()` 现在有默认 no-op：无高区寄存器的板卡不再需要显式空实现，后续机械翻译 mapper 时只需实现真实解码窗口。现有 18 个空实现已删除，行为由 mapper 测试和全量测试覆盖保持不变。
-- Mapper 293 / NewStar 12-in-1/76-in-1 是低风险长尾 latch board：FCEUmm `src/boards/293.c:32-84` 只需要两个 register、高区三段写窗口、UNROM/NROM128/NROM256 PRG 模式、固定 CHR8 和 bit7 mirroring；现有 `write_register()` / `prg_index()` / `mirroring()` / `reset()` 足够表达。
-- Mapper 294 是 split inner/outer latch board：FCEUmm `src/boards/294.c:26-54` 的 `$8000-$FFFF` inner bank 写和 `$4020-$7FFF` outer bank 写可用现有 expansion + low-register hooks 表达。`$6000-$7FFF` handler 覆盖 PRG-RAM 写，因此本项目让 `write_low_register()` 返回 true 且不 fall through，保持参考窗口语义。
-- Mapper 293/294 说明当前 board compatibility layer 已能机械吸收一批纯 latch/multicart 长尾；下一步可继续优先挑 `258/264/266/268/269/270/272/273/291/297/308/330` 中无需 IRQ、低地址 PRG-ROM 或复杂 register read side effect 的板卡。`267/291` 属 MMC3 outer 变体，适合作为后续 MMC3 batch，而不是和纯 latch batch 混在一起；`281/282/288/295/298/321/334` 已在后续批次补齐第一版。
-- Mapper 264 是 FCEUmm `83_264.c` 与 Mesen2 `Yoko.h` 覆盖的 YOKO-derived 变体，适合复用现有 `Mapper83` 而非新增独立 mapper。关键差异是 `prgAND=0x0F`、高地址写前先 `A = A >> 2 & ~0x3F | A & 0x3F`、CHR 固定为四个 2KB bank (`reg[8]`, `reg[9]`, `reg[14]`, `reg[15]`)、`$5000-$5FFF` pad/scratch read/write、`reg[7]` 的 `$6000-$7FFF` PRG8 映射，以及 IRQ 可以在 CPU-cycle 与 HBlank 八连 clock 间切换。
-- Mapper 264 也验证了当前扩展架构已经能承载“同芯片多变体”而不用继续加 trait：`Mapper83Variant` 分支、已有 `low_prg_index`、expansion read/write、CPU clock、HBlank clock、reset hook 和 capability 缓存足够表达第一版。
+## IDE MCP Granular Resource Patch Findings
+- Before this slice, a creative agent could write CHR and map resources only by sending a whole decoded CHR sheet or a whole decoded map object.
+- `ide_patch_chr_tile` now reads an existing `.chr`, replaces exactly one 64-pixel tile, writes the same NES 2bpp planar file format, registers the CHR if needed, and emits an IPC event that focuses the patched tile.
+- `ide_patch_map_cells` now reads an existing `.bin` map, patches one or more cells in the tile, attr, or collision layer, writes the same map binary format, registers the map if needed, and emits an IPC event that focuses the first patched cell.
+- Attribute patches follow the Map editor's existing semantics: `x/y` is a map coordinate, and the backend writes the corresponding 2x2 attribute byte.
+- The project store treats `chr-patch` and `map-patch` as resource-targeted events, using `focusResource()` so the visible editor refreshes and lands on the patched tile/cell instead of requiring DOM bridge state pokes.
 
-## Mapper 271/285/310/319/326 Long-tail Findings
-- Mapper 271 is a direct FCEUmm `datalatch.c:441-450` board: a single high-register latch selects PRG32 from high nibble, CHR8 from low nibble, and mirroring from bit5. It fits the optional high-write default and needs no new architecture.
-- Mapper 285 is a NewRisingSun multicart latch from FCEUmm `285.c:26-78`: submapper 0/1 use different PRG formulas and mirroring bit selection, while `$5000-$5FFF` reads expose a reset-incremented DIP pad. Existing expansion read and reset hooks are sufficient.
-- Mapper 310 / K-1053 from FCEUmm `310.c:34-88` uses two data registers and an address register to choose PRG32/PRG16/same-PRG8 modes. Its CHR writable flag maps cleanly to this project's `chr_write()` convention: return true when the mapper consumes/blocks the write, false when cartridge CHR-RAM should handle it.
-- Mapper 319 / BMC T-2291 from FCEUmm `319.c:36-86` combines low-register writes, a high latch, expansion pad read, disabled default low PRG-RAM, and soft-reset pad toggling. This validates that the current low-register + expansion + reset hook set covers another small protected multicart board.
-- Mapper 326 from FCEUmm `326.c:37-95` is a discrete bootleg board with three switchable PRG8 registers, fixed last PRG8, eight CHR1 registers, and four nametable page registers. Existing mapper-owned nametable read/write hooks can express its per-page CIRAM mapping by reporting `FourScreen` to keep default PPU mirroring out of the way.
+## IDE MCP Granular Tracker Patch Findings
+- Before this slice, music had semantic whole-song read/write, but an agent still had to round-trip the full `.song.json` to tweak one note/effect cell.
+- `ide_patch_song_cell` follows the same Tauri-hosted MCP shape as CHR/map patch tools: read the existing song, patch only supplied `note/instrument/volume/fx/param` fields at `pattern/row/channel`, write pretty JSON, register the song in manifest music if needed, and emit a resource-targeted IPC event.
+- Tracker focus belongs to component-local state (`patIdx`, `selRow`, `selCh`, `view`), so the project store now carries a `songCellFocus` signal parallel to `chrTileFocus` and `mapCellFocus`.
+- `syncFromIdeMcp()` treats `song-patch` as a resource-targeted event and avoids the generic music reload from overriding the requested focus.
+- `TrackerPanel.vue` consumes pending song-cell focus on mount, song path changes, and focus-signal changes, switches to Pattern view, clamps pattern/row/channel, focuses the panel, and scrolls the selected cell into view.
 
-## Mapper 298/321/334 Long-tail Findings
-- Mapper 298 / NTDEC UNL-TF1201 has a reference split: FCEUX `tf-1201.cpp:44-106` and Nestopia `NstBoardUnlTf1201.cpp:50-190` model an independent board with PRG/CHR nibble registers and scanline-ish IRQ, Mesen2 `Tf1201.h:17-120` models the same board with a CPU-clock prescaler, while FCEUmm 2025 `298.c:24-32` routes it through VRC4 helpers. Current implementation follows Mesen2/Nestopia's independent TF1201 shape and records FCEUmm as a divergence.
-- Mapper 298 fits existing `MapperOps` without widening the trait: PRG/CHR page functions, high-register writes, `clocks_cpu()`, `cpu_clock()`, IRQ pending/clear, mirroring, and reset cover the board. The one precision risk is IRQ threshold/counter alignment across FCEUX/Nestopia/Mesen2; keep this as ROM-evidence-driven refinement rather than adding a global HBlank hook now.
-- Mapper 321 is a thin AX5202P-style MMC3 clone from FCEUmm `321.c:26-56`: one low-register outer bank, normal MMC3 IRQ/mirroring, and a forced PRG32 mode when bit3 is set. It belongs in `Mmc3OuterBank`, not as a separate mapper, because PRG/CHR wrapping is the only active difference.
-- Mapper 321 needs AX5202P WRAM fall-through behavior; FCEUmm `asic_mmc3.c:71-82` shows AX5202P keeps WRAM reads/writes active. Reusing `low_register_write_falls_through()` preserves PRG-RAM writes after the mapper register latch.
-- Mapper 334 is another thin MMC3 clone from FCEUmm `334.c:26-64`: `EXPREGS[0] >> 1` selects PRG32, only even low writes update it, low reads return CPU open bus with DIP bit on `addr & 2`, and reset increments the DIP and clears MMC3 regs. Existing open-bus-aware low read hooks cover this without new Cartridge API.
+## IDE MCP Semantic Resource Creation Findings
+- UI file-tree actions already create blank source, CHR, map, and song resources, but IDE MCP only had whole-resource write tools. That forced agents to know `.chr` planar size, map binary shape, or full tracker JSON just to start a resource.
+- `ide_create_resource` should be a Tauri-hosted semantic MCP tool parallel to the visible file-tree workflow: create a source template, blank CHR sheet, blank map, or blank tracker song, register it in `project.toml`, emit an IPC creation event, and let the visible IDE open the new editor.
+- The backend already has reusable primitives for this: `encode_sheet`, `MapData::blank().encode()`, `Song::blank()`, manifest `sources/chr/maps/music`, and map-to-CHR bindings.
+- The frontend needs only a small routing addition: treat `resource-create` like `resource-open`, reusing `openResource()` so Dockview, active-resource state, and editor focus stay on the normal path.
+- Runtime verification confirmed the tool can create all four resource classes in one live Tauri session, register them in manifest/resource radar, open the final music resource visibly, and still build the project successfully.
 
-## Mapper 281/282/288/295 Long-tail Findings
-- Mapper 281/282/295 are JY ASIC multicart variants in FCEUmm `jyasic.c:514-565`, not separate mapper cores. The existing JY register, IRQ, ALU, latch, and nametable machinery can stay shared if PRG and CHR/NT outer mask formulas move behind `JyAsicVariant` helpers.
-- Mapper 281 uses PRG AND `0x1F` with OR `mode[3] << 5`, and CHR/NT AND `0xFF` with OR `mode[3] << 8`; mapper 295 uses the smaller PRG AND `0x0F` / CHR AND `0x7F` masks with OR shifts `<<4` and `<<7`; mapper 282 matches the previously hardcoded CHR/NT mask behavior but uses PRG OR `(mode[3] << 4) & ~0x1F`.
-- Mapper 288 / GKCX1 is mostly a simple address-latch PRG32/CHR8 board, but FCEUmm `addrlatch.c:562-565` has an unusual high-read path: under a latch condition, the reset DIP is ORed into the CPU read address before reading PRG-ROM. That cannot be represented by post-read data hooks, so `MapperOps::map_cpu_read_addr()` is the right minimal architecture lever for this and future read-address side effects.
-- Mesen2 `Gkcx1.h:5-21` only models the PRG32/CHR8 address latch and does not include the DIP read behavior, so the current implementation follows FCEUmm for the read side effect and uses Mesen2 as a simple banking cross-check.
+## IDE MCP Semantic Tracker Export Findings
+- The visible Tracker panel already exports a song through `store.exportTracker()` -> `ide.trackerExport()` -> Rust `tracker_export`.
+- The Rust tracker backend has the right single-source-of-truth primitive: `export_ca65(&Song, Region::Ntsc)` derives the same per-frame APU register stream used by preview rendering.
+- `tracker_export` currently writes `music/<name>.s`, copies `music/fc_player.s`, and registers both files in `project.toml`, but it is only exposed as a Tauri command for the frontend and does not emit IDE MCP IPC.
+- IDE MCP can create, write, and patch `.song.json`, but without a semantic export tool an agent still has to hand-write music assembly or rely on UI-only commands.
+- The conservative UI event should refresh tree/manifest/music without opening the exported `.s` as a tracker resource; the source `.song.json` can remain active in the visible music editor.
+- `ide_export_song` now reuses `tracker::export_song_to_project`, so the visible UI command and the IDE MCP share the same export/register behavior.
+- Default export path follows the UI convention: `music/agent_theme.song.json` -> `music/agent_theme.s`; explicit `out` values are normalized into `music/*.s`/`.asm` when needed.
+- Runtime verification through the real Tauri app and `target/debug/fc ide-mcp` created `music/agent_theme.song.json`, patched row 0/channel 0, exported `music/agent_theme.s` plus `music/fc_player.s`, and saw all three files in `ide_get_state.resources.music`.
+- Real Tauri store verification after the IPC event showed `status="MCP 已更新：song-export"`, `manifest.music=["music/agent_theme.song.json","music/agent_theme.s","music/fc_player.s"]`, and the active tracker still on the `.song.json` resource.
+- A follow-up MCP `ide_build` succeeded with `build/game.nes`, zero diagnostics, `output_status=current`, and the visible Build state switched to Health.
 
-## Mapper 267/291 MMC3 Long-tail Findings
-- Mapper 267 / 8-in-1 JY-119 is a thin MMC3 outer-bank board in FCEUmm `267.c:26-62`: `OUTER_BANK=((reg & 0x20)>>2)|(reg & 0x06)`, PRG8 keeps low 5 bits, CHR1 keeps low 7 bits, and low-register writes are consumed but only update the register while bit7 is clear.
-- Mapper 291 is another FCEUmm-only MMC3 clone in local references (`291.c:24-59`): CHR1 ORs bit8 from `reg << 2`, PRG uses normal MMC3 low 4 bits plus one outer bit unless `reg.bit5` forces PRG32 bank `((reg >> 1) & 3) | ((reg >> 4) & 4)`.
-- Both mapper 267 and 291 fit `Mmc3OuterBank` without widening `MapperOps`: standard high-register writes, mirroring, and A12 IRQ remain normal MMC3, while low-register writes and PRG/CHR wrappers carry the board-specific behavior.
+## IDE MCP Semantic Tracker Playback Wiring Findings
+- After `ide_export_song`, the exported song data and `music/fc_player.s` are registered as build inputs, but the game still needs source-level playback wiring.
+- The bundled `fc_player.s` exports `fc_player_init` and `fc_player_tick`; the engine comments and tracker tests show the required usage: call init from `reset` and tick once per NMI.
+- The demo template has stable `reset:` and `nmi:` labels. `reset` enables NMI after `jsr write_sprites`, and `nmi` begins by saving A/X/Y, making it safe to insert `jsr fc_player_tick` after the register-save prologue.
+- A semantic MCP tool should patch this boilerplate idempotently, report whether each insertion happened, register/focus the source file, and notify the visible IDE via the existing `ide-mcp-updated` IPC path.
+- The implemented `ide_wire_song_player` tool now does that in the live Tauri IDE: it inserts the import/init/tick wiring once, returns the existing tick line on repeat calls, and emits `song-player-wire` so the visible IDE focuses `src/main.s` at the inserted line.
 
-## Mapper 258 MMC3 Protection Findings
-- Mapper 258 / UNL-158B is a protected MMC3 board in FCEUX `158B.cpp:29-69` and Mesen2 `Unl158B.h:10-66`. The only active board state needed for first-pass compatibility is one protection register written at `$5000-$5FFF` when `addr & 7 == 0`.
-- The protection register forces PRG mapping when bit7 is set: bit5 chooses PRG32 versus mirrored PRG16, while bit0-2 choose the outer bank. With bit7 clear, normal MMC3 PRG banks are masked to low 4 bits. CHR, mirroring, and A12 IRQ stay normal MMC3.
-- Mapper 258 validates the existing expansion open-bus hook: `$5000-$5FFF` reads return CPU open bus ORed with LUT `[0,0,0,1,2,4,0x0F,0]`; no new mapper interface is needed.
+## Workspace Focus Mode Findings
+- Previous editor-surface work made Map/CHR/Tracker panels responsive once they receive space, but the IDE shell can still make the active creative panel too small when file tree, Build output, Preview, and Inspect panels are open.
+- Dockview already exposes `maximizeGroup()`, `exitMaximizedGroup()`, `hasMaximizedGroup()`, and maximized-group events. Using those APIs preserves the user's existing panel layout and avoids a custom layout snapshot/restore path.
+- The new `IdeView.vue` top-bar focus action maximizes the group for the current active creative resource: CHR, map, tracker, or source editor. It does not change project data or generated ROM semantics.
+- Toolbar visibility state should follow `panel.api.isVisible`, not merely `getPanel(id)`. In maximized mode Dockview keeps hidden panels alive with width/height 0, so existence alone made File/Output/Preview look active while they were not visible.
+- Runtime verification in the real Tauri IDE showed a crowded map layout with file/output/preview open: Map panel `600x442`, map work wrap `576x258`.
+- Pressing the new focus action maximized the current Map group to `1040x642`, with the map work wrap growing to `1016x468`; file tree, preview, and build remained present but invisible.
+- Pressing focus again restored the previous layout exactly enough for the workflow: File/Output/Preview buttons active, tree `260x642`, preview visible, build visible, and Map back to `600x442`.
+- This slice addresses the systemic "tiny operating window" complaint at the IDE shell level; remaining maturity work should continue into workflow continuity and editing affordances, not raw pixel scaling.
 
-## Mapper 266 BMC F-15 Findings
-- Mapper 266 / BMC F-15 is a thin MMC3-based board in FCEUX `F-15.cpp:20-61` and FCEUmm `f-15.c:20-61`: CHR and A12 IRQ remain stock MMC3, while PRG ignores MMC3 PRG registers and is selected by a low `$6000-$7FFF` latch.
-- The latch is gated by the MMC3 `$A001` PRG-RAM control register bit7 (`A001B & 0x80` in the references). Adding a generic `Mmc3::prg_ram_control` field preserves this register for mapper 266 while keeping existing mapper 44 `$A001` outer-block behavior.
-- Mapper 266 consumes low-register writes even when `$A001.7` is clear, matching the reference low write handler window and preventing accidental PRG-RAM fall-through. `reg.bit3` switches from mirrored PRG16 to paired PRG16/32KB-style mapping; CHR stays standard MMC3.
+## Workspace Focus Follow Findings
+- Manual workspace focus solved the tiny-editor shell problem, but without follow behavior the next resource switch could leave the old group maximized and make navigation feel discontinuous.
+- `IdeView.vue` already funnels source/CHR/map/tracker focus through `showPanel()`, so the narrowest fix is to let `showPanel()` re-run `dockApi.maximizeGroup(panel)` when Dockview is already maximized and the requested panel is a creative editor.
+- The behavior is sticky only after the user has entered focused mode. Normal file-tree navigation remains normal when the workspace is not maximized, so project management does not unexpectedly collapse tool panels.
+- Real Tauri verification used `/tmp/fc-focus-follow-*` and a crowded layout with File/Output/Preview open. The map began cramped at `340x442`, then focused to `1040x642`.
+- While maximized, `openBoundChrForActiveMap(3)` switched active resource to `chr/sprites.chr` and made the CHR panel the visible maximized group at `1040x642`.
+- `openMapUsingActiveChr("map/room.bin")` then returned to the Map panel, still maximized at `1040x642`.
+- Opening `music/follow.song.json` switched to the Tracker panel, still maximized at `1040x642`.
+- This makes map↔CHR↔music navigation preserve the full-size workspace once the user has explicitly entered focused creative editing.
 
-## Mapper 273 VRC2 Custom IRQ Findings
-- Mapper 273 in FCEUmm `273.c:37-83` is a VRC2 banking board with custom CPU-cycle IRQ registers on `$F000-$FFFF`; it does not need new PRG/CHR/low-read hooks.
-- Reusing `Vrc4` is cleaner than a standalone mapper if VRC IRQ selection is explicit. `VrcIrqKind` now separates ordinary VRC4 IRQ, no-IRQ VRC2 variants, and mapper 273's custom counter while preserving old `is_vrc4` save-state compatibility.
-- Mapper 273's IRQ prescaler follows the reference's `irqMask` phase: power-on mask is 0, disabling sets mask to `0x7F`, the first enabled prescaler hit changes the mask to `0xFF`, and IRQ asserts only when the 8-bit counter wraps to 0.
+## CHR Tile Usage Navigation Findings
+- The CHR editor previously showed which maps use the active CHR file, but not whether the currently selected tile appears in any of those maps. That still forced the user to hunt manually after editing a tile.
+- The project store now scans `mapsUsingActiveChr` with `ide.mapRead()` and finds per-map usage counts plus the first `(x,y)` position for a selected tile.
+- CHR tile usage navigation reuses the existing `openMap(path, { x, y, layer: "tiles" })` path, so the Map editor's established focus, selection, layer switch, and scroll-to-cell behavior handle the landing.
+- Runtime verification created `/tmp/fc-tile-usage-*`, patched `map/room.bin` cells `(5,4)`, `(6,4)`, and `(7,4)` to tile `7`, then focused `chr/sprites.chr` tile `7`.
+- The real Tauri CHR context bar showed `图块 7 · 3 次 · map/room.bin 5,4`, and the "打开位置" action was enabled.
+- Clicking "打开位置" switched the real Tauri IDE to `map/room.bin`, selected tiles layer cell `5,4`, and the Map context bar reported `坐标 5,4 · 图块 7`.
+- This turns map↔CHR binding into tile-level navigation and closes a resource-editing continuity gap.
 
-## Mapper 308 VRC2 Custom IRQ Findings
-- Mapper 308 / TH2131-1 in FCEUmm `308.c:35-72` is another VRC2-derived board: PRG/CHR/mirroring are ordinary VRC2 sync with address lines `0x01/0x02`, while `$F000-$FFFF` is replaced by a board-specific CPU-cycle IRQ unit.
-- The existing `VrcIrqKind` split from mapper 273 absorbs mapper 308 cleanly: no new `MapperOps` hook is needed, and VRC2/VRC4 PRG8/CHR1/mirroring decode remains shared.
-- Mapper 308 IRQ state is a 12-bit low phase plus 4-bit high counter: writes with `addr&3==0` clear/disable/reset low phase, `addr&3==1` enable, `addr&3==3` load `value>>4`; each CPU cycle increments low phase, decrements high on phase 2048, and asserts IRQ while high is zero during the low half of the 4096-cycle phase.
-- Mesen2 only has a mapper 308 `TH2131-1` placeholder in `MapperFactory.cpp:564`, so FCEUmm is the actionable behavior reference for the first pass.
+## Tracker Pattern Auto-Scroll Findings
+- The Tracker Pattern grid is a scrollable `.grid` container with a sticky header and long rows. Keyboard navigation and note entry change `selRow`/`selCh`, but without an explicit selected-cell visibility pass, long Pattern editing can leave the active row outside the visible area.
+- `focusSelectedPatternCell()` already exists for MCP song-cell focus, so the smallest safe frontend fix is to reuse it whenever Pattern view selection changes.
+- The watcher only runs while `view === "pattern"`, so piano-roll drawing/metrics stay on the existing roll-specific path.
+- Runtime verification used the real Tauri app plus `target/debug/fc ide-mcp` to create `/tmp/fc-tracker-scroll-*`, create `music/scroll.song.json` with 96 rows, and open the Tracker panel visibly.
+- Initial real IDE state showed `.grid.scrollHeight=2432`, `.grid.clientHeight=465`, selected row `00`, and `scrollTop=0`.
+- Dispatching Pattern keyboard navigation moved the selection to row `0x27`; the real grid scrolled to `scrollTop=787`, and the selected cell rectangle remained fully inside the grid viewport.
+- Dispatching note-entry keys advanced the selection from row `0x30` to row `0x3C`; the selected cell remained visible in the grid viewport while the Tracker root stayed focused.
+- One long Tauri eval timed out because it combined many key events with waits, but a shorter follow-up inspection showed the UI had already performed the scroll correctly. Subsequent verification used smaller eval calls.
 
-## Mapper 352/360 Latch Multicart Findings
-- Mapper 352 from FCEUmm `352.c:23-39` is a reset-selected NROM-256 multicart: soft reset increments a `game` latch, `ROM_size / 2` is the PRG32 game count because FCEUmm stores ROM size in 16KB units, and PRG32 plus CHR8 both select the same game.
-- Mapper 352 does not need a new mapper hook. Existing reset, PRG index, CHR index, and header mirroring are enough for a first pass.
-- Mapper 360 from FCEUmm `360.c:21-77` is another low-risk DIP/register board: submapper 0 soft reset increments `reg & 31`; submapper 1 writes `$4100-$4FFF` directly. Bit5 clear in submapper 1 forces all 8KB PRG slots to bank `$40`; otherwise low DIP values 0/1 select PRG32 and larger values mirror a PRG16 bank at both halves.
-- Mapper 360's CHR8 and mirroring are pure register-derived behavior, so it also fits the existing multicart/latch path with no architecture expansion.
+## IDE MCP Granular Source Patch Findings
+- Before this slice, the IDE MCP could read/write whole source files and could patch CHR/map/song resources at creative granularity, but source edits still required whole-file writes for small changes.
+- `ide_patch_source` now patches a 1-based line range in a project text/source file. `delete` controls how many existing lines are replaced, and `content` supplies inserted replacement text.
+- The tool preserves the existing file newline style, writes the changed file, and registers `src/*.s` / `.asm` in `project.toml` when requested.
+- `source-patch` emits the same resource-targeted IPC shape as CHR/map patch tools, with `kind=source` and `line`, so the visible IDE opens the source editor and jumps to the changed line.
+- Runtime verification used the real Tauri app plus `target/debug/fc ide-mcp` to create `/tmp/fc-source-patch-*`, patch `src/main.s`, write/register `src/agent_patch.s`, patch that new source, and inspect `ide_get_state`.
+- `ide_get_state` showed `manifest.sources=["src/main.s","src/agent_patch.s"]` and two source resource entries after the patch flow.
+- Initial UI verification found a sync-order issue: the editor became active, but CodeMirror's active line stayed at the file top because the tab refresh happened after `gotoSource`.
+- The project store now refreshes targeted source tabs before resource focus when an IDE MCP event includes both `source` and `resource`. A repeat `source-patch` verified the visible editor active line became `; PATCH_SOURCE_FOCUS_AFTER_REFRESH` at `goto.line=7`.
+- A follow-up `ide_build` succeeded, proving the patched source files remained build-compatible in the live IDE project.
 
-## Mapper 354/358 Long-tail Findings
-- Mapper 354 is an address/data latch multicart in FCEUX/FCEUmm `354.cpp`/`354.c:23-102`. Existing hooks cover it: high write registers, low PRG-ROM window through `low_prg_index`, CHR-RAM write-protect through `chr_write`, default low PRG-RAM gating, mirroring, and reset.
-- Mapper 354 has a reference divergence: FCEUX always uses the submapper-1 PRG outer formula, while FCEUmm keeps a submapper-aware formula. Current implementation follows FCEUmm for NES 2.0 submapper behavior and records FCEUX as cross-check.
-- Mapper 358 is another JY ASIC multicart in FCEUmm `jyasic.c:567-587`; no new mapper core is needed. Adding `JyAsicVariant::Mapper358` with its PRG/CHR/NT mask/OR formulas reuses the existing JY register, IRQ, ALU, nametable, PPU hook, and low PRG-ROM paths.
+## CHR Tile Brush Handoff Findings
+- The CHR tile-usage navigation closed the "find where this tile is used" path, but a newly drawn tile with zero map usage still left the user at a dead end: the CHR context bar showed "未使用" and the map action was disabled.
+- The project store now has a `mapTileBrushFocus` signal parallel to map-cell focus. It carries `{ path, tile, seq }` and is consumed by the Map editor after the panel is opened.
+- `openMapUsingActiveChrTileBrush(tile)` opens the first map bound to the active CHR (or the first project map), persists the CHR binding if needed, and asks the Map editor to switch to tiles layer with that tile selected as the brush.
+- The CHR context action now keeps "打开位置" when the selected tile is already used, but changes to "用于地图" when it is unused and there is a bound map.
+- Runtime verification used the real Tauri app plus `target/debug/fc ide-mcp` to create `/tmp/fc-chr-brush-*`, focus `chr/sprites.chr` tile `13`, and confirm `map/room.bin` had zero cells using tile `13`.
+- The real CHR context bar showed `图块 13 未使用` and an enabled `用于地图` action. Clicking it switched the real IDE to the Map panel, set `mapTileBrushFocus={path:"map/room.bin", tile:13}`, and the Map context read `图块 13 · 1×1`.
+- Painting one map cell through the real Map canvas set cell `(6,4)` to tile `13`; saving cleared dirty state.
+- IDE MCP readback confirmed disk `map/room.bin` cell `(6,4)` was `13`, while the file stayed 2164 bytes with header `[32,0,30,0]`, preserving the existing map format.
 
-## Mapper 357 Long-tail Findings
-- Mapper 357 in FCEUmm `357.c:21-120` is a Bit Corp 4-in-1 multicart with two modes selected by reset DIP: game 0 is an SMB2J-style custom map with `$5000` PRG4, `$6000` PRG8, fixed/switchable high PRG8 banks, and a CPU-cycle IRQ; games 1-3 are UNROM-style outer-bank slots.
-- Existing `MapperOps` hooks are sufficient for the first pass: `expansion_prg_index` covers `$5000-$5FFF` PRG-ROM, `low_prg_index` covers `$6000-$7FFF`, `write_expansion` covers `$4022/$4120/$4122`, `write_register` covers UNROM bank writes, `cpu_clock`/`irq` cover the 4096-cycle IRQ, and `reset` covers the DIP rotation.
-- Candidate triage for the next batch: mapper 268/269 are MMC3 outer-wrapper candidates and should be implemented in `Mmc3` variants; mapper 351 switches among MMC1/MMC3/VRC4 and needs a composite ASIC mode layer; mapper 353/359 include FDS expansion audio and extra IRQ/PPU hooks; mapper 355 needs a PIC16C5x peripheral; mapper 356 needs TC3294 plus nametable-to-CHR-RAM behavior. Those should be architecture batches, not quick multicart translations.
+## Tile Palette Focus Visibility Findings
+- Phase 33 made CHR→Map brush handoff semantic, but the visual side drawers still had a continuity gap: high-index selected tiles could be active while their selected outline stayed outside the scroll viewport.
+- `MapEditorPanel.vue` now scrolls the tile palette drawer to `selTile` after tile picking, CHR rebinding, map-cell focus, CHR→Map brush focus, map/CHR changes, drawer mount/resize, and adaptive palette column/size changes.
+- `ChrEditorPanel.vue` now scrolls the sheet overview drawer to `selTile` after MCP/Map tile focus, keyboard tile stepping, manual tile picking, drawer open/resize, and adaptive sheet column/size changes.
+- Runtime verification used the real Tauri app plus `target/debug/fc ide-mcp`, not browser automation. `ide_focus_resource` opened `chr/sprites.chr` at tile `500`; the real CHR sheet drawer used 12 columns at 18px and scrolled to `scrollTop=336`, making tile 500's row visible.
+- Runtime verification then used the real project store action for CHR→Map brush handoff with tile `220`; the Map panel context read `图块 220 · 1×1`, the side meta read `选中图块 220`, and the Map palette drawer scrolled so row 18 was visible.
+- Runtime verification patched map cell `(10,8)` to tile `230` through IDE MCP and focused that map cell. The visible Map context read `坐标 10,8 · 图块 230`, side meta read `选中图块 230`, and the palette drawer scrolled so tile 230 was visible.
+- The change is frontend-only and does not alter CHR, map, song, source, build, or ROM data formats.
 
-## Mapper 361 MMC3 Long-tail Findings
-- Mapper 361 / OK-411 in FCEUmm `361.c:26-49` is a thin AX5202P MMC3 clone: one low-register data latch, normal MMC3 high registers, A12 IRQ, mirroring, PRG mask `0x0F`, and CHR mask `0x7F`. It fits the existing `Mmc3OuterBank` layer without widening `MapperOps`.
-- FCEUmm `asic_mmc3.c:71-82` confirms AX5202P keeps WRAM reads/writes active, so mapper 361 should share the low-register write fall-through behavior already used by mapper 321.
-- FCEUX `mmc3.cpp:1218-1261` documents the GN-45 family and old mapper 205 assignment for mapper 361/366. That reference includes address-latch/lock behavior for adjacent variants, but mapper 361 itself is implemented this pass from FCEUmm's data-latched OK-411 board to avoid over-broad behavior.
-- Mesen2 has mapper 361 ROM metadata in `MesenNesDB.txt` but no dedicated Core mapper implementation; it is useful for confirming board presence, not behavior.
+## Editor Keyboard Focus Ownership Findings
+- Tracker already focused its root when `songCellFocus` lands, but CHR tile focus only changed `selTile` and Map listened for keyboard shortcuts globally on `window`.
+- Global Map key handling made the editor easier to use at first, but it is the wrong ownership model for a mature multi-panel IDE: an inactive or hidden Map panel can consume shortcuts intended for the active creative editor.
+- `MapEditorPanel.vue` now has a focusable root and handles `keydown`/`keyup` on that root instead of registering keyboard handlers on `window`. It keeps window mousemove/mouseup/blur only for drag/pan cleanup.
+- Map semantic focus paths now focus the root after `mapCellFocus` and `mapTileBrushFocus`, so MCP/resource navigation leaves the Map editor ready for immediate shortcut input.
+- `ChrEditorPanel.vue` now focuses its root after `focusTile()`, so MCP/Map tile-focus navigation leaves CHR ready for arrow/tool keyboard input.
+- Runtime verification used the real Tauri app plus `target/debug/fc ide-mcp`, not browser automation: after `ide_focus_resource` opened CHR tile 10, `document.activeElement` was `.chr` and `ArrowRight` advanced to tile 11.
+- Runtime verification then focused Map cell `(6,1)` through IDE MCP; `document.activeElement` was `.maped`, pressing `f` changed the Map tool from brush to fill, and the Map context showed `图块 10 · 填充`.
+- Runtime verification focused CHR again at tile 20; active element returned to `.chr`, and pressing `g` did not trigger Map's old grid shortcut path. This proves inactive Map panels no longer consume global keyboard input.
 
-## Mapper 366 MMC3 Long-tail Findings
-- Mapper 366 in FCEUmm `366.c:26-53` is the GN-45 address-latch sibling of mapper 361: PRG/CHR outer formulas are identical, but low-register writes latch `addr & 0xFF` instead of data and stop updating once bit7 is set.
-- FCEUX `mmc3.cpp:1218-1261` corroborates the GN-45 address-latch and bit7 lock behavior through `GN45Write0`, with the same PRG/CHR wrappers and reset clear.
-- The existing `Mmc3OuterBank` layer is enough for mapper 366: add one register field, reuse 361 PRG/CHR wrappers, keep low write fall-through for AX5202P WRAM, and reset standard MMC3 registers on soft reset/power reset.
+## IDE MCP Music Cell Focus Findings
+- `ide_focus_resource` already covered source line, CHR tile, and map cell focus, but music resources were only opened as whole tracker files. Exact Pattern cell focus existed only as a side effect of `ide_patch_song_cell`.
+- The embedded Tauri IDE MCP now accepts `pattern`, `row`, and `channel` on `ide_focus_resource` for music resources and includes those fields in the `resource-focus` IPC payload.
+- The project store now routes music `resource-focus` through `openTracker(path, { pattern, row, channel })`, reusing the Tracker panel's existing `songCellFocus` path, scroll-to-selected-cell behavior, and keyboard focus ownership.
+- Runtime verification used the real Tauri app plus `target/debug/fc ide-mcp`, not browser automation. A 64-row `music/focus.song.json` was created with `ide_create_resource`, then `ide_focus_resource` landed on pattern 0, row 37, channel 3.
+- The real Tracker context bar showed `行 25 · 噪声 · ···` (`0x25` = 37), `songCellFocus={pattern:0,row:37,channel:3}`, the selected cell was visible after scrolling, and `.tracker` owned keyboard focus.
+- A follow-up out-of-range request `pattern=99,row=999,channel=9` was clamped safely by the frontend to pattern 0, row 63, channel 4; the context bar showed `行 3F · DPCM · ···` and the selected cell remained visible.
+- This makes IDE MCP semantic focus symmetrical across source, CHR, map, and music resources.
 
-## Mapper 363/364/368 Long-tail Findings
-- Mapper 363 in FCEUmm `363.c:24-39` is an `asic_latch`-style board with one important nuance: address bits only latch on an A4 rising edge, while data is ANDed with the current PRG-ROM byte before becoming latch data. The existing `MapperOps::has_bus_conflicts()` plus Cartridge conflict application covers this if the conflict happens before `write_register()`.
-- Mapper 363 does not need a new mapper interface. Existing PRG/CHR page index functions, mirroring, reset, and bus-conflict hooks cover PRG16 low/fixed-high mapping, CHR8 fixed 0, bit5 mirroring, and reset clear.
-- Mapper 364 in FCEUmm `364.c:25-52` is a thin MMC3 clone: `$6000-$7FFF` writes set one outer register, PRG8 and CHR1 wrappers change masks when bit5 is set, and normal MMC3 high writes/A12 IRQ/mirroring stay untouched. It belongs in `Mmc3OuterBank`, not as a standalone mapper.
-- Mapper 364's low-register writes should be consumed without PRG-RAM fall-through. Unlike AX5202P family boards such as 321/361/366, FCEUmm installs a dedicated `$6000-$7FFF` write handler and does not chain through WRAM.
-- Mapper 368 in FCEUmm `368.c:30-112` is basically the game-0 SMB2J-style mode from mapper 357 without the reset-selected multicart wrapper. Existing low PRG-ROM, expansion register, CPU-clock IRQ, and reset hooks are sufficient.
-- Mapper 368 reset only clears IRQ state and resyncs banks; `preg` and `latch` persist across soft reset. Power/reset distinction is represented by keeping `preg/latch` on soft reset and clearing them on hard reset.
-- Candidate triage remains: mapper 362 needs VRC4 reset-selected outer game support; mapper 369 mixes MMC3/HBlank IRQ and SMB2J CPU IRQ mode; mapper 370 needs a PPU hook affecting mirroring; mapper 372 needs CHR-RAM/outer-register review. These are architecture-guided batches rather than pure mechanical latch additions.
+## IDE MCP Active Editor Context Findings
+- Before this slice, `ide_get_state` could describe project resources and build state, and `ide_focus_resource` could push the visible IDE to a location, but there was no IDE-owned readback for the current visible editor selection.
+- That gap forced agents to use the Tauri DOM bridge to infer active source line, selected CHR tile, map layer/cell/brush, or tracker Pattern row/channel.
+- The new design keeps a lightweight UI snapshot in the live Tauri process: Vue editors publish semantic JSON context through IPC, Rust stores the latest snapshot, and `ide_get_state.ui` returns it to MCP clients.
+- The snapshot is intentionally semantic rather than DOM-shaped: source path/line, CHR tile/tool/palette slot, map layer/tool/selection/bound CHR, tracker pattern/row/channel/cell, visible Dockview panels, dirty flags, and status.
+- This makes the IDE MCP a proper game-authoring interface in both directions: agents can write/focus resources and then read where the real IDE is focused without using DOM automation.
 
-## Mapper 367 MMC3 Long-tail Findings
-- Mapper 367 in FCEUmm `mmc3.c:1241-1299` shares mapper 205's `M205_367PW/CW` PRG/CHR outer-bank formulas: PRG8 uses mask `0x0F` when register bit1 is set and `0x1F` otherwise, while CHR1 uses mask `0x7F` or `0xFF`, then ORs `reg << 4` / `reg << 7`.
-- Mapper 367 differs from mapper 205 only in the low-register write protocol: `$6000-$7FFF` writes store the CPU address low byte (`addr & 0xFF`) instead of the data byte. This fits the existing `Mmc3OuterBank` layer with a new variant plus shared helper formulas.
-- Unlike mapper 205's FCEUX `CartBW` fall-through behavior, FCEUmm mapper 367 installs a dedicated low write handler. The first pass should consume low writes without PRG-RAM fall-through and reset both the outer register and standard MMC3 registers.
+## IDE MCP UI Context Acknowledgement Findings
+- MCP focus/open/patch tools return after Rust emits a Tauri event, but the Vue frontend still needs time to process the queued sync, mount/open Dockview panels, update component-local state, and publish the IPC UI snapshot.
+- A plain immediate `ide_get_state` can therefore observe the previous `ui.active_editor`, even though the frontend catches up moments later.
+- Agents should not solve this by polling the Tauri DOM bridge. The IDE MCP itself should provide a semantic wait tool that polls the live `IdeUiState` snapshot until it matches expected editor context.
+- `ide_wait_ui_context` waits on source `line`, CHR `tile`, map `hover.x/y` and `layer`, tracker `pattern/row/channel`, active resource kind/path, active Dockview panel, and optional minimum UI `seq`.
 
-## Mapper 373 MMC3 Long-tail Findings
-- Mapper 373 in FCEUmm `mmc3.c:591-598` is a mapper 45 derivative: it reuses `M45CW`, `M45Write`, `M45Reset`, and `M45Power`, but swaps in `M373PW`.
-- `M373PW` keeps mapper 45's PRG AND/OR formula unless outer register 2 bit5 is set. In paired mode, only writes for `$8000/$A000` directly update banks, while `$C000/$E000` mirror those source banks with `| 0x02`.
-- Existing MMC3 architecture is sufficient if mapper 373 gets its own `Mmc3OuterBank` variant: share mapper45 serial register helpers, keep mapper45 behavior unchanged, and let mapper 373 reset standard MMC3 registers per FCEUmm `M45Reset()`.
+## IDE MCP Active Context Patch Findings
+- After Phase 37/38, the live IDE MCP can read and wait for the visible editor context, but agents still need to restate `path`, `line`, `tile`, map `x/y/layer`, or tracker `pattern/row/channel` when making the next edit.
+- The new `ide_patch_active_context` uses `ui.active_editor` as the default target and dispatches to the existing granular patch tools:
+  source -> `ide_patch_source`, CHR -> `ide_patch_chr_tile`, map -> `ide_patch_map_cells`, music -> `ide_patch_song_cell`.
+- The tool intentionally does not duplicate CHR planar encoding, map `.bin` encoding, source newline handling, or tracker JSON patching. It only resolves defaults from the semantic UI snapshot and returns `resolved_args` plus the underlying patch result.
+- Required payload stays specific to the edit: source needs `content`/optional `delete`, CHR needs 64 `pixels`, map needs `value` unless the active editor has `selected_value`, and music needs at least one of `note/instrument/volume/fx/param`.
+- This makes a natural authoring loop possible through IDE MCP alone: `ide_focus_resource` -> `ide_wait_ui_context` -> `ide_patch_active_context` -> `ide_wait_ui_context`, reserving the Tauri DOM bridge for real UI verification only.
+- Runtime verification through the real Tauri app and bundled MCP tools confirmed the loop for all four editor classes: source line insertion, CHR tile 33 pixel patch, map cell `(8,9)` tile patch, and tracker row 12/channel 2 note patch all wrote disk resources and refreshed visible UI context.
 
-## Mapper 362 VRC4 Long-tail Findings
-- Mapper 362 in FCEUmm `362.c:31-58` is a VRC4 board variant, not a new mapper core: it uses VRC4 address lines `0x01/0x02`, standard VRC PRG/CHR registers, and CPU-cycle VRC IRQs.
-- The board's active difference is a reset-selected `game` latch. Game 0 derives PRG outer bits from CHR bank 0 (`chr0 >> 3 & 0x30`) and CHR outer bits from CHR bank 0 (`chr0 & 0x180`); game 1 forces PRG outer `0x40` and CHR outer `0x200`.
-- FCEUmm only installs the reset hook for PRG-ROM larger than 512KB, so small mapper 362 carts should not clear VRC registers on soft reset. The first pass models this with a `mapper362_reset_select` flag.
-- `VRC4_init(..., useRepeatBit=0, ...)` means IRQ acknowledge does not copy bit0 into enable; keeping the existing enable state is more accurate than treating `$F003` as a disable.
+## IDE MCP Playable Game Blueprint Findings
+- The existing `demo`/`horizontal` project template is already a true playable NROM game with source, CHR, map, collision, and build/run tests, but agents still have to orchestrate several IDE MCP calls to get a fully music-wired creative starting point.
+- `ide_scaffold_game` should not invent a parallel game generator. It now composes the existing template, tracker song model, tracker export path, player wiring path, build path, run path, and visible IDE refresh events.
+- The tool refuses to overwrite an existing `project.toml`, so it is safe as a one-call project bootstrap rather than a destructive reset operation.
+- The generated blueprint keeps every asset editable as a first-class resource: `src/main.s`, `chr/sprites.chr`, `map/room.bin`, `music/theme.song.json`, exported `music/theme.s`, and `music/fc_player.s`.
+- This directly supports the requested "智能体写代码/写资源/完成游戏" workflow: after one bootstrap call, the agent can use `ide_get_state`, `ide_focus_resource`, `ide_patch_active_context`, and granular patch tools to iterate the game instead of reconstructing project conventions from scratch.
 
-## Mapper 370 MMC3 PPU-hook Findings
-- Mapper 370 / F600 in FCEUmm `370.c:21-95` is still an MMC3 board: high-register writes, A12 IRQ, register reset, PRG/CHR cwrap/pwrap, and A000 mirroring latch all fit the existing `Mmc3` core plus a new outer-bank state variant.
-- Its unique behavior is timing-sensitive mirroring. In mode 1, `PPU_hook` records the current PPU address slot (`addr & 0x1FFF >> 10`) and selects single-screen page 0/1 from the high bit latched by the corresponding CHR bank write. That needs a pre-fetch `MapperOps::notify_ppu_bus_pre` so the mapper can change mirroring before the PPU resolves the read/write address.
-- CHR outer banking follows `(value & mask) | (mode << 7)`, where bit2 selects `0x7F/0xFF` mask and mode 6 with CHR bit7 set forces mask `0xFF`; the outer OR is still mode 6's `0x300`, not a larger bank number.
-- `$5000-$5FFF` writes use the CPU address low byte as `EXPREGS[0]`, not the written value. Reads expose only solderpad bit7 (`EXPREGS[1] << 7`) while open-bus reads preserve bits 0-6. Soft reset toggles the solderpad bit and resets standard MMC3 registers.
+## IDE MCP Game Verification Findings
+- Phase 40 exposed a practical verification hazard: a pre-bound `mcp__fc_emu` in the Codex session can point at a stale/headless server even when `.mcp.json` maps `fc-emu` to the live `target/debug/fc emu-mcp` bridge.
+- The IDE MCP is hosted in the same Tauri process as the visible preview, so it can read `EmuState` directly for runtime, frame-buffer, controller, and memory evidence.
+- `ide_verify_game` closes the authoring loop from the IDE side: optional build/run, wait a few frames, sample visible frame statistics, and optionally press controller buttons while comparing a CPU memory byte before/after.
+- This gives game-writing agents one semantic proof endpoint after scaffold/build/patch work, reducing reliance on DOM scraping or mismatched external MCP bindings for core "does it play?" evidence.
+
+## IDE Verification Feedback Findings
+- `ide_verify_game` already emits `game-verify` over the Tauri IDE MCP event path with `{ ok, runtime, frame, input }`, but the frontend previously only showed the generic status `MCP 已更新：game-verify`.
+- The project store now records `lastGameVerify` with build and preview sequence markers. New build results or preview loads make the previous verification stale without deleting the evidence.
+- `IdeView.vue` now treats verification as the fourth compact loop chip alongside save/build/preview: idle `验`, passing `过`, failed `错`, and stale `旧`.
+- `uiSnapshot()` exposes `game_verify` with a derived `stale` flag, so programming agents can read visible IDE verification state through `ide_get_state.ui` rather than scraping the Tauri DOM bridge.
+- Manual IDE run paths now mark the preview sequence too, keeping verification freshness consistent whether a ROM is run by toolbar, Build panel, or IDE MCP.
+
+## Human-Operable Game Verification Findings
+- The verification logic originally lived only in `ide_verify_game`, so normal IDE users could see MCP-produced verification status but could not trigger the same evidence gate from the UI.
+- `ide_mcp.rs` now exposes `ide_verify_game_ui` as a Tauri command that calls the same in-process `verify_game()` implementation. This keeps the evidence path single-sourced with IDE MCP instead of creating a separate frontend-only heuristic.
+- `project.ts` now has `verifyGame()`: it autosaves dirty source/CHR/map/music, invokes the Tauri verification command, relies on the existing IPC events for build/run/game-verify state, refreshes the tree, and focuses Build health.
+- The top-bar verification chip is now an action, not only an indicator. Clicking it opens Build health and runs the same build/run/frame verification loop.
+- `BuildPanel.vue` now includes a `游戏验证` health row that reports `未验证` / `已过期` / `通过` / `失败`, shows nonblack-pixel evidence, and offers a `验证` action when needed.
+
+## Resource Quick Open Findings
+- The file tree already has manifest-backed classification and resource filters, but frequent source↔CHR↔map↔music switching still requires opening or scanning the tree.
+- `IdeView.vue` now builds a quick-open list from `project.toml` manifest resources and existing map→CHR bindings, so it reuses the same resource truth as the tree instead of extension-only guessing.
+- The quick-open overlay calls `store.openResource(path, kind)`, preserving the established Dockview focus, active-resource, and editor-specific load paths.
+- The top bar now has a compact `资源` action, and `Cmd/Ctrl+P` opens the same overlay. Arrow keys move selection, Enter opens, and Escape closes.
+- Resource rows show class (`源码`/`CHR`/`地图`/`音乐`), path, and contextual metadata such as map bound CHR or CHR usage count, reducing the need to inspect tree rows before switching.
+- Runtime verification found and fixed a quick-open selection edge case: after filtering, the previous row index could point at the second match (`map/room.bin`) instead of the first match (`chr/sprites.chr`). The query watcher now resets selection to the first filtered result.
+
+## Music Resource Open Semantics Findings
+- `manifest.music` is intentionally broader than tracker files: it includes `.song.json` editable songs and `.s` / `.asm` assembly build inputs such as exported song data and `music/fc_player.s`.
+- Quick open made this mismatch visible because music assembly entries appeared in the resource list but `openResource(kind="music")` always called `openTracker()`, which can only parse `.song.json`.
+- `project.ts` now distinguishes tracker song paths from assembly paths. `.song.json` opens in Tracker; `music/*.s` / `.asm` opens in the source editor while immediately restoring active-resource kind `music`.
+- `FileTreePanel.vue` now delegates non-directory opens to `store.openResource()`, so tree clicks and quick-open clicks share the same type-aware route.
+- `IdeView.vue` workspace-focus selection now treats music assembly active resources as editor/source panels, while tracker `.song.json` resources still map to the Tracker panel.
+- Runtime verification also exposed a quick-open ranking issue: `theme.s` matched `theme.song.json` by substring. Quick-open search now prioritizes exact filename/path and prefix matches before generic substring matches, so `theme.s` opens `music/theme.s` and `theme.song` opens the tracker song.
+
+## Resource Navigation History Findings
+- Quick open and file-tree navigation made resource switching faster, but there was still no recovery path after a source→map→CHR→music chain; users and agents had to search again for the previous resource.
+- The project store is the right place for this because all semantic resource transitions already flow through `markActiveResource()` after UI opens, MCP opens/focuses, diagnostics, Map↔CHR jumps, and tracker/source focus.
+- Resource history should record only semantic resource identity (`kind`, `path`, `label`), not component-local cursor/tile/cell details. Exact-location restoration remains covered by `ide_focus_resource` and editor focus signals.
+- Music assembly files need single-step active-resource marking. Opening them as source and then remarking them as music creates false history entries, so `openFile()` now accepts a resource kind and `gotoSource()` can preserve music identity.
+- `uiSnapshot()` now exposes `resource_history` with back/forward availability, depths, and previous/next entries, giving programming agents the same reversible-navigation state without using the Tauri DOM bridge.
+- Runtime verification through the real Tauri app created a scaffolded game, opened `src/main.s → map/room.bin → chr/sprites.chr → music/theme.song.json → music/theme.s` through `target/debug/fc ide-mcp`, then used the live Pinia store to go back/forward. The active Dockview panel followed `editor → tracker → chr → tracker`, and `ide_get_state.ui.resource_history` reported `previous=CHR chr/sprites.chr`, `next=乐曲 music/theme.s`.
+
+## Resource History Location Restore Findings
+- Phase 46 made resource navigation reversible, but it reopened resources at default editor locations. That is still a reset for real creation work: source jumps to line 1, CHR can reset to tile 0, maps lose the focused cell, and tracker songs lose the selected Pattern cell.
+- The existing IDE UI context snapshot already publishes enough semantic position to improve this without DOM scraping: source `line`, CHR `tile`, map `hover` plus `layer`, tracker `pattern/row/channel`, and music assembly through the source editor's line context.
+- Resource history entries now carry an optional `target` object using the same shape as `focusResource()`. Back/forward navigation calls `focusResource()` when a target exists, otherwise it falls back to `openResource()`.
+- `uiSnapshot().resource_history.entries` now exposes the full back/forward arrays, including targets, so programming agents can inspect exactly what will be restored.
+- Music assembly resources remain `kind=music` for manifest/resource semantics but use the source editor context for line restoration. `activeEditorContext()` now prefers source context for music assembly paths, avoiding stale tracker context in `ide_get_state.ui.active_editor`.
+- A lightweight per-resource focus-target cache is needed because Dockview can unmount or replace source/CHR/map/tracker panels while the resource remains in history. The store now updates that cache whenever an editor publishes semantic context, so source line targets survive later CHR/map/tracker navigation.
+- Runtime verification through the real Tauri app and `target/debug/fc ide-mcp` focused source line 42, map collision cell `(9,7)`, CHR tile 33, and tracker row 12/channel 2. Back navigation restored CHR tile 33, map `(9,7)` on collision layer, and source line 42; forward navigation restored the tracker Pattern cell row 12/channel 2.
+
+## Resource History De-Dup And Recent Palette Findings
+- Phase 47 runtime verification showed repeated MCP focus cycles can naturally produce duplicate source/map/CHR/music entries in history. Correctness was intact, but a mature IDE should keep history and recent switching readable.
+- Resource history now treats `kind:path` as the uniqueness key. When a resource is opened again, stale copies of that same resource are removed from the back/forward stacks and the newest semantic target is kept.
+- Back/forward replay removes duplicate copies of the target resource from both stacks and restores the original stack snapshots if the resource open/focus operation fails.
+- `resourceFocusTargets` now follows resource rename and delete operations, so recent-resource entries do not retain stale source lines, CHR tiles, map cells, or tracker cells for old paths.
+- `ui.resource_history.recent` exposes the active resource followed by unique recent back/forward entries, capped for compact MCP/UI consumption.
+- Quick Open now uses that recent list when the query is empty, placing recently used resources first with location metadata such as source line, CHR tile, map cell/layer, or tracker row/channel. Typing a query still searches the manifest-backed resource list.
+
+## Map Focus Cell Semantics Findings
+- `ide_focus_resource` for maps opens the Map panel, sets `selection` to the target cell, and often clears `hover` after the mouse leaves or when the focus is programmatic.
+- Before this slice, `ide_wait_ui_context` and `ide_patch_active_context` read map coordinates only from `ui.active_editor.hover`. That meant the visible IDE could be focused on a selected map cell while MCP acknowledgement or active-context patching still failed.
+- The Map editor already had the right editing anchor behavior in `pasteAnchor()`: prefer `hover`, otherwise use the top-left of `selection`.
+- `ui.active_editor.focus_cell` now publishes that same semantic cell, so editing, resource history, recent resources, wait matching, and active-context patching share one definition.
+- Backend matching now prefers `focus_cell`, falls back to `hover`, and can still infer a coordinate from a single-cell `selection`. This keeps older UI snapshots and pure hover workflows compatible.
+
+## Map Active-Context Batch Patch Findings
+- After `focus_cell`, Map active-context patching was reliable but still limited to one cell, even though the visible Map editor already has `brush_size` and `selection` concepts.
+- `ide_patch_active_context` now keeps `scope=cell` as the default for compatibility, and adds explicit `scope=brush` and `scope=selection` for map resources.
+- `scope=brush` expands from `focus_cell` using `ui.active_editor.brush_size`, clamped to the reported map width/height.
+- `scope=selection` expands the current `ui.active_editor.selection` rectangle. It fails clearly if no selection exists.
+- The implementation still delegates to `patch_map_cells`, so map decoding/encoding, manifest registration, IPC refresh, and visible Map focus stay single-sourced.
+
+## Map Batch Patch Region Focus Findings
+- `ide_patch_active_context scope=brush|selection` and direct `ide_patch_map_cells` can write many map cells, but the previous `map-patch` IPC payload only carried the first patched `x/y`.
+- The project store routed `map-patch` through generic `focusResource()`, which opened the Map editor and requested a single-cell focus. `MapEditorPanel.vue` then collapsed `selection` to `{x0:x,y0:y,x1:x,y1:y}`.
+- That behavior made a successful batch edit look like a single-cell edit in the visible IDE, and it made follow-up active-context operations lose the user's selected region.
+- The backend now computes the bounding rectangle of all patched cells and includes it in both the `ide_patch_map_cells` result and `map-patch` event extra payload.
+- The frontend `mapCellFocus` signal now carries an optional `rect`, and the Map editor restores that rectangle as the visible selection while still focusing/scrolling to the first patched cell.
+- Selection drawing now uses the active layer color on tiles, attr, and collision layers, so collision/attribute batch patches have visible region feedback too.
+
+## CHR Pixel-Level Patch Findings
+- The CHR editor already supports human pencil/fill/picker edits at single-pixel granularity, but IDE MCP only exposed whole-tile `ide_patch_chr_tile` for small CHR changes.
+- Whole-tile patching is correct but clumsy for a programming agent drawing or correcting a sprite one pixel at a time: the agent must round-trip or synthesize all 64 pixels for every tiny change.
+- `ide_patch_chr_pixels` now patches one or more `{tile?,x,y,value}` entries inside an existing `.chr` file, preserves the same NES 2bpp encoding path, registers the CHR if needed, and emits the same `chr-patch` focus event used by whole-tile patches.
+- `ide_patch_active_context` for CHR remains compatible with full `pixels` tile replacement, and now also supports pixel patches when called with `x/y/value`. If `x/y` are omitted, it can resolve them from the visible CHR editor's `hover_pixel`.
+- This brings the agent workflow closer to the visible CHR editor's actual editing model: focus a tile, wait for `ui.active_editor`, then patch one pixel or a few pixels without replacing the full tile.
+
+## Tracker Batch Phrase Patch Findings
+- Tracker MCP editing is still less expressive than Map/CHR after Phase 52: `ide_patch_song_cell` can land on one Pattern cell, but composing a short melody requires many JSON-RPC calls or a whole-song rewrite.
+- The visible tracker already models composition as row/channel Pattern edits with a current instrument and octave. A semantic batch tool should preserve that model: write multiple cells in one Pattern, focus the first changed cell, and reuse the same `song-patch` frontend path.
+- A useful agent interface needs both exact cells (`cells[]` with row/channel/field values) and phrase shorthand (`notes[]` starting at row/channel with row/channel steps). The shorthand should inherit `instrument` and `volume` defaults so a simple melody can be described compactly.
+- Active-context music patching can stay backward compatible for single-cell edits while adding an explicit phrase scope. It should start from `ui.active_editor.pattern/row/channel` and optionally use the visible editor's current instrument when no instrument is supplied.
+- `ide_patch_song_cells` now shares the same backend path as `ide_patch_song_cell`, so single-cell and batch calls use one `.song.json` read/modify/write/manifest/register/event flow.
+- Text note parsing intentionally follows the frontend `noteName()` display convention: `C4` writes note value 37, `A4` writes 46, `C5` writes 49. It also accepts `...` for empty cells and `===`/`---`/`off` for note-off.
+- Active-context phrase patching must still follow the existing async UI acknowledgement rule: after `ide_focus_resource`, call `ide_wait_ui_context` before `ide_patch_active_context` if the next edit depends on the newly focused row/channel.
+
+## Tracker Batch Range Focus Findings
+- Phase 53 made Tracker batch writes possible, but the visible `song-patch` flow still focused only the first patched cell. That made a five-note phrase look like a single-cell patch in the IDE.
+- The backend already returns `last_row/last_channel`; for exact `cells[]` patches a bounding range is more accurate than first-to-last order, because cells can be non-linear across rows/channels.
+- The project store now carries a `songCellFocus.range` signal parallel to Map's rectangle focus. This lets the Tracker component restore a visible Pattern range after async reload/mount instead of deriving it from stale component state.
+- `TrackerPanel.vue` publishes the range as `ui.active_editor.selection={row0,row1,channel0,channel1}` and highlights `.cell.range`, so IDE MCP clients can wait on the real visible phrase selection without using the Tauri DOM bridge.
+
+## Files To Inspect Next
+- `fc-tauri/src/ide/MapEditorPanel.vue` template/style sections
+- `fc-tauri/src/ide/ChrEditorPanel.vue` template/style sections
+- `fc-tauri/src/ide/TrackerPanel.vue` template/style sections
+- `fc-tauri/src/stores/project.ts` map/CHR binding and active resource actions
+- `fc-tauri/src/views/IdeView.vue` style section and Dockview sizing behavior
+
+## Visual/Runtime Findings
+- `npm --prefix fc-tauri run tauri dev` starts the live Tauri app and creates `/tmp/fc-tauri-emu-mcp.sock`, `/tmp/fc-tauri-ide-mcp.sock`, and `/tmp/fc-tauri-mcp.sock`.
+- `target/debug/fc emu-mcp` initializes as `fc-tauri-emu-mcp` and lists the live emulator tool set.
+- Loading `/Users/sunmeng/workspace/fc/roms/SuperMarioBro.nes` through `emu_load_rom` switches the visible Vue shell to `mode=player`, `view=main`, and `rom=SuperMarioBro.nes`.
+- After live MCP operations, `window.__emu.liveMcp.online` is true, the toolbar MCP pill has class `mcpstat on`, and its title reports the latest MCP reason.
+- `emu_get_state` after live load reports the visible emulator running with mapper 0, NTSC timing, active CPU/PPU counters, and worker runtime state.
+- `tauri_screenshot` could not locate the native window in this environment, but direct Tauri DOM/store inspection and live `emu_capture_screen` output both worked.
+- CHR runtime verification used a temporary demo project at `/tmp/fc-chr-verify` created through `ide_new_project`; it opened `chr/sprites.chr` in the visible studio shell.
+- In Dockview, the CHR panel measured about 780x607, the CHR body about 780x529, and the zoom stage about 752x421. The selected tile canvas rendered 416x416 from available height, not a tiny native 8x8 surface.
+- The CHR sheet drawer measured about 260x489 as an overlay; hiding it removed `.chr .right` while the zoom stage stayed at full body width.
+- The adaptive sheet overview chose 12 columns at 18px tiles in that panel size, confirming the fixed 16-column layout is gone.
+- Music runtime verification used a temporary demo project at `/tmp/fc-tracker-verify` and a new in-memory `music/test.song.json` opened in the visible studio shell.
+- Pattern mode measured about 780x607 for the tracker panel, 780x491 for the body, and 756x467 for the Pattern grid. The inspector measured about 236x455 as an overlay.
+- Roll mode with the inspector hidden measured about 756x467 for the roll wrapper and 754x433 for the roll area, confirming the piano-roll surface fills the parent body.

@@ -7,6 +7,7 @@ import { NES_PALETTE, DEFAULT_PALETTE } from "../editor/nesPalette";
 defineOptions({ inheritAttrs: false });
 
 type MapTool = "brush" | "rect" | "fill" | "picker" | "select";
+type ViewMode = "fit" | "fill" | "manual";
 type MapCell = { x: number; y: number };
 type MapRect = { x0: number; y0: number; x1: number; y1: number };
 
@@ -17,12 +18,15 @@ const selTile = ref(0);
 const selAttr = ref(0);
 const selCollision = ref(1);
 const zoom = ref(2);
+const viewMode = ref<ViewMode>("fit");
 const brushSize = ref(1);
 const resizeW = ref(32);
 const resizeH = ref(30);
 const showGrid = ref(true);
+const resourcePanelOpen = ref(true);
 const hover = ref<{ x: number; y: number } | null>(null);
 const selection = ref<MapRect | null>(null);
+const selectionAnchor = ref<MapCell | null>(null);
 const tileClipboard = ref<{ w: number; h: number; tiles: number[] } | null>(null);
 const undoStack = ref<MapData[]>([]);
 const redoStack = ref<MapData[]>([]);
@@ -36,11 +40,21 @@ const chrChoices = computed(() => store.chrChoices);
 const boundChrPath = computed(() => store.boundChrForActiveMap);
 const cellPx = computed(() => zoom.value * 8);
 const mapViewport = ref({ w: 0, h: 0 });
-const effectiveCellPx = computed(() => {
+const paletteViewport = ref({ w: 0, h: 0 });
+const fitCellPx = computed(() => {
   const m = map.value;
   if (!m || !mapViewport.value.w || !mapViewport.value.h) return cellPx.value;
-  const fit = Math.floor(Math.min(mapViewport.value.w / m.w, mapViewport.value.h / m.h));
-  return Math.max(cellPx.value, fit);
+  return Math.max(4, Math.floor(Math.min(mapViewport.value.w / m.w, mapViewport.value.h / m.h)));
+});
+const fillCellPx = computed(() => {
+  const m = map.value;
+  if (!m || !mapViewport.value.w || !mapViewport.value.h) return cellPx.value;
+  return Math.max(8, Math.ceil(Math.max(mapViewport.value.w / m.w, mapViewport.value.h / m.h)));
+});
+const effectiveCellPx = computed(() => {
+  if (viewMode.value === "fit") return fitCellPx.value;
+  if (viewMode.value === "fill") return fillCellPx.value;
+  return Math.max(8, cellPx.value);
 });
 const hasUndo = computed(() => undoStack.value.length > 0);
 const hasRedo = computed(() => redoStack.value.length > 0);
@@ -57,16 +71,69 @@ const brushLabel = computed(() => {
   if (layer.value === "attr") return `属性 ${selAttr.value} · ${shape}`;
   return `碰撞 ${selCollision.value ? "阻挡" : "通行"} · ${shape}`;
 });
+const viewModeLabel = computed(() => {
+  if (viewMode.value === "fill") return "填满";
+  if (viewMode.value === "manual") return `${zoom.value}x`;
+  return "适配";
+});
 const displayScaleLabel = computed(() =>
-  effectiveCellPx.value > cellPx.value
-    ? `适配 ${effectiveCellPx.value}px/格`
-    : `${zoom.value}x`
+  `${viewModeLabel.value} ${effectiveCellPx.value}px/格`
 );
+const zoomPercentLabel = computed(() => `${Math.round((effectiveCellPx.value / 8) * 100)}%`);
+const canvasSize = computed(() => {
+  const m = map.value;
+  const size = effectiveCellPx.value;
+  return m ? { w: m.w * size, h: m.h * size } : { w: 0, h: 0 };
+});
+const mapFitsViewport = computed(
+  () =>
+    !!map.value &&
+    canvasSize.value.w <= mapViewport.value.w &&
+    canvasSize.value.h <= mapViewport.value.h,
+);
+const boundChrLabel = computed(() => boundChrPath.value || "未绑定 CHR");
+const layerName = computed(() => {
+  if (layer.value === "attr") return "属性";
+  if (layer.value === "collision") return "碰撞";
+  return "图块";
+});
+const hoverValueLabel = computed(() => {
+  const m = map.value;
+  const h = hover.value;
+  if (!m || !h) return "坐标 --,--";
+  const value = layerValue(m, h.x, h.y);
+  if (layer.value === "tiles") return `坐标 ${h.x},${h.y} · 图块 ${value}`;
+  if (layer.value === "attr") return `坐标 ${h.x},${h.y} · 属性 ${value & 3}`;
+  return `坐标 ${h.x},${h.y} · ${value ? "阻挡" : "通行"}`;
+});
+const collisionStatsLabel = computed(() => {
+  const m = map.value;
+  if (!m) return "碰撞 0/0";
+  const blocked = m.collision.reduce((sum, value) => sum + (value ? 1 : 0), 0);
+  return `碰撞 ${blocked}/${m.w * m.h}`;
+});
+const paletteCols = computed(() => {
+  const tiles = chr.value?.tiles ?? 0;
+  if (!tiles) return 16;
+  const width = Math.max(160, paletteViewport.value.w || 256);
+  return Math.max(6, Math.min(32, tiles, Math.floor(width / 18)));
+});
+const paletteTileSize = computed(() => {
+  const width = Math.max(160, paletteViewport.value.w || 256);
+  return Math.max(14, Math.min(28, Math.floor(width / Math.max(1, paletteCols.value))));
+});
 
 const canvas = ref<HTMLCanvasElement | null>(null);
+const root = ref<HTMLElement | null>(null);
 const mapWrap = ref<HTMLElement | null>(null);
+const tilePaletteBox = ref<HTMLElement | null>(null);
 const tilePalette = ref<HTMLCanvasElement | null>(null);
 let mapWrapObserver: ResizeObserver | null = null;
+let tilePaletteObserver: ResizeObserver | null = null;
+
+function focusEditorRoot() {
+  root.value?.focus({ preventScroll: true });
+}
 
 function syncMapViewport() {
   const el = mapWrap.value;
@@ -78,6 +145,19 @@ function syncMapViewport() {
   };
   if (next.w !== mapViewport.value.w || next.h !== mapViewport.value.h) {
     mapViewport.value = next;
+  }
+}
+
+function syncPaletteViewport() {
+  const el = tilePaletteBox.value;
+  if (!el) return;
+  const box = el.getBoundingClientRect();
+  const next = {
+    w: Math.max(0, Math.floor(box.width - 2)),
+    h: Math.max(0, Math.floor(box.height - 2)),
+  };
+  if (next.w !== paletteViewport.value.w || next.h !== paletteViewport.value.h) {
+    paletteViewport.value = next;
   }
 }
 
@@ -149,6 +229,33 @@ function drawTile(ctx: CanvasRenderingContext2D, tileIdx: number, ox: number, oy
   }
 }
 
+function layerStrokeColor(alpha = 1): string {
+  if (layer.value === "attr") return `rgba(251, 191, 36, ${alpha})`;
+  if (layer.value === "collision") return `rgba(244, 63, 94, ${alpha})`;
+  return `rgba(56, 189, 248, ${alpha})`;
+}
+
+function previewRectForCell(m: MapData, cell: MapCell): MapRect {
+  if (layer.value === "attr" && tool.value !== "select") {
+    const x0 = Math.floor(cell.x / 2) * 2;
+    const y0 = Math.floor(cell.y / 2) * 2;
+    return {
+      x0,
+      y0,
+      x1: Math.min(m.w - 1, x0 + 1),
+      y1: Math.min(m.h - 1, y0 + 1),
+    };
+  }
+  const w = tool.value === "brush" ? brushSize.value : 1;
+  const h = tool.value === "brush" ? brushSize.value : 1;
+  return {
+    x0: cell.x,
+    y0: cell.y,
+    x1: Math.min(m.w - 1, cell.x + w - 1),
+    y1: Math.min(m.h - 1, cell.y + h - 1),
+  };
+}
+
 function draw() {
   const cv = canvas.value;
   const m = map.value;
@@ -174,6 +281,8 @@ function draw() {
         const a = m.attrs[by * aw + bx];
         ctx.fillStyle = ["rgba(124,92,255,0)", "rgba(74,222,128,0.25)", "rgba(56,189,248,0.25)", "rgba(251,191,36,0.25)"][a];
         ctx.fillRect(bx * 2 * size, by * 2 * size, 2 * size, 2 * size);
+        ctx.strokeStyle = "rgba(251,191,36,0.16)";
+        ctx.strokeRect(bx * 2 * size + 0.5, by * 2 * size + 0.5, 2 * size - 1, 2 * size - 1);
       }
     }
   }
@@ -213,11 +322,14 @@ function draw() {
   }
 
   if (hover.value) {
-    ctx.strokeStyle = "#f8fafc";
+    const r = previewRectForCell(m, hover.value);
+    const w = r.x1 - r.x0 + 1;
+    const h = r.y1 - r.y0 + 1;
+    ctx.fillStyle = layerStrokeColor(0.1);
+    ctx.fillRect(r.x0 * size, r.y0 * size, w * size, h * size);
+    ctx.strokeStyle = layerStrokeColor(0.95);
     ctx.lineWidth = 2;
-    const w = tool.value === "brush" ? Math.min(brushSize.value, m.w - hover.value.x) : 1;
-    const h = tool.value === "brush" ? Math.min(brushSize.value, m.h - hover.value.y) : 1;
-    ctx.strokeRect(hover.value.x * size + 1, hover.value.y * size + 1, w * size - 2, h * size - 2);
+    ctx.strokeRect(r.x0 * size + 1, r.y0 * size + 1, w * size - 2, h * size - 2);
   }
 
   if (layer.value === "tiles" && tileClipboard.value && hover.value && tool.value !== "select") {
@@ -232,11 +344,11 @@ function draw() {
     }
   }
 
-  if (layer.value === "tiles" && selection.value) {
+  if (selection.value) {
     const r = selection.value;
-    ctx.fillStyle = "rgba(56,189,248,0.12)";
+    ctx.fillStyle = layerStrokeColor(0.12);
     ctx.fillRect(r.x0 * size, r.y0 * size, (r.x1 - r.x0 + 1) * size, (r.y1 - r.y0 + 1) * size);
-    ctx.strokeStyle = "#38bdf8";
+    ctx.strokeStyle = layerStrokeColor(0.95);
     ctx.lineWidth = 2;
     ctx.setLineDash([4, 3]);
     ctx.strokeRect(
@@ -294,14 +406,16 @@ function zoomAroundEvent(e: WheelEvent) {
   const wrap = mapWrap.value;
   const cv = canvas.value;
   if (!wrap || !cv) return;
-  const nextZoom = Math.max(1, Math.min(4, zoom.value + (e.deltaY < 0 ? 1 : -1)));
-  if (nextZoom === zoom.value) return;
+  const baseZoom = viewMode.value === "manual" ? zoom.value : Math.max(1, Math.round(effectiveCellPx.value / 8));
+  const nextZoom = Math.max(1, Math.min(8, baseZoom + (e.deltaY < 0 ? 1 : -1)));
+  if (viewMode.value === "manual" && nextZoom === zoom.value) return;
 
   const rect = cv.getBoundingClientRect();
   const relX = e.clientX - rect.left;
   const relY = e.clientY - rect.top;
   const sx = relX / rect.width;
   const sy = relY / rect.height;
+  viewMode.value = "manual";
   zoom.value = nextZoom;
   nextTick(() => {
     draw();
@@ -426,7 +540,6 @@ function sampleCell(cell: { x: number; y: number }) {
 
 function setTool(next: MapTool) {
   tool.value = next;
-  if (next === "select") layer.value = "tiles";
 }
 
 function normalizedRect(a: MapCell, b: MapCell): MapRect {
@@ -438,8 +551,89 @@ function normalizedRect(a: MapCell, b: MapCell): MapRect {
   };
 }
 
+function rectTopLeft(rect: MapRect): MapCell {
+  return { x: rect.x0, y: rect.y0 };
+}
+
+function clampRectToMap(rect: MapRect, m: MapData): MapRect {
+  return {
+    x0: Math.max(0, Math.min(m.w - 1, Math.min(rect.x0, rect.x1))),
+    y0: Math.max(0, Math.min(m.h - 1, Math.min(rect.y0, rect.y1))),
+    x1: Math.max(0, Math.min(m.w - 1, Math.max(rect.x0, rect.x1))),
+    y1: Math.max(0, Math.min(m.h - 1, Math.max(rect.y0, rect.y1))),
+  };
+}
+
+function clampCellToMap(cell: MapCell, m: MapData): MapCell {
+  return {
+    x: Math.max(0, Math.min(m.w - 1, Math.floor(cell.x))),
+    y: Math.max(0, Math.min(m.h - 1, Math.floor(cell.y))),
+  };
+}
+
 function selectionLabel(rect: MapRect): string {
   return `${rect.x1 - rect.x0 + 1}×${rect.y1 - rect.y0 + 1}`;
+}
+
+function rectWidth(rect: MapRect): number {
+  return rect.x1 - rect.x0 + 1;
+}
+
+function rectHeight(rect: MapRect): number {
+  return rect.y1 - rect.y0 + 1;
+}
+
+function translatedRect(rect: MapRect, dx: number, dy: number): MapRect {
+  return {
+    x0: rect.x0 + dx,
+    y0: rect.y0 + dy,
+    x1: rect.x1 + dx,
+    y1: rect.y1 + dy,
+  };
+}
+
+function rectFitsMap(rect: MapRect, m: MapData): boolean {
+  return rect.x0 >= 0 && rect.y0 >= 0 && rect.x1 < m.w && rect.y1 < m.h;
+}
+
+function setSelectionRect(rect: MapRect | null, anchor?: MapCell | null) {
+  const m = map.value;
+  if (!rect || !m) {
+    selection.value = null;
+    selectionAnchor.value = null;
+    return;
+  }
+  const next = clampRectToMap(rect, m);
+  selection.value = next;
+  selectionAnchor.value = anchor ? clampCellToMap(anchor, m) : rectTopLeft(next);
+}
+
+function readTileBlock(m: MapData, rect: MapRect): number[] {
+  const w = rectWidth(rect);
+  const h = rectHeight(rect);
+  const tiles: number[] = [];
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      tiles.push(m.tiles[(rect.y0 + y) * m.w + rect.x0 + x] ?? 0);
+    }
+  }
+  return tiles;
+}
+
+function writeTileBlock(m: MapData, rect: MapRect, tiles: number[]): boolean {
+  const w = rectWidth(rect);
+  const h = rectHeight(rect);
+  let changed = false;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const idx = (rect.y0 + y) * m.w + rect.x0 + x;
+      const next = tiles[y * w + x] ?? 0;
+      if (m.tiles[idx] === next) continue;
+      m.tiles[idx] = next;
+      changed = true;
+    }
+  }
+  return changed;
 }
 
 function copySelection(): boolean {
@@ -449,14 +643,9 @@ function copySelection(): boolean {
     store.status = "没有可复制的选区";
     return false;
   }
-  const w = rect.x1 - rect.x0 + 1;
-  const h = rect.y1 - rect.y0 + 1;
-  const tiles: number[] = [];
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      tiles.push(m.tiles[(rect.y0 + y) * m.w + rect.x0 + x] ?? 0);
-    }
-  }
+  const w = rectWidth(rect);
+  const h = rectHeight(rect);
+  const tiles = readTileBlock(m, rect);
   tileClipboard.value = { w, h, tiles };
   store.status = `已复制图块选区 ${w}×${h}`;
   draw();
@@ -467,6 +656,10 @@ function pasteAnchor(): MapCell | null {
   if (hover.value) return hover.value;
   if (selection.value) return { x: selection.value.x0, y: selection.value.y0 };
   return null;
+}
+
+function focusedCell(): MapCell | null {
+  return pasteAnchor();
 }
 
 function pasteTiles(): boolean {
@@ -499,13 +692,182 @@ function pasteTiles(): boolean {
   pushUndoSnapshot();
   for (const change of changes) m.tiles[change.idx] = change.value;
   layer.value = "tiles";
-  selection.value = {
+  setSelectionRect({
     x0: anchor.x,
     y0: anchor.y,
     x1: Math.min(m.w - 1, anchor.x + clip.w - 1),
     y1: Math.min(m.h - 1, anchor.y + clip.h - 1),
-  };
-  store.status = `已粘贴图块选区 ${selectionLabel(selection.value)}`;
+  }, anchor);
+  store.status = selection.value ? `已粘贴图块选区 ${selectionLabel(selection.value)}` : "已粘贴图块选区";
+  draw();
+  return true;
+}
+
+function selectionFocusCell(): MapCell | null {
+  const m = map.value;
+  if (!m) return null;
+  if (selection.value) return rectTopLeft(selection.value);
+  if (hover.value) return clampCellToMap(hover.value, m);
+  return { x: 0, y: 0 };
+}
+
+function moveRectBy(rect: MapRect, dx: number, dy: number, m: MapData): MapRect {
+  const w = rect.x1 - rect.x0;
+  const h = rect.y1 - rect.y0;
+  const x0 = Math.max(0, Math.min(m.w - 1 - w, rect.x0 + dx));
+  const y0 = Math.max(0, Math.min(m.h - 1 - h, rect.y0 + dy));
+  return { x0, y0, x1: x0 + w, y1: y0 + h };
+}
+
+function nudgeMapSelection(dx: number, dy: number, mode: "move" | "extend" | "box"): boolean {
+  const m = map.value;
+  if (!m) return false;
+  layer.value = "tiles";
+  tool.value = "select";
+  const currentRect = selection.value ?? (() => {
+    const focus = selectionFocusCell();
+    return focus ? { x0: focus.x, y0: focus.y, x1: focus.x, y1: focus.y } : null;
+  })();
+  if (!currentRect) return false;
+
+  if (mode === "box") {
+    const moved = moveRectBy(currentRect, dx, dy, m);
+    const actualDx = moved.x0 - currentRect.x0;
+    const actualDy = moved.y0 - currentRect.y0;
+    const anchor = selectionAnchor.value
+      ? clampCellToMap({ x: selectionAnchor.value.x + actualDx, y: selectionAnchor.value.y + actualDy }, m)
+      : rectTopLeft(moved);
+    setSelectionRect(moved, anchor);
+    hover.value = rectTopLeft(selection.value!);
+    scrollCellIntoView(hover.value);
+    store.status = `已移动选区到 ${hover.value.x},${hover.value.y} · ${selectionLabel(selection.value!)}`;
+    draw();
+    return true;
+  }
+
+  if (mode === "extend") {
+    const anchor = selectionAnchor.value ?? rectTopLeft(currentRect);
+    const focus = {
+      x: dx < 0 ? currentRect.x0 : dx > 0 ? currentRect.x1 : hover.value?.x ?? currentRect.x1,
+      y: dy < 0 ? currentRect.y0 : dy > 0 ? currentRect.y1 : hover.value?.y ?? currentRect.y1,
+    };
+    const nextFocus = clampCellToMap({ x: focus.x + dx, y: focus.y + dy }, m);
+    setSelectionRect(normalizedRect(anchor, nextFocus), anchor);
+    hover.value = nextFocus;
+    scrollCellIntoView(nextFocus);
+    store.status = `已扩展选区 ${selectionLabel(selection.value!)}`;
+    draw();
+    return true;
+  }
+
+  const focus = selectionFocusCell();
+  if (!focus) return false;
+  const next = clampCellToMap({ x: focus.x + dx, y: focus.y + dy }, m);
+  setSelectionRect({ x0: next.x, y0: next.y, x1: next.x, y1: next.y }, next);
+  hover.value = next;
+  scrollCellIntoView(next);
+  store.status = `地图焦点 ${next.x},${next.y}`;
+  draw();
+  return true;
+}
+
+function moveSelectionTiles(dx: number, dy: number): boolean {
+  const m = map.value;
+  const rect = selection.value;
+  if (!m || !rect) {
+    store.status = "没有可移动的图块选区";
+    return false;
+  }
+  const target = moveRectBy(rect, dx, dy, m);
+  if (target.x0 === rect.x0 && target.y0 === rect.y0) {
+    store.status = "选区已到地图边界";
+    return false;
+  }
+
+  const tiles = readTileBlock(m, rect);
+
+  pushUndoSnapshot();
+  for (let y = rect.y0; y <= rect.y1; y++) {
+    for (let x = rect.x0; x <= rect.x1; x++) {
+      m.tiles[y * m.w + x] = 0;
+    }
+  }
+  writeTileBlock(m, target, tiles);
+
+  layer.value = "tiles";
+  tool.value = "select";
+  setSelectionRect(target, rectTopLeft(target));
+  hover.value = rectTopLeft(target);
+  scrollCellIntoView(hover.value);
+  store.status = `已移动图块选区到 ${hover.value.x},${hover.value.y} · ${selectionLabel(target)}`;
+  draw();
+  return true;
+}
+
+function duplicateSelectionTiles(dx: number, dy: number): boolean {
+  const m = map.value;
+  const rect = selection.value;
+  if (!m || !rect) {
+    store.status = "没有可复制的图块选区";
+    return false;
+  }
+  const target = translatedRect(rect, dx * rectWidth(rect), dy * rectHeight(rect));
+  if (!rectFitsMap(target, m)) {
+    store.status = "复制目标已到地图边界";
+    return false;
+  }
+
+  const tiles = readTileBlock(m, rect);
+  let changed = false;
+  const before = cloneMapData(m);
+  changed = writeTileBlock(m, target, tiles);
+  if (changed) {
+    undoStack.value.push(before);
+    if (undoStack.value.length > 50) undoStack.value.shift();
+    redoStack.value = [];
+  }
+
+  layer.value = "tiles";
+  tool.value = "select";
+  setSelectionRect(target, rectTopLeft(target));
+  hover.value = rectTopLeft(target);
+  scrollCellIntoView(hover.value);
+  store.status = changed
+    ? `已复制图块选区到 ${hover.value.x},${hover.value.y} · ${selectionLabel(target)}`
+    : `目标区域已是相同图块 · ${selectionLabel(target)}`;
+  draw();
+  return true;
+}
+
+function fillSelection(erase = false): boolean {
+  const m = map.value;
+  const rect = selection.value;
+  if (!m || !rect) {
+    store.status = "没有可填充的选区";
+    return false;
+  }
+  const value = erase ? 0 : selectedLayerValue();
+  const before = cloneMapData(m);
+  let changed = 0;
+  for (let y = rect.y0; y <= rect.y1; y++) {
+    for (let x = rect.x0; x <= rect.x1; x++) {
+      if (setCellValue(m, x, y, value)) changed++;
+    }
+  }
+  if (!changed) {
+    store.status = erase ? "选区已是空值" : "选区已是当前值";
+    draw();
+    return false;
+  }
+  undoStack.value.push(before);
+  if (undoStack.value.length > 50) undoStack.value.shift();
+  redoStack.value = [];
+  const focus = rectTopLeft(rect);
+  hover.value = focus;
+  scrollCellIntoView(focus);
+  store.status = erase
+    ? `已清空选区 ${selectionLabel(rect)} · ${changed} 格`
+    : `已填充选区 ${selectionLabel(rect)} · ${changed} 格`;
   draw();
   return true;
 }
@@ -546,9 +908,11 @@ function redrawWithPreview() {
 
 function down(e: MouseEvent) {
   if (e.button === 1 || (e.button === 0 && isSpaceDown.value)) {
+    focusEditorRoot();
     startPan(e);
     return;
   }
+  focusEditorRoot();
   eraseMode = e.button === 2 || e.shiftKey || e.altKey;
   const cell = cellFromEvent(e);
   if (!cell) return;
@@ -573,7 +937,7 @@ function down(e: MouseEvent) {
     layer.value = "tiles";
     rectStart = cell;
     rectEnd = cell;
-    selection.value = normalizedRect(cell, cell);
+    setSelectionRect(normalizedRect(cell, cell), cell);
     draw();
   } else if (tool.value === "rect") {
     pushUndoSnapshot();
@@ -596,7 +960,7 @@ function move(e: MouseEvent) {
   if (tool.value === "select") {
     if (rectStart && hover.value) {
       rectEnd = hover.value;
-      selection.value = normalizedRect(rectStart, rectEnd);
+      setSelectionRect(normalizedRect(rectStart, rectEnd), rectStart);
       draw();
     }
     return;
@@ -638,9 +1002,6 @@ function wheel(e: WheelEvent) {
   zoomAroundEvent(e);
 }
 
-const PCOLS = 16;
-const tilePreviewSize = 16;
-
 function drawTilePalette() {
   const cv = tilePalette.value;
   if (!cv) return;
@@ -649,21 +1010,40 @@ function drawTilePalette() {
     cv.height = 0;
     return;
   }
-  const rows = Math.ceil(chr.value.tiles / PCOLS);
-  cv.width = PCOLS * tilePreviewSize;
-  cv.height = rows * tilePreviewSize;
+  const cols = paletteCols.value;
+  const previewSize = paletteTileSize.value;
+  const rows = Math.ceil(chr.value.tiles / cols);
+  cv.width = cols * previewSize;
+  cv.height = rows * previewSize;
   const ctx = cv.getContext("2d")!;
   ctx.imageSmoothingEnabled = false;
   ctx.fillStyle = "#05070d";
   ctx.fillRect(0, 0, cv.width, cv.height);
   for (let t = 0; t < chr.value.tiles; t++) {
-    drawTile(ctx, t, (t % PCOLS) * tilePreviewSize, Math.floor(t / PCOLS) * tilePreviewSize, tilePreviewSize);
+    drawTile(ctx, t, (t % cols) * previewSize, Math.floor(t / cols) * previewSize, previewSize);
   }
   ctx.strokeStyle = "#7c5cff";
   ctx.lineWidth = 2;
-  const sx = (selTile.value % PCOLS) * tilePreviewSize;
-  const sy = Math.floor(selTile.value / PCOLS) * tilePreviewSize;
-  ctx.strokeRect(sx + 1, sy + 1, tilePreviewSize - 2, tilePreviewSize - 2);
+  const sx = (selTile.value % cols) * previewSize;
+  const sy = Math.floor(selTile.value / cols) * previewSize;
+  ctx.strokeRect(sx + 1, sy + 1, previewSize - 2, previewSize - 2);
+}
+
+function scrollSelectedTileIntoPalette() {
+  const box = tilePaletteBox.value;
+  if (!box || !chr.value) return;
+  const cols = paletteCols.value;
+  const previewSize = paletteTileSize.value;
+  const tile = Math.max(0, Math.min(chr.value.tiles - 1, selTile.value));
+  const left = (tile % cols) * previewSize;
+  const top = Math.floor(tile / cols) * previewSize;
+  const right = left + previewSize;
+  const bottom = top + previewSize;
+  const pad = 8;
+  if (left < box.scrollLeft) box.scrollLeft = Math.max(0, left - pad);
+  else if (right > box.scrollLeft + box.clientWidth) box.scrollLeft = Math.max(0, right - box.clientWidth + pad);
+  if (top < box.scrollTop) box.scrollTop = Math.max(0, top - pad);
+  else if (bottom > box.scrollTop + box.clientHeight) box.scrollTop = Math.max(0, bottom - box.clientHeight + pad);
 }
 
 function pickTile(ev: MouseEvent) {
@@ -671,14 +1051,28 @@ function pickTile(ev: MouseEvent) {
   const r = tilePalette.value.getBoundingClientRect();
   const sx = tilePalette.value.width / r.width;
   const sy = tilePalette.value.height / r.height;
+  const cols = paletteCols.value;
+  const previewSize = paletteTileSize.value;
   const t =
-    Math.floor(((ev.clientY - r.top) * sy) / tilePreviewSize) * PCOLS +
-    Math.floor(((ev.clientX - r.left) * sx) / tilePreviewSize);
+    Math.floor(((ev.clientY - r.top) * sy) / previewSize) * cols +
+    Math.floor(((ev.clientX - r.left) * sx) / previewSize);
   if (t >= 0 && t < chr.value.tiles) {
     selTile.value = t;
     draw();
     drawTilePalette();
+    scrollSelectedTileIntoPalette();
   }
+}
+
+function toggleResourcePanel() {
+  resourcePanelOpen.value = !resourcePanelOpen.value;
+  nextTick(() => {
+    syncMapViewport();
+    syncPaletteViewport();
+    draw();
+    drawTilePalette();
+    scrollSelectedTileIntoPalette();
+  });
 }
 
 async function onChrChange(e: Event) {
@@ -689,8 +1083,17 @@ async function onChrChange(e: Event) {
     if (chr.value && selTile.value >= chr.value.tiles) selTile.value = 0;
     draw();
     drawTilePalette();
+    scrollSelectedTileIntoPalette();
   } catch (err) {
     store.status = "绑定 CHR 失败：" + err;
+  }
+}
+
+async function openBoundChr() {
+  try {
+    await store.openBoundChrForActiveMap(selTile.value);
+  } catch (err) {
+    store.status = "打开绑定 CHR 失败：" + err;
   }
 }
 
@@ -731,7 +1134,102 @@ function applyResize() {
 }
 
 function setZoom(next: number) {
-  zoom.value = Math.max(1, Math.min(4, next));
+  zoom.value = Math.max(1, Math.min(8, next));
+}
+
+function centerViewport() {
+  const wrap = mapWrap.value;
+  const cv = canvas.value;
+  if (!wrap || !cv) return;
+  const rect = cv.getBoundingClientRect();
+  wrap.scrollLeft = Math.max(0, (rect.width - wrap.clientWidth) / 2);
+  wrap.scrollTop = Math.max(0, (rect.height - wrap.clientHeight) / 2);
+}
+
+function scrollCellIntoView(cell: MapCell) {
+  const wrap = mapWrap.value;
+  if (!wrap) return;
+  const size = effectiveCellPx.value;
+  const left = cell.x * size;
+  const top = cell.y * size;
+  const right = left + size;
+  const bottom = top + size;
+  if (left < wrap.scrollLeft) wrap.scrollLeft = left;
+  else if (right > wrap.scrollLeft + wrap.clientWidth) wrap.scrollLeft = Math.max(0, right - wrap.clientWidth);
+  if (top < wrap.scrollTop) wrap.scrollTop = top;
+  else if (bottom > wrap.scrollTop + wrap.clientHeight) wrap.scrollTop = Math.max(0, bottom - wrap.clientHeight);
+}
+
+function applyMapCellFocus() {
+  const focus = store.mapCellFocus;
+  const m = map.value;
+  if (!m || focus.path !== store.map?.path) return;
+  const cell = {
+    x: Math.max(0, Math.min(m.w - 1, Math.floor(focus.x || 0))),
+    y: Math.max(0, Math.min(m.h - 1, Math.floor(focus.y || 0))),
+  };
+  if (focus.layer === "tiles" || focus.layer === "attr" || focus.layer === "collision") {
+    layer.value = focus.layer;
+  }
+  hover.value = cell;
+  setSelectionRect(
+    focus.rect ? clampRectToMap(focus.rect, m) : { x0: cell.x, y0: cell.y, x1: cell.x, y1: cell.y },
+    focus.rect ? rectTopLeft(focus.rect) : cell,
+  );
+  if (layer.value === "tiles") selTile.value = layerValue(m, cell.x, cell.y);
+  else if (layer.value === "attr") selAttr.value = layerValue(m, cell.x, cell.y) & 3;
+  else selCollision.value = layerValue(m, cell.x, cell.y) ? 1 : 0;
+  nextTick(() => {
+    focusEditorRoot();
+    draw();
+    scrollCellIntoView(cell);
+    if (layer.value === "tiles") scrollSelectedTileIntoPalette();
+  });
+}
+
+function applyMapTileBrushFocus() {
+  const focus = store.mapTileBrushFocus;
+  if (!map.value || focus.path !== store.map?.path || !focus.seq) return;
+  layer.value = "tiles";
+  tool.value = "brush";
+  selTile.value = focus.tile & 0xff;
+  hover.value = null;
+  setSelectionRect(null);
+  nextTick(() => {
+    focusEditorRoot();
+    draw();
+    drawTilePalette();
+    scrollSelectedTileIntoPalette();
+  });
+}
+
+function setViewMode(next: ViewMode) {
+  if (next === "manual" && viewMode.value !== "manual") {
+    setZoom(Math.max(1, Math.round(effectiveCellPx.value / 8)));
+  }
+  viewMode.value = next;
+  nextTick(() => {
+    draw();
+    centerViewport();
+  });
+}
+
+function setManualZoom(next: number) {
+  viewMode.value = "manual";
+  setZoom(next);
+  nextTick(() => {
+    draw();
+    centerViewport();
+  });
+}
+
+function onZoomInput(e: Event) {
+  setManualZoom(Number((e.target as HTMLInputElement).value));
+}
+
+function nudgeZoom(delta: number) {
+  const base = viewMode.value === "manual" ? zoom.value : Math.max(1, Math.round(effectiveCellPx.value / 8));
+  setManualZoom(base + delta);
 }
 
 function onShortcut(key: string): boolean {
@@ -745,13 +1243,24 @@ function onShortcut(key: string): boolean {
   else if (key === "i") setTool("picker");
   else if (key === "s") setTool("select");
   else if (key === "g") showGrid.value = !showGrid.value;
-  else if (key === "[") setZoom(zoom.value - 1);
-  else if (key === "]") setZoom(zoom.value + 1);
+  else if (key === "0") setViewMode("fit");
+  else if (key === "9") setViewMode("fill");
+  else if (key === "[") nudgeZoom(-1);
+  else if (key === "]") nudgeZoom(1);
   else return false;
   return true;
 }
 
+function arrowDelta(key: string): MapCell | null {
+  if (key === "arrowleft") return { x: -1, y: 0 };
+  if (key === "arrowright") return { x: 1, y: 0 };
+  if (key === "arrowup") return { x: 0, y: -1 };
+  if (key === "arrowdown") return { x: 0, y: 1 };
+  return null;
+}
+
 async function onKeydown(e: KeyboardEvent) {
+  if (root.value && e.target instanceof Node && !root.value.contains(e.target)) return;
   const meta = e.metaKey || e.ctrlKey;
   const key = e.key.toLowerCase();
   if (e.code === "Space" && !isEditableTarget(e.target)) {
@@ -759,7 +1268,19 @@ async function onKeydown(e: KeyboardEvent) {
     isSpaceDown.value = true;
     return;
   }
+  if (key === "enter" && !isEditableTarget(e.target)) {
+    e.preventDefault();
+    fillSelection(e.shiftKey || e.altKey);
+    return;
+  }
   if (meta) {
+    const delta = arrowDelta(key);
+    if (delta) {
+      e.preventDefault();
+      if (e.shiftKey) duplicateSelectionTiles(delta.x, delta.y);
+      else moveSelectionTiles(delta.x, delta.y);
+      return;
+    }
     if (key === "s" && map.value) {
       e.preventDefault();
       await store.saveMap();
@@ -787,7 +1308,15 @@ async function onKeydown(e: KeyboardEvent) {
     }
     return;
   }
-  if (isEditableTarget(e.target) || e.altKey) return;
+  if (isEditableTarget(e.target)) return;
+  const delta = arrowDelta(key);
+  if (delta) {
+    e.preventDefault();
+    const mode = e.altKey ? "box" : e.shiftKey ? "extend" : "move";
+    nudgeMapSelection(delta.x, delta.y, mode);
+    return;
+  }
+  if (e.altKey) return;
   if (onShortcut(key)) e.preventDefault();
 }
 
@@ -813,7 +1342,65 @@ function onWindowBlur() {
   stopPainting();
 }
 
+function publishMapContext() {
+  const current = store.map;
+  if (!map.value || !current) {
+    store.setEditorContext("map", null);
+    return;
+  }
+  const selectedValue =
+    layer.value === "tiles" ? selTile.value :
+    layer.value === "attr" ? selAttr.value :
+    selCollision.value;
+  const focus = focusedCell();
+  store.setEditorContext("map", {
+    kind: "map",
+    path: current.path,
+    width: map.value.w,
+    height: map.value.h,
+    layer: layer.value,
+    tool: tool.value,
+    selected_value: selectedValue,
+    selected_tile: selTile.value,
+    selected_attr: selAttr.value,
+    selected_collision: selCollision.value,
+    brush_size: brushSize.value,
+    focus_cell: focus,
+    hover: hover.value,
+    selection: selection.value,
+    bound_chr: boundChrPath.value,
+    view_mode: viewMode.value,
+    cell_px: effectiveCellPx.value,
+    grid: showGrid.value,
+    palette_open: resourcePanelOpen.value,
+    dirty: store.mapDirty,
+    active: store.activeResource.kind === "map" && store.activeResource.path === current.path,
+  });
+}
+
 watch([map, layer, zoom, showGrid, brushSize, tool, effectiveCellPx], () => draw(), { deep: true, flush: "post" });
+watch(
+  [
+    map,
+    layer,
+    tool,
+    selTile,
+    selAttr,
+    selCollision,
+    brushSize,
+    hover,
+    selection,
+    boundChrPath,
+    viewMode,
+    showGrid,
+    resourcePanelOpen,
+    effectiveCellPx,
+    () => store.mapDirty,
+    () => store.activeResource.seq,
+  ],
+  publishMapContext,
+  { deep: true, flush: "post" },
+);
 watch(
   () => store.map?.path,
   async () => {
@@ -821,13 +1408,20 @@ watch(
     redoStack.value = [];
     rectStart = null;
     rectEnd = null;
-    selection.value = null;
+    setSelectionRect(null);
     tileClipboard.value = null;
     syncResizeFields();
     await nextTick();
     draw();
     drawTilePalette();
-    window.requestAnimationFrame(() => drawTilePalette());
+    window.requestAnimationFrame(() => {
+      centerViewport();
+      applyMapCellFocus();
+      applyMapTileBrushFocus();
+      drawTilePalette();
+      scrollSelectedTileIntoPalette();
+      publishMapContext();
+    });
   },
   { flush: "post" }
 );
@@ -837,14 +1431,40 @@ watch(chr, async () => {
   if (chr.value && selTile.value >= chr.value.tiles) selTile.value = 0;
   draw();
   drawTilePalette();
+  scrollSelectedTileIntoPalette();
 }, { deep: true, flush: "post" });
 watch(selTile, () => {
   draw();
   drawTilePalette();
+  nextTick(scrollSelectedTileIntoPalette);
 }, { flush: "post" });
+watch(() => store.mapCellFocus.seq, () => nextTick(applyMapCellFocus), { flush: "post" });
+watch(() => store.mapTileBrushFocus.seq, () => nextTick(applyMapTileBrushFocus), { flush: "post" });
 watch(tilePalette, async () => {
   await nextTick();
   drawTilePalette();
+}, { flush: "post" });
+watch(tilePaletteBox, async (el) => {
+  tilePaletteObserver?.disconnect();
+  tilePaletteObserver = null;
+  if (el) {
+    tilePaletteObserver = new ResizeObserver(() => {
+      syncPaletteViewport();
+      nextTick(() => {
+        drawTilePalette();
+        scrollSelectedTileIntoPalette();
+      });
+    });
+    tilePaletteObserver.observe(el);
+    await nextTick();
+    syncPaletteViewport();
+    drawTilePalette();
+    scrollSelectedTileIntoPalette();
+  }
+}, { flush: "post" });
+watch([paletteCols, paletteTileSize], () => {
+  drawTilePalette();
+  nextTick(scrollSelectedTileIntoPalette);
 }, { flush: "post" });
 watch(mapWrap, async (el) => {
   mapWrapObserver?.disconnect();
@@ -862,20 +1482,22 @@ watch(mapWrap, async (el) => {
 }, { flush: "post" });
 watch(hover, () => draw(), { deep: true, flush: "post" });
 onMounted(async () => {
-  window.addEventListener("keydown", onKeydown);
-  window.addEventListener("keyup", onKeyup);
   window.addEventListener("mousemove", onWindowMousemove);
   window.addEventListener("mouseup", onWindowMouseup);
   window.addEventListener("blur", onWindowBlur);
   await nextTick();
   syncMapViewport();
-  draw();
-  drawTilePalette();
-});
-onBeforeUnmount(() => {
-  mapWrapObserver?.disconnect();
-  window.removeEventListener("keydown", onKeydown);
-  window.removeEventListener("keyup", onKeyup);
+  syncPaletteViewport();
+  applyMapCellFocus();
+	  if (map.value) focusEditorRoot();
+	  draw();
+	  drawTilePalette();
+	  publishMapContext();
+	});
+	onBeforeUnmount(() => {
+	  store.setEditorContext("map", null);
+	  mapWrapObserver?.disconnect();
+  tilePaletteObserver?.disconnect();
   window.removeEventListener("mousemove", onWindowMousemove);
   window.removeEventListener("mouseup", onWindowMouseup);
   window.removeEventListener("blur", onWindowBlur);
@@ -883,7 +1505,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="maped">
+  <div ref="root" class="maped" tabindex="0" @keydown="onKeydown" @keyup="onKeyup">
     <div v-if="!map" class="empty">
       <Icon name="library" :size="40" />
       <p>从文件树打开 map/ 下的 .bin,或新建地图</p>
@@ -902,6 +1524,32 @@ onBeforeUnmount(() => {
           <button class="t" :class="{ on: tool === 'picker' }" title="从地图取样" @click="setTool('picker')">取样</button>
           <button class="t" :class="{ on: tool === 'select' }" title="复制图块区域" @click="setTool('select')">选区</button>
         </div>
+        <div class="seg viewseg">
+          <button class="t" :class="{ on: viewMode === 'fit' }" title="适配到可用区域" @click="setViewMode('fit')">适配</button>
+          <button class="t" :class="{ on: viewMode === 'fill' }" title="填满可用区域" @click="setViewMode('fill')">填满</button>
+          <button class="t" :class="{ on: viewMode === 'manual' }" title="手动缩放" @click="setViewMode('manual')">手动</button>
+        </div>
+        <button class="iconbtn" title="撤销" :disabled="!hasUndo" @click="undo">
+          <Icon name="undo" :size="15" />
+        </button>
+        <button class="iconbtn" title="重做" :disabled="!hasRedo" @click="redo">
+          <Icon name="redo" :size="15" />
+        </button>
+        <button
+          class="iconbtn"
+          :class="{ on: resourcePanelOpen }"
+          title="图块资源"
+          @click="toggleResourcePanel"
+        >
+          <Icon name="library" :size="15" />
+        </button>
+        <button class="t" title="清空当前层" @click="clearLayer">清层</button>
+        <div class="grow" />
+        <span class="meta">{{ layerName }} · {{ toolName }} · {{ map.w }}×{{ map.h }}</span>
+        <span v-if="store.mapDirty" class="dirty">●未保存</span>
+        <button class="t save" @click="store.saveMap()">保存</button>
+      </div>
+      <div class="parambar">
         <label class="bind">
           CHR
           <select :value="boundChrPath" @change="onChrChange">
@@ -911,8 +1559,8 @@ onBeforeUnmount(() => {
         </label>
         <label class="zoom">
           缩放
-          <input v-model.number="zoom" type="range" min="1" max="4" step="1" />
-          <span>{{ displayScaleLabel }}</span>
+          <input :value="zoom" type="range" min="1" max="8" step="1" @input="onZoomInput" />
+          <span>{{ displayScaleLabel }} · {{ zoomPercentLabel }}</span>
         </label>
         <label class="brush">
           刷子
@@ -934,7 +1582,7 @@ onBeforeUnmount(() => {
           网格
         </label>
         <span v-if="layer === 'attr'" class="attrsel">
-          调色板:
+          属性:
           <button v-for="a in 4" :key="a" class="ab" :class="{ on: selAttr === a - 1 }" @click="selAttr = a - 1">
             {{ a - 1 }}
           </button>
@@ -944,20 +1592,42 @@ onBeforeUnmount(() => {
           <button class="ab" :class="{ on: selCollision === 0 }" @click="selCollision = 0">通</button>
           <button class="ab" :class="{ on: selCollision === 1 }" @click="selCollision = 1">挡</button>
         </span>
-        <button class="iconbtn" title="撤销" :disabled="!hasUndo" @click="undo">
-          <Icon name="undo" :size="15" />
+      </div>
+      <div class="contextbar">
+        <span class="crumb"><Icon name="map" :size="14" />{{ store.map?.path }}</span>
+        <span class="crumb bindstate" :class="{ missing: !boundChrPath }"><Icon name="library" :size="14" />{{ boundChrLabel }}</span>
+        <button class="crumb action" :disabled="!boundChrPath" title="打开当前地图绑定的 CHR" @click="openBoundChr">
+          <Icon name="chevron" :size="13" />打开 CHR
         </button>
-        <button class="iconbtn" title="重做" :disabled="!hasRedo" @click="redo">
-          <Icon name="redo" :size="15" />
+        <span class="crumb layerchip" :class="`layer-${layer}`">{{ brushLabel }}</span>
+        <span class="crumb">{{ hoverValueLabel }}</span>
+        <span class="crumb">{{ collisionStatsLabel }}</span>
+        <span v-if="selection" class="crumb">选区 {{ selectionLabel(selection) }}</span>
+        <button v-if="selection" class="crumb action" title="用当前值填充选区" @click="fillSelection(false)">
+          <Icon name="bucket" :size="13" />填充选区
         </button>
-        <button class="t" title="清空当前层" @click="clearLayer">清层</button>
-        <div class="grow" />
-        <span class="meta">{{ brushLabel }} · {{ map.w }}×{{ map.h }}</span>
-        <span v-if="store.mapDirty" class="dirty">●未保存</span>
-        <button class="t save" @click="store.saveMap()">保存</button>
+        <button v-if="selection" class="crumb action" title="清空当前选区" @click="fillSelection(true)">
+          <Icon name="eraser" :size="13" />清空
+        </button>
+        <button
+          v-if="selection && layer === 'tiles'"
+          class="crumb action"
+          title="向右复制当前图块选区"
+          @click="duplicateSelectionTiles(1, 0)"
+        >
+          <Icon name="arrowRight" :size="13" />向右重复
+        </button>
+        <button
+          v-if="selection && layer === 'tiles'"
+          class="crumb action"
+          title="向下复制当前图块选区"
+          @click="duplicateSelectionTiles(0, 1)"
+        >
+          <Icon name="arrowDown" :size="13" />向下重复
+        </button>
       </div>
       <div class="body">
-        <div ref="mapWrap" class="mapwrap" :class="{ panning: isPanning, panready: isSpaceDown }">
+        <div ref="mapWrap" class="mapwrap" :class="[`layer-${layer}`, { panning: isPanning, panready: isSpaceDown, centered: mapFitsViewport }]">
           <canvas
             ref="canvas"
             class="mapcv"
@@ -969,16 +1639,16 @@ onBeforeUnmount(() => {
             @contextmenu.prevent
           />
         </div>
-        <div class="side">
+        <div v-if="resourcePanelOpen" class="side">
           <div class="sidetitle">图块</div>
           <div v-if="!chr" class="resource-empty">选择或打开一个 .chr</div>
-          <div v-else class="tilebox">
+          <div v-else ref="tilePaletteBox" class="tilebox">
             <canvas ref="tilePalette" class="tpcv" @click="pickTile" />
           </div>
           <div class="meta">选中图块 {{ selTile }}</div>
-          <div class="meta" v-if="selection">选区 {{ selectionLabel(selection) }}</div>
+          <div class="meta">绑定 {{ boundChrLabel }}</div>
+          <div class="meta">图块表 {{ paletteCols }} 列 · {{ paletteTileSize }}px</div>
           <div class="meta" v-if="tileClipboard">剪贴板 {{ tileClipboard.w }}×{{ tileClipboard.h }}</div>
-          <div class="meta" v-if="hover">坐标 {{ hover.x }}, {{ hover.y }}</div>
           <div class="tip">{{ toolName }} · {{ brushLabel }}</div>
         </div>
       </div>
@@ -989,40 +1659,57 @@ onBeforeUnmount(() => {
 <style scoped>
 .maped { height: 100%; display: flex; flex-direction: column; background: var(--panel); }
 .empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: var(--text-mute); }
-.toolbar { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--border); min-width: 0; overflow-x: auto; }
+.toolbar { display: flex; align-items: center; gap: 8px; padding: 8px 10px 6px; min-width: 0; overflow: hidden; }
+.parambar { min-height: 36px; display: flex; align-items: center; gap: 10px; padding: 4px 10px 7px; border-bottom: 1px solid var(--border); min-width: 0; overflow-x: auto; }
 .seg { display: flex; gap: 4px; }
+.viewseg { padding-left: 4px; border-left: 1px solid var(--border); }
 .t { height: 28px; padding: 0 10px; border: 1px solid var(--border); background: var(--surface); color: var(--text-dim); border-radius: var(--radius-sm); cursor: pointer; font-size: 12.5px; white-space: nowrap; }
 .t:hover { color: var(--text); border-color: var(--border-strong); }
 .t.on { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
 .t:disabled { opacity: 0.45; cursor: default; }
 .t.save { color: var(--accent); }
 .bind, .zoom, .brush, .dims, .check { height: 28px; display: flex; align-items: center; gap: 6px; color: var(--text-dim); font-size: 12px; white-space: nowrap; }
-.bind select { max-width: 180px; height: 28px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); padding: 0 8px; }
+.bind select { max-width: 220px; height: 28px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); padding: 0 8px; }
 .brush select { height: 28px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); padding: 0 8px; }
 .brush select:disabled { opacity: 0.45; }
 .dims input { width: 54px; height: 28px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); padding: 0 6px; font-size: 12px; }
 .mini { height: 28px; padding: 0 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text-dim); border-radius: var(--radius-sm); cursor: pointer; font-size: 12px; }
 .mini:hover { color: var(--text); border-color: var(--border-strong); }
-.zoom input { width: 76px; accent-color: var(--accent); }
+.zoom input { width: 104px; accent-color: var(--accent); }
 .check input { accent-color: var(--accent); }
 .grow { flex: 1; min-width: 12px; }
 .iconbtn { width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--border); background: var(--surface); color: var(--text-dim); border-radius: var(--radius-sm); cursor: pointer; flex: 0 0 auto; }
 .iconbtn:hover { color: var(--text); border-color: var(--border-strong); }
+.iconbtn.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
 .iconbtn:disabled { opacity: 0.4; cursor: default; }
 .attrsel { font-size: 12px; color: var(--text-dim); display: flex; align-items: center; gap: 4px; }
 .ab { width: 24px; height: 24px; border: 1px solid var(--border); background: var(--surface); color: var(--text-dim); border-radius: 5px; cursor: pointer; }
 .ab.on { border-color: var(--accent); color: var(--accent); }
 .dirty { color: var(--accent); font-size: 12px; white-space: nowrap; }
-.body { flex: 1; display: flex; gap: 12px; padding: 12px; min-height: 0; overflow: hidden; }
-.mapwrap { flex: 1; overflow: auto; border: 1px solid var(--border); border-radius: 6px; background: #05070d; }
+.contextbar { min-height: 32px; padding: 6px 12px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border); background: rgba(5, 7, 13, 0.28); overflow: hidden; }
+.crumb { min-width: 0; max-width: 36%; height: 20px; padding: 0 8px; display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--border); border-radius: 5px; color: var(--text-dim); font-size: 11.5px; font-family: var(--font-mono, monospace); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.crumb.action { max-width: none; background: var(--surface); cursor: pointer; font-family: inherit; }
+.crumb.action:hover:not(:disabled) { color: var(--text); border-color: var(--border-strong); }
+.crumb.action:disabled { opacity: 0.45; cursor: not-allowed; }
+.crumb.bindstate { color: var(--text); border-color: rgba(124, 92, 255, 0.36); background: rgba(124, 92, 255, 0.1); }
+.crumb.missing { color: var(--warning, #fbbf24); border-color: rgba(251, 191, 36, 0.38); background: rgba(251, 191, 36, 0.09); }
+.crumb.layer-tiles { color: #bae6fd; border-color: rgba(56, 189, 248, 0.42); background: rgba(56, 189, 248, 0.1); }
+.crumb.layer-attr { color: #fde68a; border-color: rgba(251, 191, 36, 0.42); background: rgba(251, 191, 36, 0.1); }
+.crumb.layer-collision { color: #fecdd3; border-color: rgba(244, 63, 94, 0.42); background: rgba(244, 63, 94, 0.1); }
+.body { flex: 1; position: relative; padding: 12px; min-height: 0; overflow: hidden; }
+.mapwrap { width: 100%; height: 100%; overflow: auto; border: 1px solid var(--border); border-radius: 6px; background: #05070d; }
+.mapwrap.layer-tiles { border-color: rgba(56, 189, 248, 0.38); box-shadow: inset 0 0 0 1px rgba(56, 189, 248, 0.08); }
+.mapwrap.layer-attr { border-color: rgba(251, 191, 36, 0.38); box-shadow: inset 0 0 0 1px rgba(251, 191, 36, 0.08); }
+.mapwrap.layer-collision { border-color: rgba(244, 63, 94, 0.38); box-shadow: inset 0 0 0 1px rgba(244, 63, 94, 0.08); }
+.mapwrap.centered { display: flex; align-items: center; justify-content: center; }
 .mapwrap.panning, .mapwrap.panready { cursor: grab; }
 .mapwrap.panning { cursor: grabbing; }
 .mapcv { image-rendering: pixelated; cursor: crosshair; display: block; }
 .mapwrap.panning .mapcv, .mapwrap.panready .mapcv { cursor: grab; }
-.side { width: 268px; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+.side { position: absolute; top: 18px; right: 18px; bottom: 18px; width: clamp(240px, 30%, 360px); display: flex; flex-direction: column; gap: 8px; min-height: 0; padding: 10px; border: 1px solid var(--border); border-radius: 7px; background: rgba(10, 15, 28, 0.94); box-shadow: 0 16px 44px rgba(0, 0, 0, 0.35); backdrop-filter: blur(10px); }
 .sidetitle { font-size: 12px; color: var(--text-dim); }
-.tilebox { overflow: auto; border: 1px solid var(--border); border-radius: 6px; background: #05070d; max-height: 55%; }
-.tpcv { image-rendering: pixelated; cursor: pointer; display: block; }
+.tilebox { flex: 1; min-height: 0; overflow: auto; border: 1px solid var(--border); border-radius: 6px; background: #05070d; }
+.tpcv { image-rendering: pixelated; cursor: pointer; display: block; min-width: 100%; }
 .resource-empty { min-height: 96px; border: 1px dashed var(--border); border-radius: 6px; display: flex; align-items: center; justify-content: center; color: var(--text-mute); font-size: 12px; }
 .meta { font-size: 12px; color: var(--text-dim); font-family: var(--font-mono, monospace); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tip { font-size: 11px; color: var(--text-mute); }

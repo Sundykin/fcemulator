@@ -57,6 +57,7 @@ pub fn watch_start(
     let stop2 = stop.clone();
     let cancel = build.cancel_flag();
     let lock = build.build_lock();
+    let last_result = build.last_result_slot();
     let app2 = app.clone();
     let root2 = root.clone();
 
@@ -78,6 +79,7 @@ pub fn watch_start(
                 match project::load_manifest(&root2) {
                     Ok(m) => {
                         let result = run_build(&root2, &m, cancel.clone());
+                        *last_result.lock().unwrap() = Some(result.clone());
                         let _ = app2.emit("build-updated", &result);
                     }
                     Err(e) => {

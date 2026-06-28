@@ -1,1658 +1,1201 @@
-# Progress Log
+# Progress Log: Creative IDE Engine Maturity
 
-## Session: 2026-06-19
+## Session: 2026-06-27
 
-### Phase 1: Inventory & Baseline
+### Phase 60: Map Selection Content Move
 - **Status:** complete
-- **Started:** 2026-06-19
 - Actions taken:
-  - Created planning files for the NES hardware accuracy pass.
-  - Ran initial tracked-file inventory for ROMs and core hardware modules.
-  - Confirmed current `git status --short` only showed the new planning files as untracked.
-- Files created/modified:
-  - `/Users/sunmeng/workspace/fc/task_plan.md`
-  - `/Users/sunmeng/workspace/fc/findings.md`
-  - `/Users/sunmeng/workspace/fc/progress.md`
+  - Continued in `/Users/sunmeng/workspace/fc-creative-mode` on `codex/creative-mode-simple-game`, preserving the user's real Tauri/MCP-only verification constraint and avoiding browser automation.
+  - Re-read `planning-with-files-zht`, `task_plan.md`, `findings.md`, and `progress.md` before continuing the interrupted slice.
+  - Audited the current `MapEditorPanel.vue` selection, copy/paste, undo, focus-cell, and keyboard shortcut paths.
+  - Confirmed Phase 59's selection state now has a stable `selectionAnchor` and non-recursive `setSelectionRect(null)` clearing path.
+  - Added `moveSelectionTiles(dx, dy)` for tile-layer content moves: copy the selected rectangle, push one undo snapshot, clear the old rectangle, write the copied block at the shifted target, focus the moved rectangle, and redraw.
+  - Routed `Cmd/Ctrl+Arrow` to content movement while leaving plain Arrow, `Shift+Arrow`, and `Alt+Arrow` as focus/selection-frame navigation.
+  - Updated M2 docs with the new `Ctrl/⌘+方向键` Map shortcut.
+  - Recorded findings that this operation is intentionally tile-layer-only; attribute/collision movement should be designed separately when layer semantics are clearer.
+  - Static verification passed: `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml`, `cd fc-tauri && npx vue-tsc --noEmit`, `npm --prefix fc-tauri run build`, and `git diff --check`; production build still has the existing Vite large-chunk warning.
+  - Started the real Tauri app with `CARGO_INCREMENTAL=0 npm --prefix fc-tauri run tauri dev`; verified `/tmp/fc-tauri-ide-mcp.sock`, `/tmp/fc-tauri-emu-mcp.sock`, `/tmp/fc-tauri-mcp.sock`, and `tauri_ping`.
+  - Used `target/debug/fc ide-mcp` to create `/tmp/fc-map-content-move-*`, patch `map/room.bin` with a 2x2 tile pattern `11,12 / 13,14` at `(4,5)..(5,6)`, and wait for the visible Map editor to publish that selection.
+  - Sent a real `Cmd+ArrowRight` key event to the visible `.maped` Tauri editor; `ide_wait_ui_context` matched `focus_cell=(5,5)`, `selection=(5,5)..(6,6)`, `layer=tiles`, and `dirty.map=true`.
+  - Inspected the real Tauri project store for in-memory map data: after a one-cell right move, the target rectangle `(5,5)..(6,6)` contained `[11,12,13,14]`; because this is an overlapping move, only the vacated left column of the original rectangle was zeroed.
+  - Verified real Tauri `Cmd+Z`, `Cmd+Shift+Z`, and `Cmd+S`: undo restored the original tile block and cleared dirty, redo restored the shifted block and set dirty, save persisted the moved map and cleared dirty.
+  - Read `map/room.bin` back through `target/debug/fc ide-mcp` after save and confirmed the persisted target rectangle still contained `[11,12,13,14]`, with all dirty flags false.
+  - Stopped Tauri dev and confirmed no leftover `fc-tauri`, `tauri dev`, or Vite process remained.
 
-## Inventory Notes
-- `rg --files` found the core Rust hardware files but did not list ROM files; next step is to use filesystem scanning for ignored/untracked ROM directories.
-- CLI test references found in `/Users/sunmeng/workspace/fc/fc-cli/src/main.rs`.
-- `find` located many untracked/ignored `.nes`/`.fds` test ROMs under `/Users/sunmeng/workspace/fc/nes-test-roms`, including focused suites for APU, PPU, DMC DMA, sprite behavior, CPU interrupts, and MMC3 IRQs.
+### Phase 61: Map Selection Content Duplicate
+- **Status:** complete
+- Actions taken:
+  - Added Phase 61 to `task_plan.md` as the next map-layout comfort slice after verified content move support.
+  - Chose duplicate-and-shift because retro room layout often needs repeating platforms/walls; after Phase 60, the editor can move selected tiles, but quick repetition still requires copy/paste choreography.
+  - Added tile-block helper functions in `MapEditorPanel.vue` and reused them for copy, content move, and duplicate-and-shift paths.
+  - Added `Cmd/Ctrl+Shift+Arrow` to copy the selected tile-layer rectangle into the adjacent same-size area in the requested direction, leaving the source rectangle intact and focusing the duplicated rectangle.
+  - Preserved undo/redo by pushing an undo snapshot only when the duplicate target actually changes; boundary and no-change cases report status without mutating map data.
+  - Updated M2 docs and findings with the new duplicate shortcut and its tile-layer-only semantics.
+  - Static verification passed: `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml`, `cd fc-tauri && npx vue-tsc --noEmit`, `npm --prefix fc-tauri run build`, and `git diff --check`; production build still has the existing Vite large-chunk warning.
+  - Started the real Tauri app with `CARGO_INCREMENTAL=0 npm --prefix fc-tauri run tauri dev`; verified `/tmp/fc-tauri-ide-mcp.sock`, `/tmp/fc-tauri-emu-mcp.sock`, `/tmp/fc-tauri-mcp.sock`, and `tauri_ping`.
+  - Used `target/debug/fc ide-mcp` to create `/tmp/fc-map-duplicate-*`, patch `map/room.bin` with a 2x2 tile pattern `21,22 / 23,24` at `(4,5)..(5,6)`, and wait for the visible Map editor selection.
+  - Sent a real `Cmd+Shift+ArrowRight` key event to the visible `.maped` Tauri editor; `ide_wait_ui_context` matched `focus_cell=(6,5)`, `selection=(6,5)..(7,6)`, `layer=tiles`, and `dirty.map=true`.
+  - Inspected the real Tauri project store: source rectangle `(4,5)..(5,6)` remained `[21,22,23,24]` and duplicate rectangle `(6,5)..(7,6)` also became `[21,22,23,24]`.
+  - Verified real Tauri `Cmd+Z`, `Cmd+Shift+Z`, and `Cmd+S`: undo cleared the duplicated target and dirty, redo restored it and dirty, save persisted the duplicated map and cleared dirty.
+  - Read `map/room.bin` back through `target/debug/fc ide-mcp` after save and confirmed both source and duplicate rectangles persisted as `[21,22,23,24]`, with all dirty flags false.
+  - Stopped Tauri dev and confirmed no leftover `fc-tauri`, `tauri dev`, or Vite process remained.
 
-### Phase 2: Baseline Test Run
+### Phase 62: Map Selection Fill From Brush
+- **Status:** complete
+- Actions taken:
+  - Added Phase 62 to `task_plan.md` as the next Map editing slice: selected-region operations are now keyboard-addressable, movable, and duplicable, but still need a direct "apply current value to selection" command.
+  - Added `fillSelection()` to `MapEditorPanel.vue`, reusing the existing `setCellValue()` layer semantics and undo stack.
+  - Added keyboard handling: `Enter` fills the current selection with the active layer's selected value, while `Shift+Enter` or `Alt+Enter` clears the selected region to zero.
+  - Changed `setTool("select")` so selecting no longer forces the Map editor to the tile layer; this keeps the same keyboard selection workflow usable for tiles, attributes, and collision.
+  - Updated M2 docs and findings with the new selected-region fill/clear workflow and the active-layer semantics.
+  - Static verification passed: `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml`, `cd fc-tauri && npx vue-tsc --noEmit`, `npm --prefix fc-tauri run build`, and `git diff --check`; production build still has the existing Vite large-chunk warning.
+  - Started the real Tauri app with `CARGO_INCREMENTAL=0 npm --prefix fc-tauri run tauri dev`; verified `/tmp/fc-tauri-ide-mcp.sock`, `/tmp/fc-tauri-emu-mcp.sock`, `/tmp/fc-tauri-mcp.sock`, and `tauri_ping`.
+  - Used `target/debug/fc ide-mcp` to create `/tmp/fc-map-selection-fill-*`, focus a 3x2 tile selection `(3,8)..(5,9)` with selected tile 37, and verify the visible Map editor context.
+  - Sent a real `Enter` key event to the visible `.maped` editor; the real Tauri project store showed all six selected tile cells became 37, dirty became true, and the selection/context stayed stable.
+  - Sent real `Shift+Enter`, `Cmd+Z`, `Cmd+Shift+Z`, and `Cmd+S` events; clear, undo, redo, and save all behaved correctly and kept the selection visible.
+  - Read `map/room.bin` back through IDE MCP after save and confirmed the selected tile region persisted as zeros with all dirty flags false.
+  - Verified active-layer behavior on the collision layer: IDE MCP focused a 3x2 collision selection, real `Enter` filled all six cells to blocked, real `Shift+Enter` cleared them, and the visible editor stayed on `layer=collision`.
+  - Saved the collision result, read it back through IDE MCP, and confirmed the collision region persisted as zeros with dirty false.
+  - Stopped Tauri dev and confirmed no leftover `fc-tauri`, `tauri dev`, or Vite process remained.
+
+### Phase 63: Map Selection Visible Actions
+- **Status:** complete
+- Actions taken:
+  - Chose visible Map selected-region actions as the next slice: after adding keyboard fills, the IDE should not require users to memorize shortcuts to discover region editing.
+  - Added context-bar actions that appear when a Map selection exists: "填充选区" and "清空", both wired to the same `fillSelection()` path as `Enter` / `Shift+Enter`.
+  - Added `bucket` and `eraser` icons to `Icon.vue` so the new actions render with real line icons.
+  - Static verification passed: `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml`, `cd fc-tauri && npx vue-tsc --noEmit`, `npm --prefix fc-tauri run build`, and `git diff --check`; production build still has the existing Vite large-chunk warning.
+  - Started the real Tauri app with `CARGO_INCREMENTAL=0 npm --prefix fc-tauri run tauri dev`; verified `/tmp/fc-tauri-ide-mcp.sock`, `/tmp/fc-tauri-emu-mcp.sock`, `/tmp/fc-tauri-mcp.sock`, and `tauri_ping`.
+  - Used `target/debug/fc ide-mcp` to create `/tmp/fc-map-actions-*`, focus a 3x2 tile selection `(2,3)..(4,4)` with selected tile 41, and wait for the visible Map context.
+  - Inspected the real Tauri context bar: "填充选区" and "清空" appeared next to the selection chip, were enabled, and both icons rendered non-empty SVG paths.
+  - Clicked the real "填充选区" button; the Tauri project store showed the selected six tile cells became 41, dirty became true, and selection/focus stayed stable.
+  - Clicked the real "清空" button; the selected six tile cells became 0 through the same undo/save data path.
+  - Saved the map, read `map/room.bin` back through IDE MCP, and confirmed the selected region persisted as zeros with dirty false.
+  - Stopped Tauri dev and confirmed no leftover `fc-tauri`, `tauri dev`, or Vite process remained.
+
+### Phase 64: Map Selection Visible Repeat Actions
+- **Status:** complete
+- Actions taken:
+  - Chose visible Map repeat actions as the next slice: `Cmd/Ctrl+Shift+Arrow` duplicate already works, but common platform/wall repetition should be discoverable from the selected-region context UI.
+  - Added tile-layer-only context-bar actions "向右重复" and "向下重复", both wired to the same `duplicateSelectionTiles()` path as the keyboard shortcut.
+  - Updated M2 docs to mention selected-region context actions for fill/clear and tile-layer repeat.
+  - Static verification passed: `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml`, `cd fc-tauri && npx vue-tsc --noEmit`, `npm --prefix fc-tauri run build`, and `git diff --check`; production build still has the existing Vite large-chunk warning.
+  - Started the real Tauri app with `CARGO_INCREMENTAL=0 npm --prefix fc-tauri run tauri dev`; verified `/tmp/fc-tauri-ide-mcp.sock`, `/tmp/fc-tauri-emu-mcp.sock`, `/tmp/fc-tauri-mcp.sock`, and `tauri_ping`.
+  - Used `target/debug/fc ide-mcp` to create `/tmp/fc-map-repeat-actions-*`, focus a 2x2 tile selection `(2,2)..(3,3)` with pattern `51,52 / 53,54`, and wait for the visible Map context.
+  - Inspected the real Tauri context bar and confirmed "向右重复" and "向下重复" appeared with non-empty arrow icons when the selection was on the tile layer.
+  - Clicked the real "向右重复" action; the selection moved to `(4,2)..(5,3)` and the copied block matched `51,52 / 53,54`.
+  - Clicked the real "向下重复" action from the new selection; the next block `(4,4)..(5,5)` also matched the source pattern.
+  - Saved the map, read `map/room.bin` back through IDE MCP, and confirmed all three blocks persisted with dirty false.
+  - Stopped Tauri dev and confirmed no leftover `fc-tauri`, `tauri dev`, or Vite process remained.
+
+### Phase 65: Continue Creative IDE Maturity
 - **Status:** in_progress
-- **Started:** 2026-06-19
 - Actions taken:
-  - Beginning Rust unit tests, CLI build, and representative ROM suite runs.
-- Files created/modified:
-  - Planning files only so far.
+  - Added Phase 65 as the next continuation placeholder after completing visible Map repeat actions.
+  - Re-read `planning-with-files-zht`, `task_plan.md`, `findings.md`, and `progress.md` before continuing the interrupted Phase 65 CHR clipboard slice.
+  - Audited `ChrEditorPanel.vue` after the tile transform work and confirmed it already has decoded tile pixels, undo/redo, dirty tracking, keyboard focus ownership, responsive zoom/sheet drawing, and CHR save via `store.saveChr()`.
+  - Added selected-tile clipboard helpers for copying exactly one 8x8 tile, pasting it into the selected tile, and duplicating the selected tile into the next tile for animation/frame iteration.
+  - Wired `Cmd/Ctrl+C`, `Cmd/Ctrl+V`, and `Cmd/Ctrl+D` to those CHR tile operations, preserving focus and preventing propagation outside the active CHR editor.
+  - Added visible toolbar buttons for copy, paste, and duplicate-to-next with compact line icons and disabled states for empty clipboard / last tile.
+  - Added `copy`, `clipboard`, and `copyPlus` icons to `Icon.vue`.
+  - Updated M2 documentation and findings for the CHR tile clipboard workflow.
+  - Static checks passed so far: `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml` and `cd fc-tauri && npx vue-tsc --noEmit`.
+  - Static verification passed after implementation: `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml`, `cd fc-tauri && npx vue-tsc --noEmit`, `npm --prefix fc-tauri run build`, and `git diff --check`; production build still has the existing Vite large-chunk warning.
+  - Started the real Tauri app with `CARGO_INCREMENTAL=0 npm --prefix fc-tauri run tauri dev`; verified `/tmp/fc-tauri-ide-mcp.sock`, `/tmp/fc-tauri-emu-mcp.sock`, `/tmp/fc-tauri-mcp.sock`, and `tauri_ping`.
+  - Used `target/debug/fc ide-mcp` to create `/tmp/fc-chr-clipboard-*`, patch `chr/sprites.chr` tile 7 with a recognizable 64-pixel pattern, and confirm tile 8 differed before UI operations.
+  - Inspected the real Tauri CHR toolbar and confirmed the visible copy, paste, and duplicate buttons rendered with non-empty SVG icons; paste started disabled before copying.
+  - Sent real CHR editor keyboard events: `Cmd+C` copied tile 7 and enabled paste, `ArrowRight` selected tile 8, `Cmd+V` pasted tile 7 into tile 8 and set CHR dirty, `Cmd+Z` restored tile 8 and cleared dirty, `Cmd+Shift+Z` restored the paste and dirty state, and `Cmd+D` copied tile 8 into tile 9 while selecting tile 9.
+  - Saved from the real CHR editor and read `chr/sprites.chr` back through IDE MCP; persisted tiles 7, 8, and 9 matched exactly.
+  - Found a same-path CHR focus bug during verification: ordinary `ide_focus_resource` could re-read the same `.chr` from disk and discard unsaved in-memory CHR edits.
+  - Updated `openChr()` to preserve an already-open dirty CHR sheet when the same path is focused, while still allowing external `chr-patch` and non-targeted CHR refresh events to force reload from disk.
+  - Verified the dirty-focus guard in real Tauri: after duplicating tile 9 into unsaved tile 10, `ide_focus_resource { kind: "chr", path: "chr/sprites.chr", tile: 10 }` kept tile 10 in memory, preserved `chrDirty=true`, and then `Cmd+S` saved it cleanly.
+  - Final static verification passed again: `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml`, `cd fc-tauri && npx vue-tsc --noEmit`, `npm --prefix fc-tauri run build`, and `git diff --check`.
+
+### Phase 59: Map Keyboard Selection Navigation
+- **Status:** complete
+- Actions taken:
+  - Continued in `/Users/sunmeng/workspace/fc-creative-mode` on `codex/creative-mode-simple-game`, preserving the user's real Tauri/MCP-only verification constraint.
+  - Re-read `planning-with-files-zht`, `task_plan.md`, `findings.md`, and `progress.md` before choosing the next slice.
+  - Added Phase 59 to `task_plan.md` for Map keyboard selection navigation.
+  - Audited `MapEditorPanel.vue` selection, copy, paste, focus-cell, and keyboard shortcut paths.
+  - Identified a comfort gap: arrow keys did not move the focused cell, grow a selection, or move an existing selection frame.
+  - Added `selectionAnchor` and shared `setSelectionRect()` handling so mouse selection, paste, MCP focus, and keyboard navigation keep selection/focus state coherent.
+  - Added arrow-key map navigation: Arrow moves the focused single-cell selection, Shift+Arrow expands the selection, and Alt+Arrow moves the whole selection rectangle without mutating map data.
+  - Updated M2 docs with the new Map keyboard shortcuts.
+  - Static verification passed: `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml`, `cd fc-tauri && npx vue-tsc --noEmit`, `npm --prefix fc-tauri run build`, and `git diff --check`; production build still has the existing Vite large-chunk warning.
+  - Started the real Tauri app with `CARGO_INCREMENTAL=0 npm --prefix fc-tauri run tauri dev`; verified `/tmp/fc-tauri-ide-mcp.sock`, `/tmp/fc-tauri-emu-mcp.sock`, `/tmp/fc-tauri-mcp.sock`, and `tauri_ping`.
+  - Used `target/debug/fc ide-mcp` to create `/tmp/fc-map-keynav-*`, focus `map/room.bin` at tile cell `(4,5)`, and wait for the visible Map editor to report the single-cell selection.
+  - Sent real key events to the visible Tauri Map editor: ArrowRight moved focus to `(5,5)`, Shift+ArrowDown expanded selection to `(5,5)..(5,6)`, and Alt+ArrowRight moved the whole selection to `(6,5)..(6,6)` without setting map dirty.
+  - Confirmed through IDE MCP `ide_wait_ui_context` that the final visible Map editor context matched `focus_cell=(6,5)` and `selection=(6,5)..(6,6)`, with all dirty flags false.
+  - Final diff review caught and fixed a recursive `setSelectionRect(null)` call inside `setSelectionRect()` itself; reran `cd fc-tauri && npx vue-tsc --noEmit` and `git diff --check`.
+  - Restarted the real Tauri app and re-verified the same ArrowRight → Shift+ArrowDown → Alt+ArrowRight sequence; Tauri UI and IDE MCP both reported `selection=(6,5)..(6,6)` and dirty flags remained false.
+
+### Phase 58: IDE MCP CHR Tile Transform
+- **Status:** complete
+- Actions taken:
+  - Continued in `/Users/sunmeng/workspace/fc-creative-mode` on `codex/creative-mode-simple-game`, keeping the real Tauri/MCP-only verification constraint.
+  - Re-read `planning-with-files-zht`, `task_plan.md`, `findings.md`, and `progress.md`, then ran session catchup before changing code.
+  - Added Phase 58 to `task_plan.md` for semantic IDE MCP CHR tile transforms.
+  - Audited existing `ide_patch_chr_tile` and `ide_patch_chr_pixels` backend paths and confirmed transform operations can reuse CHR decode/encode, manifest registration, and `chr-patch` IPC focus events.
+  - Added `ide_transform_chr_tile` to the embedded IDE MCP tool list and dispatcher.
+  - Implemented backend rotate clockwise/counterclockwise, horizontal/vertical flip, and one-pixel shift left/right/up/down with optional wraparound.
+  - Updated M1/M2 docs and findings to describe agent-facing CHR transform usage.
+  - Static verification passed: `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml`, `cd fc-tauri && npx vue-tsc --noEmit`, `npm --prefix fc-tauri run build`, and `git diff --check`; production build still has the existing Vite large-chunk warning.
+  - Started the real Tauri app with `CARGO_INCREMENTAL=0 npm --prefix fc-tauri run tauri dev`; verified `/tmp/fc-tauri-ide-mcp.sock`, `/tmp/fc-tauri-emu-mcp.sock`, `/tmp/fc-tauri-mcp.sock`, and `tauri_ping`.
+  - Used `target/debug/fc ide-mcp` to confirm `tools/list` exposes `ide_transform_chr_tile`.
+  - Created `/tmp/fc-chr-mcp-transform-*`, wrote a directional test pattern to `chr/sprites.chr` tile 9, called `ide_transform_chr_tile` with `op=rotate_cw`, then called it again with `op=shift_up, wrap=true`.
+  - Verified `ide_read_chr` read back the exact expected nonzero pixels after rotation and wrapped shift, and `ide_wait_ui_context` matched the visible CHR editor focused on tile 9 in the real Tauri app.
+
+### Phase 57: CHR Tile Transform Comfort
+- **Status:** complete
+- Actions taken:
+  - Continued in `/Users/sunmeng/workspace/fc-creative-mode` on `codex/creative-mode-simple-game`, preserving the user's no-browser-testing constraint.
+  - Re-read `planning-with-files-zht`, `task_plan.md`, `findings.md`, and `progress.md`, then ran session catchup before changing code.
+  - Added Phase 57 to `task_plan.md` for CHR tile transform comfort.
+  - Audited `ChrEditorPanel.vue` and confirmed the editor already had responsive drawing, undo/redo, flip, sheet navigation, and decoded CHR pixel state suitable for frontend-only tile transforms.
+  - Added shared selected-tile transform logic for rotate, flip, and pixel shift operations, preserving undo/redo and dirty-state behavior.
+  - Added compact toolbar controls for rotate left/right, flip horizontal/vertical, and nudge up/down/left/right.
+  - Added keyboard shortcuts: `Q/W` rotate, `Shift+H/V` flip, `J/K/L/,` shift by one pixel, and `Shift` with a shift shortcut for wraparound nudging.
+  - Updated M1/M2 docs to describe CHR tile transforms.
+  - Static verification passed: `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml`, `cd fc-tauri && npx vue-tsc --noEmit`, `npm --prefix fc-tauri run build`, and `git diff --check`; production build still has the existing Vite large-chunk warning.
+  - Started the real Tauri app with `CARGO_INCREMENTAL=0 npm --prefix fc-tauri run tauri dev`; verified `/tmp/fc-tauri-ide-mcp.sock`, `/tmp/fc-tauri-emu-mcp.sock`, `/tmp/fc-tauri-mcp.sock`, and `tauri_ping`.
+  - Used `target/debug/fc ide-mcp` to create `/tmp/fc-chr-transform-*`, patch `chr/sprites.chr` tile 7 with a directional test pattern, and wait for the visible CHR editor to focus tile 7.
+  - Verified the real CHR toolbar exposed rotate/shift buttons, then triggered rotate clockwise, right shift, wrap-up shift, undo, redo, keyboard undo, and keyboard redo through the real Tauri UI.
+  - Saved from the visible CHR editor and read back `chr/sprites.chr` through IDE MCP; tile 7 nonzero pixels matched `[[7,1],[47,2],[49,3],[63,3]]`, proving the transformed tile was persisted and the CHR dirty state returned to false.
+
+### Phase 56: Source Active-Context Selection Patch
+- **Status:** complete
+- Actions taken:
+  - Continued in `/Users/sunmeng/workspace/fc-creative-mode` on `codex/creative-mode-simple-game`, keeping the real Tauri/MCP-only runtime verification constraint.
+  - Re-read `planning-with-files-zht`, `task_plan.md`, `findings.md`, and `progress.md`, then ran session catchup before changing code.
+  - Identified the next IDE MCP authoring gap: source active-context patching could target the current cursor line, but the source editor did not publish a selected line range and `scope=selection` was unavailable for code blocks.
+  - Added Phase 56 to `task_plan.md` and recorded source-selection findings.
+  - Updated `EditorPanel.vue` to publish `ui.active_editor.selection={line0,line1}` when the CodeMirror selection spans text.
+  - Extended `ide_wait_ui_context` schema/matching with `selection_line0` and `selection_line1`.
+  - Extended `ide_patch_active_context` for source so `scope=selection` resolves the visible selected line range into `patch_source` arguments.
+  - Updated M1/M2 docs to describe source selection waits and active-context selection replacement.
+  - Static verification passed: `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml`, `cd fc-tauri && npx vue-tsc --noEmit`, `npm --prefix fc-tauri run build`, and `git diff --check`; production build still has the existing Vite large-chunk warning.
+  - Started the real Tauri app with `CARGO_INCREMENTAL=0 npm --prefix fc-tauri run tauri dev`; verified `/tmp/fc-tauri-ide-mcp.sock`, `/tmp/fc-tauri-emu-mcp.sock`, `/tmp/fc-tauri-mcp.sock`, and `tauri_ping`.
+  - Used `target/debug/fc ide-mcp` to create `/tmp/fc-source-selection-*`, write a controlled `src/main.s`, focus line 3, and wait for the visible source editor context.
+  - Used the Tauri MCP only to set a real CodeMirror selection in the visible editor; the project store published `selection={line0:3,line1:6}`.
+  - Verified `ide_wait_ui_context` matched `selection_line0=3,selection_line1=6`, then called `ide_patch_active_context { kind:"source", scope:"selection" }`; it resolved to `line=3, delete=4` and reused `patch_source`.
+  - Read back `src/main.s` through IDE MCP and inspected the real Tauri editor store: the selected block was replaced with `lda #$22/sta $20/lda #$33/sta $21`, old `sta $00/$01` lines were gone, and the source editor was clean/active at line 3.
+
+### Phase 55: Music Active-Context Selection Patch
+- **Status:** complete
+- Actions taken:
+  - Resumed in `/Users/sunmeng/workspace/fc-creative-mode` on `codex/creative-mode-simple-game`, keeping the real Tauri/MCP-only verification constraint.
+  - Re-read `planning-with-files-zht`, current planning files, and the handoff context before changing code.
+  - Identified the next Tracker continuity gap: the visible Tracker now publishes a Pattern range, but `ide_patch_active_context` music could only patch one cell or write a phrase from the current row/channel.
+  - Added the Phase 55 plan to `task_plan.md` and recorded the selection-scope findings.
+  - Extended `ide_patch_active_context` music scope handling to accept `scope=selection`, expand the visible `ui.active_editor.selection` into batch `cells[]`, require at least one supplied music field, and delegate to `patch_song_cells`.
+  - Added `wait_min_seq` to `ide_patch_active_context` results so agents can wait for a frontend snapshot newer than the snapshot used to resolve the active context.
+  - Updated M1/M2 docs to describe music active-context selection patching.
+  - Static verification passed: `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml`, `cd fc-tauri && npx vue-tsc --noEmit`, `npm --prefix fc-tauri run build`, and `git diff --check`; production build still has the existing Vite large-chunk warning.
+  - Started the real Tauri app with `CARGO_INCREMENTAL=0 npm --prefix fc-tauri run tauri dev`; verified `/tmp/fc-tauri-ide-mcp.sock`, `/tmp/fc-tauri-emu-mcp.sock`, `/tmp/fc-tauri-mcp.sock`, and `tauri_ping`.
+  - Used `target/debug/fc ide-mcp` to scaffold `/tmp/fc-song-selection-*`, create `music/theme.song.json`, write a 2x2 Pattern range at rows 6..7/channels 1..2, then call `ide_patch_active_context { kind:"music", scope:"selection", volume:9, fx:1, param:0x47 }`.
+  - Verified `ide_read_song` read back the four selected cells with `volume=9`, `fx=1`, `param=71`, while outside cells were unchanged.
+  - Inspected the real Tauri project store through the Tauri MCP: active Tracker context had `selection={row0:6,row1:7,channel0:1,channel1:2}`, the focused cell had `volume=9/fx=1/param=71`, the context bar showed `选区 2×2`, and 4 `.cell.range` elements were highlighted.
+  - Re-ran a focused min-sequence verification after Tauri hot reload: `ide_patch_active_context` returned `wait_min_seq=4`, `ide_wait_ui_context min_seq=4` matched, and the selected cell volumes read back as `[12,12]`.
+
+### Phase 54: Tracker Batch Range Focus
+- **Status:** complete
+- Actions taken:
+  - Continued in `/Users/sunmeng/workspace/fc-creative-mode` on `codex/creative-mode-simple-game`, keeping the real Tauri/MCP-only runtime verification constraint.
+  - Re-read `planning-with-files-zht`, current planning files, and ran the session catchup script before changing code.
+  - Identified the next Tracker continuity gap: `ide_patch_song_cells` could write a short phrase or several cells, but the visible Tracker only focused the first cell and lost the edited range context.
+  - Added range metadata to the backend `ide_patch_song_cells` result and `song-patch` event payload: `range={row0,row1,channel0,channel1}` computed from all patched cells.
+  - Extended the Pinia `songCellFocus` signal to carry an optional Pattern range, and routed `song-patch` events through it after reloading the tracker song.
+  - Updated `TrackerPanel.vue` to preserve the pending Pattern range, highlight `.cell.range`, show a compact `选区 NxM` context-bar chip, clear the range on manual single-cell selection, and publish `ui.active_editor.selection`.
+  - Extended `ide_wait_ui_context` with `selection_row0/selection_row1/selection_channel0/selection_channel1` matching for visible Tracker phrase/range acknowledgement.
+  - Updated M1/M2 docs to describe tracker batch range feedback and wait parameters.
+  - Static checks passed during implementation: `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml`, `cd fc-tauri && npx vue-tsc --noEmit`, `npm --prefix fc-tauri run build`, and `git diff --check`; production build still has the existing Vite large-chunk warning.
+  - Started the real Tauri app with `CARGO_INCREMENTAL=0 npm --prefix fc-tauri run tauri dev`; verified `/tmp/fc-tauri-ide-mcp.sock`, `/tmp/fc-tauri-emu-mcp.sock`, `/tmp/fc-tauri-mcp.sock`, and `tauri_ping`.
+  - Used `target/debug/fc ide-mcp` to scaffold `/tmp/fc-song-range-*`, write a linear phrase at rows 8..14/channel 0, and verify `ide_wait_ui_context` matched `selection_row0=8,row1=14,channel0=0,channel1=0`.
+  - Used `ide_patch_song_cells` with non-linear `cells[]` across rows 4..12/channels 1..4, and verified both the returned `range` and `ide_wait_ui_context` matched `selection_row0=4,row1=12,channel0=1,channel1=4`.
+  - Inspected the real Tauri UI through the Tauri MCP: active editor published `selection={row0:4,row1:12,channel0:1,channel1:4}`, the context bar showed `选区 9×4`, and 36 Pattern cells had the `.range` highlight.
+
+### Phase 53: Tracker Batch Phrase Patch
+- **Status:** complete
+- Actions taken:
+  - Continued in `/Users/sunmeng/workspace/fc-creative-mode` on `codex/creative-mode-simple-game`, preserving the user's constraint to verify through the real Tauri app and bundled MCP tools instead of browser automation.
+  - Re-read `planning-with-files-zht`, `task_plan.md`, `findings.md`, `progress.md`, and ran the session catchup script before changing code.
+  - Chose Tracker batch phrase patching as the next maturity slice because Map now supports region patches and CHR now supports pixel patches, while Tracker still required single-cell MCP loops or whole-song rewrites for melodies.
+  - Added `ide_patch_song_cells` to the embedded Tauri IDE MCP tool list and dispatcher.
+  - Implemented batch Pattern patching for either exact `cells:[{row,channel,note/instrument/volume/fx/param}]` edits or phrase shorthand with `notes`, `start_row`, `start_channel`, `row_step`, and `channel_step`.
+  - Added text note parsing for `C4`/`C#4`/`Db4`, numeric note values, `...` empty cells, and `===`/`---`/`off` note-off values, matching the visible Tracker's note display convention.
+  - Reused the same song read/modify/write/manifest registration and `song-patch` IPC event path for `ide_patch_song_cell` and `ide_patch_song_cells`, keeping visible Tracker focus on the first patched cell.
+  - Extended `ide_patch_active_context` for music so the default remains a single current Pattern cell, while `scope=phrase` or `notes/cells` writes a phrase from the current visible row/channel.
+  - Updated M1/M2 docs to document `ide_patch_song_cells`, text note notation, and music `scope=phrase` active-context patching.
+  - Static verification passed: `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml`, `cd fc-tauri && npx vue-tsc --noEmit`, `npm --prefix fc-tauri run build`, and `git diff --check`; production build still has the existing Vite large-chunk warning.
+  - Started the real Tauri app with `CARGO_INCREMENTAL=0 npm --prefix fc-tauri run tauri dev`; verified `/tmp/fc-tauri-ide-mcp.sock`, `/tmp/fc-tauri-emu-mcp.sock`, `/tmp/fc-tauri-mcp.sock`, and `tauri_ping`.
+  - Used `target/debug/fc ide-mcp` to scaffold `/tmp/fc-song-cells-*`, confirm `tools/list` exposed `ide_patch_song_cells`, and write `C4 D4 E4 === G4` into `music/theme.song.json` with one MCP call.
+  - Verified direct batch cells patching wrote channel-specific notes/effects, including `C3` on channel 1, an empty cell on channel 2, and arpeggio `fx=1,param=0x47` on channel 3.
+  - Verified `ide_wait_ui_context` matched the visible Tracker after `song-patch` focus and `ide_read_song` read back the expected Pattern cell values.
+  - Verified `ide_patch_active_context { kind:"music", scope:"phrase" }` after an explicit `ide_wait_ui_context` wrote `A4 B4 C5` from the visible row 20/channel 0, returning `cell_count=3` and focusing row 20.
+  - Inspected the real Tauri Pinia/UI through the Tauri MCP: active resource was `music/theme.song.json`, active editor was Tracker Pattern row 20/channel P1, selected cell read `A4`, and `cell={note:46,instrument:0,volume:14}`.
+
+## Session: 2026-06-26
+
+### Phase 52: CHR Pixel-Level Active Patch
+- **Status:** complete
+- Actions taken:
+  - Continued in `/Users/sunmeng/workspace/fc-creative-mode` on `codex/creative-mode-simple-game`, preserving the real Tauri/MCP verification constraint.
+  - Re-read the planning skill plus `task_plan.md`, `findings.md`, and `progress.md`, then audited CHR editor and IDE MCP CHR patch paths.
+  - Identified the next resource-editor granularity gap: humans can paint CHR pixels directly, but IDE MCP only had whole-tile `ide_patch_chr_tile` for CHR edits.
+  - Added `ide_patch_chr_pixels` to the embedded Tauri IDE MCP tool list and dispatcher.
+  - Implemented backend pixel patching for one or more `{tile?,x,y,value}` entries, preserving `.chr` 2bpp encoding, manifest registration, and visible `chr-patch` focus events.
+  - Extended `ide_patch_active_context` for CHR so full `pixels` still replaces the active tile, while `x/y/value` patches a single pixel in the active tile; missing `x/y` can resolve from `ui.active_editor.hover_pixel`.
+  - Updated M1/M2 docs to document `ide_patch_chr_pixels` and CHR active-context pixel patching.
+  - Early checks passed: `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml` and `cd fc-tauri && npx vue-tsc --noEmit`.
+  - Static verification passed: `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml`, `cd fc-tauri && npx vue-tsc --noEmit`, `npm --prefix fc-tauri run build`, and `git diff --check`; production build still has the existing Vite large-chunk warning.
+  - Started the real Tauri app with `CARGO_INCREMENTAL=0 npm --prefix fc-tauri run tauri dev`; verified `/tmp/fc-tauri-ide-mcp.sock`, `/tmp/fc-tauri-emu-mcp.sock`, `/tmp/fc-tauri-mcp.sock`, and `tauri_ping`.
+  - Used `target/debug/fc ide-mcp` to scaffold `/tmp/fc-chr-pixel-patch-*`, focus `chr/sprites.chr` tile 12, and call `ide_patch_chr_pixels` for four pixels.
+  - Verified `ide_patch_chr_pixels` returned `changed=4`, kept the visible CHR editor on tile 12, and `ide_read_chr` read back pixel values `[1,2,3,2]` at the patched positions.
+  - Called `ide_patch_active_context { kind:"chr", x:3, y:0, value:1 }`; verified it resolved to `ide_patch_chr_pixels`, returned `changed=1`, and `ide_read_chr` read back tile 12 pixels `[1,2,3,1,2]` at indexes `[0,1,2,3,63]`.
+  - Inspected the real Tauri Pinia/UI state through the Tauri MCP: active resource was `chr/sprites.chr`, `.chr` owned focus, `ui.active_editor.tile=12`, context bar showed `图块 12 / 511`, and the store pixel values matched disk readback.
+
+### Phase 51: Map Batch Patch Preserves Region Focus
+- **Status:** complete
+- Actions taken:
+  - Continued in `/Users/sunmeng/workspace/fc-creative-mode` on `codex/creative-mode-simple-game`, honoring the user's constraint to verify through the real Tauri app and bundled MCP tools rather than browser automation.
+  - Re-read the planning skill, `task_plan.md`, `findings.md`, `progress.md`, and audited the current Map active-context patch implementation after Phase 50.
+  - Identified a continuity gap: multi-cell `map-patch` events refreshed the visible Map editor but collapsed the selection/focus back to only the first patched cell.
+  - Updated `ide_patch_map_cells` to compute the patched bounding rectangle and include it in both the MCP result and `map-patch` IPC event payload.
+  - Updated `ide_patch_active_context` Map scope resolution to include its resolved rectangle in `resolved_args`.
+  - Extended the project store `mapCellFocus` signal with an optional `rect`, and routed `map-patch` events through a Map-specific sync path that opens the refreshed map and then requests rectangle focus.
+  - Updated `MapEditorPanel.vue` so `applyMapCellFocus()` preserves a supplied rectangle selection, clamps it to map bounds, scrolls to the first patched cell, and renders selection outlines on tiles, attr, and collision layers.
+  - Early checks passed: `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml` and `cd fc-tauri && npx vue-tsc --noEmit`.
+  - Added `selection_x0/selection_y0/selection_x1/selection_y1` matching to `ide_wait_ui_context` so agents can wait for the visible Map selection rectangle, not only the focused cell.
+  - Static verification passed: `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml`, `cd fc-tauri && npx vue-tsc --noEmit`, `npm --prefix fc-tauri run build`, and `git diff --check`; production build still has the existing Vite large-chunk warning.
+  - Started the real Tauri app with `CARGO_INCREMENTAL=0 npm --prefix fc-tauri run tauri dev`; verified `/tmp/fc-tauri-ide-mcp.sock`, `/tmp/fc-tauri-emu-mcp.sock`, `/tmp/fc-tauri-mcp.sock`, and `tauri_ping`.
+  - Used `target/debug/fc ide-mcp` to scaffold `/tmp/fc-map-region-wait-*`, focus `map/room.bin`, and call direct `ide_patch_map_cells` for a 3×2 collision rectangle at `(3,4)..(5,5)`.
+  - Verified `ide_patch_map_cells` returned `rect={x0:3,y0:4,x1:5,y1:5}` and `ide_wait_ui_context` matched the same selection rectangle through the IDE MCP without using DOM automation.
+  - Called `ide_patch_active_context { kind:"map", scope:"selection", value:0 }` and verified the resolved args and result preserved the same 3×2 rectangle, then `ide_read_map` showed those six collision cells were cleared.
+  - Inspected the real Tauri Pinia/UI state through the Tauri MCP: active resource was `map/room.bin`, `.maped` owned focus, `ui.active_editor.selection={x0:3,y0:4,x1:5,y1:5}`, and the context bar showed `选区 3×2`.
+
+### Phase 50: Map Active-Context Batch Patch
+- **Status:** complete
+- Actions taken:
+  - Continued in `/Users/sunmeng/workspace/fc-creative-mode` on `codex/creative-mode-simple-game`.
+  - Re-read the planning files and audited current Map active-context state after Phase 49.
+  - Identified the next Map/MCP maturity gap: `ide_patch_active_context` could now reliably patch `focus_cell`, but could not use the visible editor's brush footprint or selected region.
+  - Audited `MapEditorPanel.vue` context publication for `brush_size`, `selection`, `selected_value`, and `focus_cell`, plus the backend `patch_map_cells` implementation.
+  - Added a `scope` option to `ide_patch_active_context` for Map resources: `cell` (default), `brush`, and `selection`.
+  - Implemented backend helper logic that expands `scope=brush` from `focus_cell + brush_size`, expands `scope=selection` from `ui.active_editor.selection`, clamps to the reported map width/height, and still delegates to `patch_map_cells`.
+  - Kept default `scope=cell` behavior unchanged so existing agent calls do not unexpectedly patch multiple cells.
+  - Early checks passed: `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml` and `cd fc-tauri && npx vue-tsc --noEmit`.
+  - Static verification passed: `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml`, `cd fc-tauri && npx vue-tsc --noEmit`, `npm --prefix fc-tauri run build`, and `git diff --check`; production build still has the existing large-chunk warning.
+  - Started the real Tauri app with `CARGO_INCREMENTAL=0 npm --prefix fc-tauri run tauri dev`; verified `/tmp/fc-tauri-ide-mcp.sock`, `/tmp/fc-tauri-emu-mcp.sock`, `/tmp/fc-tauri-mcp.sock`, and `tauri_ping`.
+  - Used `target/debug/fc ide-mcp` to scaffold `/tmp/fc-map-batch-scope-*` and focus the visible Map editor.
+  - Set the real Map editor brush control to `4×4` through the live Tauri UI, then called `ide_patch_active_context { kind:"map", scope:"brush", value:88 }`; verified it resolved to 16 cells and `ide_read_map` showed a 4×4 tile rectangle patched.
+  - Dragged a real Map editor selection rectangle `(5,6)..(8,8)` in the live Tauri UI, then called `ide_patch_active_context { kind:"map", scope:"selection", value:1 }`; verified it resolved to 12 cells and `ide_read_map` showed the selected collision rectangle patched.
+  - Confirmed through the live Tauri Pinia/UI snapshot that the active editor remained Map, with collision layer context and recent resource target updated.
+
+### Phase 49: Map Focus Cell Semantics
+- **Status:** complete
+- Actions taken:
+  - Continued in `/Users/sunmeng/workspace/fc-creative-mode` on `codex/creative-mode-simple-game`, preserving the real Tauri/MCP verification constraint.
+  - Re-read the planning skill, planning files, and current code state before continuing.
+  - Chose Map focus-cell semantics as the next slice because Phase 48 verification exposed that Map `ide_focus_resource` can correctly set a selected cell while `ide_wait_ui_context` still fails if `hover` is null.
+  - Audited `MapEditorPanel.vue`, `project.ts`, and `ide_mcp.rs` around Map hover/selection publication, resource-history target extraction, `ide_wait_ui_context`, and `ide_patch_active_context`.
+  - Added `focus_cell` to the Map editor UI context, using the same anchor as actual editing/paste behavior: `hover` first, otherwise the top-left of `selection`.
+  - Updated project-store resource focus-target extraction to prefer `focus_cell` and fall back to `hover`, so resource history and recent resources retain the selected Map cell.
+  - Updated IDE MCP backend matching and active-context patch coordinate resolution to prefer `focus_cell`, fall back to `hover`, and infer a coordinate from single-cell `selection`.
+  - Early checks passed: `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml` and `cd fc-tauri && npx vue-tsc --noEmit`.
+  - Static verification passed: `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml`, `cd fc-tauri && npx vue-tsc --noEmit`, `npm --prefix fc-tauri run build`, and `git diff --check`; production build still has the existing large-chunk warning.
+  - Started the real Tauri app with `CARGO_INCREMENTAL=0 npm --prefix fc-tauri run tauri dev`; verified `/tmp/fc-tauri-ide-mcp.sock`, `/tmp/fc-tauri-emu-mcp.sock`, `/tmp/fc-tauri-mcp.sock`, and `tauri_ping`.
+  - Used `target/debug/fc ide-mcp` to scaffold `/tmp/fc-map-focus-cell-*`, focus `map/room.bin` at collision cell `(13,6)`, and verify `ide_wait_ui_context` matched `x=13,y=6,layer=collision`.
+  - Verified `ui.active_editor.focus_cell={x:13,y:6}` and `ui.resource_history.recent` preserved the same Map target.
+  - Called `ide_patch_active_context` with `kind=map,value=1` and no explicit `x/y`, then verified `ide_read_map` reported collision cell `(13,6)` changed to `1`.
+  - Inspected the real Tauri Pinia/UI snapshot through the Tauri MCP: active editor was Map, `focus_cell={x:13,y:6}`, `selection` was the same single cell, and `selected_value=1` after the patch.
+
+### Phase 48: Resource History De-Dup And Recent Palette
+- **Status:** complete
+- Actions taken:
+  - Continued in `/Users/sunmeng/workspace/fc-creative-mode` on `codex/creative-mode-simple-game`, keeping the user's constraint to verify through real Tauri/MCP tools and not browser automation.
+  - Re-read the planning skill, `task_plan.md`, `findings.md`, `progress.md`, and audited the Phase 46/47 resource history implementation in `project.ts` plus Quick Open in `IdeView.vue`.
+  - Chose resource-history de-duplication and a recent-resource Quick Open view as the next narrow IDE maturity slice because repeated MCP focus verification naturally accumulated duplicate history cycles.
+  - Added uniqueness helpers for resource history stacks keyed by `kind:path`, replacing append-only pushes with latest-entry semantics.
+  - Updated `markActiveResource()` so reopening a resource removes stale copies of that same resource from the back stack, preserves the newest focus target cache, and clears forward history as before.
+  - Updated back/forward replay to remove duplicate target resources from the opposite stack and restore both stack snapshots if the open/focus operation fails.
+  - Added `recentResources` and `ui.resource_history.recent`, listing the active resource plus unique recent history entries with semantic targets.
+  - Updated Quick Open so an empty query shows recent resources first, including stored source line / CHR tile / map cell / tracker row metadata; typed queries still search the manifest-backed resource list.
+  - Added focus-target cache rename/delete maintenance so recent entries do not keep stale targets after file-tree operations.
+  - Early `cd fc-tauri && npx vue-tsc --noEmit` passed after the store/UI changes.
+  - Static verification passed: `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml`, `cd fc-tauri && npx vue-tsc --noEmit`, `npm --prefix fc-tauri run build`, and `git diff --check`; production build still has the existing large-chunk warning.
+  - Started the real Tauri app with `CARGO_INCREMENTAL=0 npm --prefix fc-tauri run tauri dev`; verified `/tmp/fc-tauri-ide-mcp.sock`, `/tmp/fc-tauri-emu-mcp.sock`, `/tmp/fc-tauri-mcp.sock`, and `tauri_ping`.
+  - Used `target/debug/fc ide-mcp` to scaffold `/tmp/fc-history-dedup-*`, then repeatedly focused `src/main.s`, `map/room.bin`, `chr/sprites.chr`, and `music/theme.song.json` with different semantic positions.
+  - Runtime verified through `ide_get_state.ui.resource_history` that the back stack stayed at three unique entries after repeated source/map/CHR/music cycles, and that `recent` stayed unique with newest targets: source line 11, map `(1,1)` on tiles, tracker row 12/channel 2, and CHR tile 33.
+  - Verified the real Tauri Quick Open overlay with an empty query: recent resources appeared first with metadata `行 11`, `格 1,1 · tiles`, `行 0C · Ch 2`, and `图块 33`, followed by remaining manifest resources.
+  - Clicked the recent CHR row in the real Tauri UI and confirmed it closed Quick Open, activated `chr/sprites.chr`, and restored `active_editor.tile=33`.
+
+### Phase 47: Resource History Restores Editor Location
+- **Status:** complete
+- Actions taken:
+  - Continued toward the active Creative IDE maturity goal in `/Users/sunmeng/workspace/fc-creative-mode`.
+  - Re-read planning files and audited resource history plus editor UI context publishing in `EditorPanel.vue`, `ChrEditorPanel.vue`, `MapEditorPanel.vue`, and `TrackerPanel.vue`.
+  - Identified that Phase 46's resource history reopened files/resources but did not restore the exact source line, CHR tile, map cell/layer, or tracker Pattern cell.
+  - Added optional semantic `target` data to resource history entries, using the same shape as `focusResource()`.
+  - Added context extraction from existing `editorContexts`: source line, CHR tile, map hover/layer, tracker pattern/row/channel, and source line for music assembly resources.
+  - Changed resource history replay to call `focusResource()` when a target exists, falling back to `openResource()` for plain entries.
+  - Expanded `uiSnapshot().resource_history` with full back/forward entry arrays so IDE MCP clients can inspect stored target locations.
+  - Fixed active-editor context selection for `music/*.s` / `.asm` resources so they report the source editor context while preserving music resource identity.
+  - Tightened source-tab close behavior so closing an active music assembly tab clears or reassigns active resource consistently.
+  - Added a per-resource focus target cache populated by editor context publication, so history entries can retain source line / CHR tile / map cell / tracker cell after other Dockview panels mount.
+  - Static checks passed: `cd fc-tauri && npx vue-tsc --noEmit`, `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml`, `npm --prefix fc-tauri run build`, and `git diff --check`; production build still has the existing large-chunk warning.
+  - Started the real Tauri app with `CARGO_INCREMENTAL=0 npm --prefix fc-tauri run tauri dev`; verified sockets and `tauri_ping`.
+  - Runtime verified through `target/debug/fc ide-mcp` and real Tauri Pinia state: source line 42, map collision cell `(9,7)`, CHR tile 33, and tracker row 12/channel 2 were stored in `ui.resource_history.entries`.
+  - Runtime verified resource history back/forward restores those positions in the visible IDE: back restored CHR tile 33, map collision `(9,7)`, source line 42; forward restored tracker Pattern row 12/channel 2.
+  - During repeated live verification, history naturally accumulated duplicate resource cycles because the verification script issued repeated `ide_focus_resource` commands in one project. This did not break correctness; the newest cycle restored the correct semantic locations.
+
+### Phase 46: Resource Navigation History
+- **Status:** complete
+- Actions taken:
+  - Continued in `/Users/sunmeng/workspace/fc-creative-mode` on `codex/creative-mode-simple-game`, honoring the no-browser-test constraint.
+  - Re-read the planning skill, `task_plan.md`, `findings.md`, `progress.md`, and the resource-opening paths in `project.ts`, `IdeView.vue`, and `FileTreePanel.vue`.
+  - Chose reversible resource navigation as the next IDE maturity slice because Phase 44/45 made switching fast but not recoverable after cross-resource jumps.
+  - Added project-store resource history stacks for back/forward navigation. `markActiveResource()` now records semantic resource identity and avoids recording during history replay.
+  - Added `navigateResourceBack()` / `navigateResourceForward()` actions that reopen the target resource through the existing type-aware `openResource()` path.
+  - Exposed `resource_history` in `uiSnapshot()` so `ide_get_state.ui` reports back/forward availability and previous/next resource entries.
+  - Added compact top-bar resource-history buttons next to Quick Open, plus `Cmd/Ctrl+[` and `Cmd/Ctrl+]` shortcuts.
+  - Updated music assembly routing so source-editor opens can preserve active resource kind `music` in one step, avoiding false source→music history entries.
+  - Updated M1/M2 docs to document resource-history UI and `ide_get_state.ui.resource_history`.
+  - Static verification passed: `cd fc-tauri && npx vue-tsc --noEmit`, `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml`, `npm --prefix fc-tauri run build`, and `git diff --check`; production build still has the existing Vite large-chunk warning.
+  - Started the real Tauri app with `CARGO_INCREMENTAL=0 npm --prefix fc-tauri run tauri dev`; verified `/tmp/fc-tauri-ide-mcp.sock`, `/tmp/fc-tauri-emu-mcp.sock`, `/tmp/fc-tauri-mcp.sock`, and `tauri_ping`.
+  - Used `target/debug/fc ide-mcp` to scaffold `/tmp/fc-resource-history-*`, then opened `src/main.s`, `map/room.bin`, `chr/sprites.chr`, `music/theme.song.json`, and `music/theme.s`.
+  - Runtime verified through the real Tauri Pinia store that the history stack recorded the sequence and that back/forward moved the active resource and Dockview panel between music assembly, Tracker song, CHR, and back to Tracker.
+  - Verified `target/debug/fc ide-mcp` `ide_get_state.ui.resource_history` reports back/forward availability plus previous/next resources, so agents do not need the Tauri DOM bridge for this state.
+
+### Phase 45: Music Resource Open Semantics
+- **Status:** complete
+- Actions taken:
+  - Continued from Phase 44's quick-open work.
+  - Audited `project.ts`, `FileTreePanel.vue`, and `IdeView.vue` around resource opening and music resource classification.
+  - Identified that `manifest.music` includes both tracker `.song.json` files and music assembly build inputs, but `openResource(kind="music")` always called `openTracker()`.
+  - Added path helpers so `.song.json` opens in Tracker, while `music/*.s` / `.asm` opens in the source editor.
+  - Preserved active-resource identity for music assembly files by marking them as `music` immediately after opening the source editor.
+  - Changed FileTree non-directory clicks to delegate to `store.openResource()`, keeping tree and quick-open behavior consistent.
+  - Updated `currentCreativePanelId()` so music assembly active resources map to the source editor for workspace focus, while tracker song resources still map to the Tracker panel.
+  - Early checks passed: `cd fc-tauri && npx vue-tsc --noEmit` and `git diff --check`.
+  - Full static checks passed: `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml`, `cd fc-tauri && npx vue-tsc --noEmit`, `npm --prefix fc-tauri run build`, and `git diff --check`; production build still has the existing Vite large-chunk warning.
+  - Started the real Tauri app with `CARGO_INCREMENTAL=0 npm --prefix fc-tauri run tauri dev`; verified the three MCP sockets and `tauri_ping`.
+  - Used `target/debug/fc ide-mcp` to scaffold `/tmp/fc-music-open-*`, producing `music/theme.song.json`, `music/theme.s`, and `music/fc_player.s`.
+  - Runtime verified direct store route: `music/theme.s` opened in the source editor with active resource kind `music`; `music/theme.song.json` opened in Tracker.
+  - Runtime verification found quick-open search `theme.s` could rank `theme.song.json` first due substring matching. Added filename/path scoring so exact and prefix matches rank before generic contains.
+  - Re-verified quick open `theme.s` opened `music/theme.s` in the editor, while `theme.song` opened Tracker.
+  - Verified `music/fc_player.s` opens in the editor and remains active resource kind `music`, matching the file-tree route because non-directory clicks now delegate to `openResource()`.
+
+### Phase 44: Resource Quick Open
+- **Status:** complete
+- Actions taken:
+  - Continued in `/Users/sunmeng/workspace/fc-creative-mode` on `codex/creative-mode-simple-game`.
+  - Re-read planning files and audited `FileTreePanel.vue`, `IdeView.vue`, and project-store resource open/focus actions.
+  - Identified that resource switching still depended on the left file tree even though the project store already has manifest-backed source/CHR/map/music classification and open paths.
+  - Added a manifest-backed resource quick-open list in `IdeView.vue`, including source, CHR, map, and music resources with map↔CHR metadata.
+  - Added a compact top-bar `资源` action and `Cmd/Ctrl+P` keyboard entry.
+  - Added quick-open keyboard handling: ArrowUp/ArrowDown selection, Enter open, Escape close.
+  - Quick-open selection reuses `store.openResource(path, kind)`, preserving established Dockview panel focus and active-resource behavior.
+  - Early checks passed: `cd fc-tauri && npx vue-tsc --noEmit` and `git diff --check`.
+  - Full static checks passed: `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml`, `cd fc-tauri && npx vue-tsc --noEmit`, `npm --prefix fc-tauri run build`, and `git diff --check`; production build still has the existing Vite large-chunk warning.
+  - Started the real Tauri app with `CARGO_INCREMENTAL=0 npm --prefix fc-tauri run tauri dev`; verified the three MCP sockets and `tauri_ping`.
+  - Used `target/debug/fc ide-mcp` to scaffold `/tmp/fc-quick-open-*`, add `music/quick.song.json`, and return to active source `src/main.s`.
+  - Runtime verified `Cmd+P` opened the quick-open overlay with input focus and rows for source, CHR, map, and music resources.
+  - Runtime verified filtering `room` and pressing Enter opened `map/room.bin`, set active panel `map`, and updated active resource to `地图 map/room.bin`.
+  - Runtime verification initially found filtering `sprites` could keep a stale selected index and open the map row instead of the CHR row. Added a `quickQuery` watcher that resets selection to the first filtered row.
+  - Re-verified filtering `sprites` opened `chr/sprites.chr`, made active panel `chr`, and `ide_get_state.ui.active_resource` reported `{ kind: "chr", path: "chr/sprites.chr" }`.
+  - Runtime verified filtering `quick` opened the tracker music resource and filtering `main` returned to the source editor.
+
+### Phase 43: Human-Operable Game Verification
+- **Status:** complete
+- Actions taken:
+  - Continued in `/Users/sunmeng/workspace/fc-creative-mode` on `codex/creative-mode-simple-game`.
+  - Re-read planning files and audited the existing `ide_verify_game` implementation, Tauri invoke handler, `ide.ts`, `project.ts`, `IdeView.vue`, and `BuildPanel.vue`.
+  - Identified that Phase 42 made game verification visible after MCP runs, but ordinary IDE users still could not trigger the same verification path from the visible UI.
+  - Added Tauri command `ide_verify_game_ui`, reusing the same Rust `verify_game()` implementation as IDE MCP.
+  - Added frontend wrapper `ideVerifyGameUi()` and project-store action `verifyGame()`, including autosave-before-verify and Build health focus.
+  - Turned the top-bar verification loop chip into an action that opens Build and runs verification.
+  - Added a `游戏验证` row to the Build panel health checklist, with pass/fail/stale status and a `验证` action when needed.
+  - Early static checks passed: `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml`, `cd fc-tauri && npx vue-tsc --noEmit`, and `git diff --check`.
+  - Full static verification passed: `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml`, `cd fc-tauri && npx vue-tsc --noEmit`, `npm --prefix fc-tauri run build`, and `git diff --check`; production build still has the existing Vite large-chunk warning.
+  - Started the real Tauri app with `CARGO_INCREMENTAL=0 npm --prefix fc-tauri run tauri dev`; verified `/tmp/fc-tauri-ide-mcp.sock`, `/tmp/fc-tauri-emu-mcp.sock`, `/tmp/fc-tauri-mcp.sock`, and `tauri_ping`.
+  - Used `target/debug/fc ide-mcp` to scaffold `/tmp/fc-ui-verify-action-*` with `build=false` and `run=false`, leaving the project at `build.output_status=missing` and `ui.game_verify=null`.
+  - Triggered the new visible UI verification path through the real Tauri project store action used by the top-bar chip. It built `build/game.nes`, loaded Preview, and recorded `lastGameVerify.ok=true`.
+  - Real Tauri UI showed loop chips changing from `已/未/待/验` to `已/成/跑/过`.
+  - Build panel Health included `游戏验证通过` with detail `非黑像素 5614`.
+  - Follow-up `ide_get_state` returned `build.output_status=current` and `ui.game_verify.stale=false`, proving the UI-triggered verification published back to IDE MCP state.
+
+### Phase 42: IDE Verification Feedback In Frontend Loop
+- **Status:** complete
+- Actions taken:
+  - Continued in `/Users/sunmeng/workspace/fc-creative-mode` on `codex/creative-mode-simple-game`, honoring the no-browser-test constraint.
+  - Re-read the planning skill, `task_plan.md`, `progress.md`, `findings.md`, `project.ts`, `IdeView.vue`, docs, and `ide_mcp.rs`.
+  - Identified that `ide_verify_game` already emits structured `game-verify` results through Tauri IPC, but the frontend only surfaced the generic `MCP 已更新：game-verify` status.
+  - Added Pinia `lastGameVerify`, `buildSeq`, and `previewSeq` state. Build results and preview loads advance freshness markers, while `game-verify` records `{ ok, runtime, frame, input }` with the current markers.
+  - Added `game_verify` with derived `stale` state to `uiSnapshot()`, making verification feedback visible to `ide_get_state.ui`.
+  - Added a fourth compact top-bar loop chip in `IdeView.vue` for game verification: idle `验`, pass `过`, fail `错`, stale `旧`.
+  - Routed manual toolbar Run and Build-panel Run through `markPreviewUpdated()` so verification freshness stays coherent outside MCP-triggered preview updates.
+  - Updated `task_plan.md` and `findings.md` with Phase 42 scope and findings.
+  - Static verified with `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml`, `cd fc-tauri && npx vue-tsc --noEmit`, `npm --prefix fc-tauri run build`, and `git diff --check`; all passed, with only the existing Vite large-chunk warning.
+  - Started the real Tauri app with `CARGO_INCREMENTAL=0 npm --prefix fc-tauri run tauri dev`; verified `/tmp/fc-tauri-ide-mcp.sock`, `/tmp/fc-tauri-emu-mcp.sock`, `/tmp/fc-tauri-mcp.sock`, and `tauri_ping`.
+  - Used `target/debug/fc ide-mcp` to scaffold `/tmp/fc-verify-ui-*`, run `ide_verify_game`, and read `ide_get_state.ui.game_verify`.
+  - Runtime verification returned `ok=true`, `runtime_running=true`, `frame_nonblank=true`, `stale=false`, `nonblack=5614`, and input changed `$0000` from `120` to `136`.
+  - Real Tauri UI inspection showed the loop chips as save `已`, build `成`, preview `跑`, verify `过`, with the verify chip class `ok` and title `游戏验证通过 · 运行中 · 非黑像素 5614`.
+  - Triggered a new preview load through the real Tauri store path and confirmed `ui.game_verify.stale=true`; the verify chip changed to `旧` with warning styling.
+  - Re-ran `ide_verify_game` without build/run to refresh the current preview evidence; `ui.game_verify.stale=false` and `ok=true` again.
+  - Stopped Tauri dev and verified no real `fc-tauri` / Vite process remained; residual check matched only the `pgrep` command itself.
+
+## Session: 2026-06-24
+
+### Phase 27: IDE MCP Semantic Tracker Playback Wiring
+- **Status:** complete
+- Actions taken:
+  - Resumed in `/Users/sunmeng/workspace/fc-creative-mode` on `codex/creative-mode-simple-game`; git status was clean.
+  - Re-read planning files and confirmed Phase 26 completed `ide_export_song`.
+  - Audited `ide_mcp.rs`, `tracker.rs`, `project.rs`, and M1/M2 docs. Found that exported tracker music still needs manual source edits: `.import fc_player_init, fc_player_tick`, `jsr fc_player_init` in `reset`, and `jsr fc_player_tick` in `nmi`.
+  - Started Phase 27 to add a Tauri-hosted IDE MCP tool for idempotent tracker playback wiring, with verification planned through real Tauri plus MCP tools only.
+  - Added `ide_wire_song_player` to the embedded IDE MCP tool list and dispatcher. The tool validates `music/fc_player.s` plus exported `song_data`, patches `src/main.s` conservatively, registers the source in `project.toml` if needed, and emits `song-player-wire` with the source line to focus.
+  - Added frontend handling so `song-player-wire` reuses the normal source-focus path and opens the visible editor at the inserted line.
+  - Verified with a live `fc ide-mcp` session against the running Tauri app: `tools/list` exposed `ide_wire_song_player`; a demo project exported `music/wire_theme.s` and `music/fc_player.s`; first wire inserted the import/init/tick calls; second wire was idempotent and returned the existing tick line.
+  - Verified the visible Tauri IDE through `tauri_eval`: after wiring, the app reported `status="MCP 已更新：song-player-wire"`, active resource `src/main.s`, and `goto.path=src/main.s` / `goto.line=521`.
+  - Verified build/run on the same temp project succeeded and loaded `game.nes` into the live preview.
+
+### Phase 28: Workspace Focus Mode For Creative Editors
+- **Status:** complete
+- Actions taken:
+  - Resumed in `/Users/sunmeng/workspace/fc-creative-mode` on `codex/creative-mode-simple-game`; current branch already had Phase 27 work dirty in IDE MCP/docs/planning files.
+  - Re-read `task_plan.md`, `progress.md`, `findings.md`, `IdeView.vue`, and `Icon.vue`.
+  - Audited Dockview APIs in `fc-tauri/node_modules/dockview-core` and confirmed native group maximize/restore support exists.
+  - Added a top-bar `聚焦` action in `IdeView.vue` that maximizes the current creative resource group (`editor`, `chr`, `map`, or `tracker`) using Dockview's `maximizeGroup()` and exits with `exitMaximizedGroup()`.
+  - Refactored creative-panel selection into `currentCreativePanelId()` so normal focus and workspace focus share the same active-resource mapping.
+  - Wired `onDidMaximizedGroupChange` into the local layout sequence so toolbar state updates when maximized mode changes.
+  - Changed `panelVisible()` to use `panel.api.isVisible`, fixing the misleading active state for File/Output/Preview buttons while Dockview keeps hidden maximized-mode panels alive.
+  - Static verified with `npm --prefix fc-tauri run build`, `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml`, and `git diff --check`.
+  - Started real Tauri with `CARGO_INCREMENTAL=0 npm --prefix fc-tauri run tauri dev`; verified `/tmp/fc-tauri-ide-mcp.sock`, `/tmp/fc-tauri-emu-mcp.sock`, and `/tmp/fc-tauri-mcp.sock` existed, and `tauri_ping` succeeded.
+  - Used `target/debug/fc ide-mcp` to create `/tmp/fc-workspace-focus3-*`, open `map/room.bin`, build the demo ROM, and run it in the visible Preview.
+  - Runtime verified via `tauri_eval` on the real Tauri window: crowded layout with File/Output/Preview open had Map panel `600x442` and map work wrap `576x258`; pressing `聚焦` expanded the Map panel to `1040x642` and wrap to `1016x468`; pressing `聚焦` again restored File/Output/Preview and the previous Map dimensions.
+  - Confirmed toolbar active state now shows only `聚焦` while maximized, then returns to `文件/输出/预览` after restore.
+
+### Phase 29: Workspace Focus Follows Creative Resource Switching
+- **Status:** complete
+- Actions taken:
+  - Re-read the current planning files, `IdeView.vue`, `project.ts`, and `FileTreePanel.vue` before continuing the IDE UX work.
+  - Identified that Phase 28 made focused editing available manually, but panel switches inside focused mode could still leave the maximized group attached to the previous editor.
+  - Updated `IdeView.vue` so `showPanel()` keeps Dockview maximized on the newly requested creative panel (`editor`, `chr`, `map`, or `tracker`) when maximized mode is already active.
+  - Kept normal non-maximized file-tree navigation unchanged; the sticky behavior starts only after the user enters focused mode.
+  - Static verified with `npm --prefix fc-tauri run build`, `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml`, and `git diff --check`.
+  - Started the real Tauri app with `CARGO_INCREMENTAL=0 npm --prefix fc-tauri run tauri dev`; verified `tauri_ping` and all three sockets.
+  - Used `target/debug/fc ide-mcp` to create `/tmp/fc-focus-follow-*`, create `music/follow.song.json`, open `map/room.bin`, build, and run.
+  - Runtime verified through the real Tauri webview: after entering `聚焦`, switching Map→bound CHR→Map→Tracker kept `hasMaximized=true`, made each requested panel active, and kept each visible creative panel at `1040x642`.
+
+### Phase 30: CHR Tile Usage Navigation
+- **Status:** complete
+- Actions taken:
+  - Continued in `/Users/sunmeng/workspace/fc-creative-mode` on `codex/creative-mode-simple-game`.
+  - Audited `ChrEditorPanel.vue`, `project.ts`, `ide.ts`, and the Map editor focus path.
+  - Identified that CHR showed file-level map bindings but not selected-tile usage, leaving a gap between editing tile pixels and finding where that tile appears in a map.
+  - Added project-store `findTileUsageForActiveChr(tile)` to scan maps bound to the active CHR and return per-map first usage positions plus counts.
+  - Added `openMapUsingActiveChrTile(tile)` to open the first matching map usage through `openMap(..., { x, y, layer: "tiles" })`, reusing existing Map focus/selection behavior.
+  - Updated `ChrEditorPanel.vue` to scan selected-tile usage, show a usage chip in the context bar, and change the map action into "打开位置" for the selected tile.
+  - Static verified with `npm --prefix fc-tauri run build`, `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml`, and `git diff --check`.
+  - Started the real Tauri app with `CARGO_INCREMENTAL=0 npm --prefix fc-tauri run tauri dev`; verified `tauri_ping` and all three MCP sockets.
+  - Used `target/debug/fc ide-mcp` to create `/tmp/fc-tile-usage-*`, patch three map cells to tile 7, and focus `chr/sprites.chr` tile 7.
+  - Runtime verified through the real Tauri webview: CHR context bar showed `图块 7 · 3 次 · map/room.bin 5,4`, clicking "打开位置" switched to `map/room.bin`, and the Map context bar reported `坐标 5,4 · 图块 7`.
+
+### Phase 31: Tracker Pattern Selection Auto-Scroll
+- **Status:** complete
+- Actions taken:
+  - Continued in `/Users/sunmeng/workspace/fc-creative-mode` on `codex/creative-mode-simple-game`.
+  - Re-read the current planning files and resumed from the in-progress `TrackerPanel.vue` selection-scroll edit.
+  - Audited Tracker Pattern keyboard navigation and confirmed note entry/arrow movement update `selRow`/`selCh` while the grid itself is scrollable for long patterns.
+  - Reused the existing `focusSelectedPatternCell()` path whenever Pattern view selection changes, so keyboard navigation and note-entry auto-advance keep the selected cell visible.
+  - Static verified with `npm --prefix fc-tauri run build`, `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml`, and `git diff --check`.
+  - Started the real Tauri app with `CARGO_INCREMENTAL=0 npm --prefix fc-tauri run tauri dev`; verified `tauri_ping` and all three MCP sockets.
+  - Used `target/debug/fc ide-mcp` to create `/tmp/fc-tracker-scroll-*`, create `music/scroll.song.json` with 96 Pattern rows, and open the visible Tracker panel.
+  - Runtime verified through the real Tauri webview: initial Pattern grid had `scrollTop=0`, `clientHeight=465`, and `scrollHeight=2432`; after keyboard navigation to row `0x27`, `scrollTop=787` and the selected cell was visible.
+  - Runtime verified note-entry auto-advance: repeated `KeyZ` input moved the selection from row `0x30` to `0x3C`, kept the Tracker focused, and left the selected cell visible in the grid viewport.
+  - Encountered one long `tauri_eval` timeout while dispatching many key events; split verification into shorter calls and confirmed the real UI state had already scrolled correctly.
+
+### Phase 32: IDE MCP Granular Source Patching
+- **Status:** complete
+- Actions taken:
+  - Continued in `/Users/sunmeng/workspace/fc-creative-mode` on `codex/creative-mode-simple-game`.
+  - Audited the Tauri-hosted IDE MCP source-file tools and compared them with existing granular CHR/map/song patch tools.
+  - Identified that `ide_write_file` can whole-file write/register source files, but agents still lacked a source equivalent to `ide_patch_chr_tile`, `ide_patch_map_cells`, and `ide_patch_song_cell`.
+  - Added `ide_patch_source` to the embedded MCP tool list and dispatcher. It patches a 1-based line range, preserves newline style, writes the file, registers `src/*.s` / `.asm` when requested, and emits `source-patch` with a source line focus target.
+  - Updated the project store so `source-patch` is handled like other resource-targeted patch events and opens/focuses the visible source editor.
+  - Found and fixed a frontend sync-order issue: source tabs now refresh before resource focus when a MCP event includes both `source` and `resource`, so CodeMirror does not reset selection after `gotoSource`.
+  - Updated M1/M2 docs to describe `ide_patch_source` as the source-line granular patch tool for programming agents.
+  - Static verified with `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml`, `npm --prefix fc-tauri run build`, and `git diff --check`.
+  - Started the real Tauri app with `CARGO_INCREMENTAL=0 npm --prefix fc-tauri run tauri dev`; verified `tauri_ping` and all three MCP sockets.
+  - Used `target/debug/fc ide-mcp` to create `/tmp/fc-source-patch-*`, patch `src/main.s`, write/register `src/agent_patch.s`, patch the new file, and confirm `ide_get_state` reported two source resources.
+  - Runtime verified through the real Tauri webview that the visible IDE opened `src/agent_patch.s`, kept both source tabs clean, and showed `src/agent_patch.s` in `manifest.sources`.
+  - Re-ran `source-patch` without an extra `ide_focus_resource` call and verified the real editor became active on `src/main.s` with `goto.line=7` and CodeMirror active line `; PATCH_SOURCE_FOCUS_AFTER_REFRESH`.
+  - Verified a follow-up `ide_build` succeeded after the source patches.
+
+### Phase 33: CHR Tile Brush Handoff To Map
+- **Status:** complete
+- Actions taken:
+  - Continued in `/Users/sunmeng/workspace/fc-creative-mode` on `codex/creative-mode-simple-game`.
+  - Audited CHR tile usage navigation and Map selected-tile focus. Found that used tiles can jump to their map usage, but unused newly edited tiles could not be handed back to a map as a paint brush.
+  - Added `mapTileBrushFocus` to the project store and reset flow.
+  - Added `requestMapTileBrushFocus()` and `openMapUsingActiveChrTileBrush(tile)` so CHR can open a bound map and set a tile brush without modifying map data.
+  - Updated `MapEditorPanel.vue` to consume `mapTileBrushFocus`, switch to the tiles layer, select the requested tile, clear stale selection/hover, and redraw the map/tile palette.
+  - Updated `ChrEditorPanel.vue` so the context action remains "打开位置" for tiles with usage and becomes "用于地图" for unused tiles with bound maps.
+  - Static verified with `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml`, `npm --prefix fc-tauri run build`, and `git diff --check`.
+  - Started the real Tauri app with `CARGO_INCREMENTAL=0 npm --prefix fc-tauri run tauri dev`; verified `tauri_ping` and all three MCP sockets.
+  - Used `target/debug/fc ide-mcp` to create `/tmp/fc-chr-brush-*`, focus `chr/sprites.chr` tile 13, and confirm the map had zero cells using tile 13.
+  - Runtime verified through the real Tauri webview that CHR showed `图块 13 未使用` plus enabled `用于地图`; clicking it switched to Map with context `图块 13 · 1×1` and side meta `选中图块 13`.
+  - Painted cell `(6,4)` through the real Map canvas, saved the map, and verified IDE MCP readback reported tile 13 at that cell.
+  - Verified the saved map format stayed 2164 bytes with header `[32,0,30,0]`.
+
+### Phase 34: Tile Palette Focus Visibility
+- **Status:** complete
+- Actions taken:
+  - Continued in `/Users/sunmeng/workspace/fc-creative-mode` on `codex/creative-mode-simple-game`.
+  - Re-read the planning files, `MapEditorPanel.vue`, and `ChrEditorPanel.vue`, and narrowed the next UX slice to selected-tile visibility inside palette/sheet drawers.
+  - Added `scrollSelectedTileIntoPalette()` to the Map editor so the tile palette drawer follows `selTile` after manual tile selection, CHR binding changes, map-cell focus, CHR→Map brush focus, map/CHR changes, drawer mount/resize, and adaptive palette sizing.
+  - Added `scrollSelectedTileIntoSheet()` to the CHR editor so the sheet overview follows `selTile` after MCP/Map focus, keyboard tile stepping, manual tile selection, drawer open/resize, and adaptive sheet sizing.
+  - Static verified with `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml`, `npm --prefix fc-tauri run build`, and `git diff --check`.
+  - Started the real Tauri app with `CARGO_INCREMENTAL=0 npm --prefix fc-tauri run tauri dev`; verified `/tmp/fc-tauri-ide-mcp.sock`, `/tmp/fc-tauri-emu-mcp.sock`, `/tmp/fc-tauri-mcp.sock`, and `tauri_ping`.
+  - Used `target/debug/fc ide-mcp` to create `/tmp/fc-palette-focus-*` and focus `chr/sprites.chr` tile `500`; the real CHR sheet drawer scrolled to keep tile 500 visible.
+  - Used the real Tauri project store action `openMapUsingActiveChrTileBrush(220)` and confirmed the Map palette drawer scrolled so tile 220 was visible as the selected brush.
+  - Used IDE MCP `ide_patch_map_cells` plus `ide_focus_resource` to set/focus map cell `(10,8)` with tile `230`; the real Map context and palette drawer both followed tile 230.
+  - Stopped Tauri dev and verified no real `fc-tauri` / Vite process remained.
+  - Encountered an initial MCP script timeout because `notifications/initialized` was sent as a request with an id; removed that wait and continued with proper request/notification semantics.
+
+### Phase 35: Editor Keyboard Focus Ownership
+- **Status:** complete
+- Actions taken:
+  - Continued in `/Users/sunmeng/workspace/fc-creative-mode` on `codex/creative-mode-simple-game`.
+  - Audited Map, CHR, and Tracker keyboard focus behavior after resource/MCP focus.
+  - Found Tracker already focuses its root when `songCellFocus` lands, CHR did not focus its root after tile focus, and Map handled keyboard shortcuts through global `window` listeners.
+  - Added a focusable Map root (`tabindex=0`) and moved Map `keydown`/`keyup` handling onto the component root instead of `window`.
+  - Kept Map window `mousemove`/`mouseup`/`blur` listeners for drag/pan cleanup only.
+  - Focused the Map root after map-cell focus, CHR→Map brush focus, canvas click/paint, and initial map mount.
+  - Focused the CHR root after `focusTile()`, covering MCP CHR focus, Map→CHR navigation, and keyboard tile stepping.
+  - Static verified with `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml`, `npm --prefix fc-tauri run build`, and `git diff --check`.
+  - Started the real Tauri app with `CARGO_INCREMENTAL=0 npm --prefix fc-tauri run tauri dev`; verified the three MCP sockets and `tauri_ping`.
+  - Used `target/debug/fc ide-mcp` to create `/tmp/fc-focus-owner-*`, focus `chr/sprites.chr` tile `10`, and verified through Tauri MCP that `.chr` was the active element and `ArrowRight` advanced to tile `11`.
+  - Focused `map/room.bin` cell `(6,1)` through IDE MCP and verified `.maped` became active; pressing `f` changed the Map tool from brush to fill.
+  - Focused CHR tile `20` again and verified pressing `g` while `.chr` was active did not trigger Map's former global grid shortcut path.
+  - Stopped Tauri dev and verified no real `fc-tauri` / Vite process remained.
+
+### Phase 36: IDE MCP Music Cell Focus
+- **Status:** complete
+- Actions taken:
+  - Continued in `/Users/sunmeng/workspace/fc-creative-mode` on `codex/creative-mode-simple-game`.
+  - Audited `ide_focus_resource` and found source, CHR, and map had exact semantic focus targets, while music only opened the Tracker as a whole file.
+  - Added `pattern`, `row`, and `channel` fields to the Tauri-hosted IDE MCP `ide_focus_resource` schema, result payload, and `resource-focus` IPC event.
+  - Routed music `resource-focus` through `project.ts` `focusResource()` into `openTracker(path, { pattern, row, channel })`, reusing the existing Tracker `songCellFocus` selection, scroll, and keyboard-focus behavior.
+  - Updated M1/M2 usage docs to document music Pattern-cell focus through `ide_focus_resource`.
+  - Static verified with `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml`, `npm --prefix fc-tauri run build`, and `git diff --check`.
+  - Started the real Tauri app with `CARGO_INCREMENTAL=0 npm --prefix fc-tauri run tauri dev`; verified the three MCP sockets and `tauri_ping`.
+  - Used `target/debug/fc ide-mcp` to create `/tmp/fc-music-focus-*`, create `music/focus.song.json` with 64 Pattern rows, and focus `{ pattern:0, row:37, channel:3 }`.
+  - Verified through Tauri MCP that the real Tracker was visible, active resource was `music/focus.song.json`, context bar showed `行 25 · 噪声 · ···`, `songCellFocus={pattern:0,row:37,channel:3}`, selected cell was visible, and `.tracker` owned keyboard focus.
+  - Sent an out-of-range focus request `{ pattern:99, row:999, channel:9 }` and verified the real frontend clamped safely to `pattern=0,row=63,channel=4`, with context `行 3F · DPCM · ···` and selected cell visible.
+  - Stopped Tauri dev and verified no real `fc-tauri` / Vite process remained.
+
+### Phase 37: IDE MCP Active Editor Context Radar
+- **Status:** complete
+- Actions taken:
+  - Continued in `/Users/sunmeng/workspace/fc-creative-mode` on `codex/creative-mode-simple-game`, honoring the no-browser-test constraint.
+  - Re-read `task_plan.md`, `findings.md`, `progress.md`, `ide_mcp.rs`, `project.ts`, `IdeView.vue`, and the source/CHR/map/tracker editor components.
+  - Identified the next MCP maturity gap: IDE MCP could push visible focus into source/CHR/map/music, but agents still needed the Tauri DOM bridge to read the visible editor's current line/tile/cell/tool context.
+  - Added Tauri `IdeUiState` plus `ide_ui_update`, storing the latest frontend semantic UI snapshot inside the same live Tauri process that hosts the IDE MCP.
+  - Expanded `ide_get_state` with a `ui` section so `target/debug/fc ide-mcp` can read the visible IDE's active editor context.
+  - Added frontend `ideUiUpdate()` wrapper and Pinia store `setEditorContext()`, `setUiShellContext()`, and throttled `publishUiContext()`.
+  - Added source editor context publication for active path, cursor line, dirty state, and tab count.
+  - Added CHR editor context publication for selected tile, tool, palette slot, hover pixel, tile usage, drawer state, and dirty/active state.
+  - Added Map editor context publication for map path, size, layer, tool, selected tile/attr/collision value, hover cell, selection, bound CHR, view mode, grid, palette drawer, and dirty/active state.
+  - Added Tracker context publication for song path, Pattern/Roll view, pattern/row/channel, selected cell contents, octave, instrument, roll hover, inspector state, playing, and dirty/active state.
+  - Added Dockview shell context publication for active panel, visible panels, workspace focus mode, and current creative panel.
+  - Updated M1/M2 docs to document `ide_get_state.ui.active_editor` as the IDE-owned readback path for programming agents.
+  - Static checked early with `npx vue-tsc --noEmit` and fixed optional MCP event typing in `project.ts`; `vue-tsc` now passes.
+  - Static checked backend with `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml`; it passes.
+  - Static checked production frontend with `npm --prefix fc-tauri run build`; it passes with the existing large-chunk warning.
+  - `git diff --check` passes.
+  - Started the real Tauri app with `CARGO_INCREMENTAL=0 npm --prefix fc-tauri run tauri dev`; verified `/tmp/fc-tauri-ide-mcp.sock`, `/tmp/fc-tauri-emu-mcp.sock`, `/tmp/fc-tauri-mcp.sock`, and `tauri_ping`.
+  - Used `target/debug/fc ide-mcp` to create `/tmp/fc-ui-context-wait-*`, then focused source line 12, CHR tile 42, map cell `(9,7)` on `tiles`, and tracker row 31/channel 2.
+  - Runtime verified through `ide_get_state.ui.active_editor` itself: source returned `{kind:"source",path:"src/main.s",line:12}`; CHR returned `{kind:"chr",tile:42,tool:"pencil"}`; Map returned `{kind:"map",hover:{x:9,y:7},selected_tile:42,bound_chr:"chr/sprites.chr"}`; Tracker returned `{kind:"music",pattern:0,row:31,channel:2}`.
+  - Confirmed the first fast verification read stale UI because frontend IPC snapshot publication is async after MCP focus events. The corrected verification waits until `ide_get_state.ui` reports the expected active editor before asserting.
+  - Stopped Tauri dev after verification and confirmed the residual process check matched only the `pgrep` command itself.
+
+### Phase 38: IDE MCP UI Context Acknowledgement
+- **Status:** complete
+- Actions taken:
+  - Continued from Phase 37's runtime finding that an immediate `ide_get_state` can read the previous UI snapshot because Tauri event handling and Vue IPC publication are asynchronous.
+  - Added `ide_wait_ui_context` to the embedded Tauri IDE MCP tool list and dispatcher.
+  - Implemented backend-only snapshot polling against `IdeUiState`, with `kind`, `path`, `resource_kind`, `resource_path`, `panel`, `line`, `tile`, `x`, `y`, `layer`, `pattern`, `row`, `channel`, `min_seq`, `timeout_ms`, and `poll_ms` filters.
+  - Kept matching semantic, using `ui.active_editor` plus `ui.shell.active_panel` and `ui.active_resource`, so agents do not need DOM polling to acknowledge frontend focus.
+  - Static checked backend with `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml`; it passes.
+  - Static checked frontend with `npx vue-tsc --noEmit`; it passes.
+  - Static checked production frontend with `npm --prefix fc-tauri run build`; it passes with the existing large-chunk warning.
+  - `git diff --check` passes.
+  - Started the real Tauri app with `CARGO_INCREMENTAL=0 npm --prefix fc-tauri run tauri dev`; verified `/tmp/fc-tauri-ide-mcp.sock`, `/tmp/fc-tauri-emu-mcp.sock`, `/tmp/fc-tauri-mcp.sock`, and `tauri_ping`.
+  - Runtime verified `tools/list` exposes `ide_wait_ui_context`.
+  - Runtime verified `ide_wait_ui_context` matched source `src/main.s` on `editor`, CHR tile `77` on `chr`, map cell `(4,6)` on `tiles` with selected tile `77` on `map`, and tracker row `40`/channel `4` on `tracker`.
+  - Runtime verified a deliberately impossible CHR tile wait returned `matched=false` after timeout instead of claiming a stale match.
+  - Stopped Tauri dev and verified no real `fc-tauri` / Vite process remained; residual check matched only the `pgrep` command itself.
+
+### Phase 39: IDE MCP Active Context Patch
+- **Status:** complete
+- Actions taken:
+  - Continued in `/Users/sunmeng/workspace/fc-creative-mode` on `codex/creative-mode-simple-game`, honoring the no-browser-test constraint.
+  - Re-read `task_plan.md`, `findings.md`, `progress.md`, the planning skill, and the existing IDE MCP patch/focus code before editing.
+  - Identified that after `ide_get_state.ui.active_editor` and `ide_wait_ui_context`, the next MCP authoring gap is direct patching of the current visible editor context without restating path and coordinates.
+  - Added `ide_patch_active_context` to the embedded Tauri IDE MCP tool list and dispatcher.
+  - Implemented active-context resolution in `ide_mcp.rs`: it reads the latest `ui.active_editor`, checks optional `kind`, fills defaults for source line, CHR tile, map hover cell/layer, or tracker Pattern cell, and delegates to the existing granular patch functions.
+  - Kept file-format logic single-sourced by reusing `patch_source`, `patch_chr_tile`, `patch_map_cells`, and `patch_song_cell`.
+  - Ran `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml`; it passes after the new Rust MCP tool.
+  - Updated M1/M2 docs and planning findings to document `ide_patch_active_context`.
+  - Static verified with `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml`, `npx vue-tsc --noEmit` from `fc-tauri/`, `npm --prefix fc-tauri run build`, and `git diff --check`; all passed, with only the existing Vite large-chunk warning.
+  - Started the real Tauri app with `CARGO_INCREMENTAL=0 npm --prefix fc-tauri run tauri dev`; verified `/tmp/fc-tauri-ide-mcp.sock`, `/tmp/fc-tauri-emu-mcp.sock`, `/tmp/fc-tauri-mcp.sock`, and `tauri_ping`.
+  - Used `target/debug/fc ide-mcp` to create `/tmp/fc-active-context-*`, focus each visible editor, wait for `ide_wait_ui_context`, and patch the active context through `ide_patch_active_context`.
+  - Runtime verified source active patch inserted `; ACTIVE_CONTEXT_SOURCE` at the current source line, CHR active patch wrote tile 33 pixels, Map active patch wrote `map/room.bin` cell `(8,9)` to tile 33, and Tracker active patch wrote row 12/channel 2 note/instrument/volume values.
+  - Verified through the real Tauri MCP only for UI/store inspection: source marker, CHR tile 33 pixels, tracker cell data, and Map `ui.active_editor` at `(8,9)` with selected value 33 all matched.
+  - Stopped Tauri dev and verified no real `fc-tauri` / Vite process remained; residual check matched only the `pgrep` command itself.
+
+### Phase 40: IDE MCP Playable Game Blueprint
+- **Status:** complete
+- Actions taken:
+  - Continued in `/Users/sunmeng/workspace/fc-creative-mode` on `codex/creative-mode-simple-game`, keeping the larger mature IDE objective active.
+  - Re-read planning files and audited the current IDE MCP tool surface, project template backend, tracker song model, tracker export path, and build template tests.
+  - Identified the next authoring gap: agents can create and patch every resource, but still need to orchestrate many low-level calls to bootstrap a playable simple game with editable code/resources/music.
+  - Added `ide_scaffold_game` to the embedded Tauri IDE MCP tool list and dispatcher.
+  - Added a small `blueprint_song()` helper that creates a simple tracker melody from the existing song model.
+  - Implemented `scaffold_game()` by composing existing backend primitives: `project::create_from_template`, writing `.song.json`, `tracker::export_song_to_project`, `wire_song_player`, optional `build_project`, optional `run_project`, and a visible `game-scaffold` IDE refresh event.
+  - Updated M1/M2 docs and findings to describe `ide_scaffold_game`.
+  - Ran `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml`; it passes without warnings after cleanup.
+  - Static verified with `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml`, `npx vue-tsc --noEmit` from `fc-tauri/`, `npm --prefix fc-tauri run build`, and `git diff --check`; all passed, with only the existing Vite large-chunk warning.
+  - Started the real Tauri app with `CARGO_INCREMENTAL=0 npm --prefix fc-tauri run tauri dev`; verified `/tmp/fc-tauri-ide-mcp.sock`, `/tmp/fc-tauri-emu-mcp.sock`, `/tmp/fc-tauri-mcp.sock`, and `tauri_ping`.
+  - Used `target/debug/fc ide-mcp` to call `ide_scaffold_game` into `/tmp/fc-blueprint-*` with `build=true` and `run=true`.
+  - Runtime verified the scaffold created `project.toml`, `src/main.s`, `chr/sprites.chr`, `map/room.bin`, `music/theme.song.json`, `music/theme.s`, `music/fc_player.s`, and `build/game.nes`.
+  - Runtime verified `ide_get_state` reported source/CHR/map/music resource counts, zero missing resources, `map/room.bin -> chr/sprites.chr`, and `build.output_status=current`.
+  - Runtime verified the generated tracker song had an editable first note and the preview player responded to `ide_press_buttons` by moving player X.
+  - Verified through the real Tauri MCP that the visible IDE was in studio mode, loaded the blueprint ROM in Preview, showed Build success with zero diagnostics, and had manifest music entries for `.song.json`, exported song assembly, and `music/fc_player.s`.
+  - Verified the visible emulator specifically through `target/debug/fc emu-mcp`: it reported running mapper 0 state, live worker runtime, controller input moved player X from 132 to 154, and `emu_capture_screen` returned a nonblank PNG.
+  - Stopped Tauri dev and verified no real `fc-tauri` / Vite process remained; residual check matched only the `pgrep` command itself.
+  - Noted that the pre-bound `mcp__fc_emu` tool in this Codex session returned a blank headless state and should not be used as live Tauri evidence unless the MCP binding is refreshed to the worktree `.mcp.json`.
+
+### Phase 41: IDE MCP Game Verification Gate
+- **Status:** complete
+- Actions taken:
+  - Continued from Phase 40's evidence gap: the project worktree `.mcp.json` maps `fc-emu` to the live Tauri emulator bridge, but the already-bound `mcp__fc_emu` tool in this session returned a blank headless state.
+  - Audited `fc-tauri/src-tauri/src/emu.rs` and `emu_mcp.rs` and confirmed the Tauri-hosted IDE MCP can directly inspect the same `EmuState` used by the visible Preview.
+  - Added `ide_verify_game` to the embedded IDE MCP tool list and dispatcher.
+  - Implemented `verify_game()` to optionally build/run, wait for frames, read runtime state, summarize the visible frame buffer, and optionally press controller buttons while checking a CPU memory byte before/after.
+  - Updated M1/M2 docs, task plan, and findings to describe the IDE-owned verification gate.
+  - Ran `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml`; it passes after the new tool.
+  - Static verified with `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml`, `npx vue-tsc --noEmit` from `fc-tauri/`, `npm --prefix fc-tauri run build`, and `git diff --check`; all passed, with only the existing Vite large-chunk warning.
+  - Started the real Tauri app with `CARGO_INCREMENTAL=0 npm --prefix fc-tauri run tauri dev`; verified `/tmp/fc-tauri-ide-mcp.sock`, `/tmp/fc-tauri-emu-mcp.sock`, `/tmp/fc-tauri-mcp.sock`, and `tauri_ping`.
+  - Used `target/debug/fc ide-mcp` to create `/tmp/fc-verify-gate-*` via `ide_scaffold_game`, then ran `ide_verify_game` with build/run, nonblank frame expectation, and Right-button input memory check at `$0000`.
+  - Runtime verification returned `ok=true` with `runtime_running`, `frame_nonblank`, and `input_response` checks all true; frame stats were `nonblack=5615`, `unique_sample=4`, and input changed player X from `120` to `136`.
+  - Verified through the real Tauri MCP only for UI/store inspection: studio mode, `build/game.nes` loaded in Preview, Build success with zero diagnostics, source active at `src/main.s`, and status `MCP 已更新：game-verify`.
+  - Stopped Tauri dev and verified no real `fc-tauri` / Vite process remained; residual check matched only the `pgrep` command itself.
+
+### Phase 1: UX Inventory And Workspace Sizing
+- **Status:** in_progress
+- Actions taken:
+  - Confirmed current worktree `/Users/sunmeng/workspace/fc-creative-mode` is on branch `codex/creative-mode-simple-game` and initially clean.
+  - Read existing planning files and found they described an older NES hardware accuracy objective.
+  - Replaced planning memory with the current Creative IDE maturity objective.
+  - Started code inventory for `IdeView.vue`, `MapEditorPanel.vue`, `ChrEditorPanel.vue`, and `TrackerPanel.vue`.
+  - Confirmed the live emulator MCP is already embedded in the Tauri process and uses the visible `EmuState`.
+  - Added frontend live MCP status state to the emulator Pinia store.
+  - Added `emu_mcp_status` as an explicit Tauri command so the frontend can recover MCP online state after window mount or Vite reload.
+  - Added player toolbar status for live MCP connection/errors/recent tool activity.
+  - Expanded the map editor work area by making the map canvas wrapper fill the panel body and turning the tile resource area into a toggleable overlay drawer.
+  - Added a map context bar that keeps map path, bound CHR, selection, and hover coordinate visible without consuming side-panel width.
+- **Committed:** `ef0dc28 feat(tauri): surface live emulator mcp in ide`
+
+### Phase 4: CHR Resource Editor Comfort
+- **Status:** complete
+- Actions taken:
+  - Re-read `ChrEditorPanel.vue`, `project.ts`, and `IdeView.vue` before changing the next editor surface.
+  - Identified that CHR editor resize logic already existed, but the fixed left/right grid and fixed 16-column sheet made the usable drawing area feel constrained.
+  - Converted the CHR tile sheet into a toggleable overlay drawer so the single-tile editor can use the full parent panel.
+  - Added a CHR context bar showing active sheet path, tile count, selected tile, and hover pixel status.
+  - Changed the sheet overview from fixed 16 columns to adaptive columns/tile size based on drawer width and height.
+  - Replaced visible CHR tutorial hints with state readouts, keeping keyboard/tool details in button titles instead of the main work surface.
+  - Runtime verified the CHR panel in Tauri/Dockview using a temporary IDE MCP-created demo project at `/tmp/fc-chr-verify`.
+  - Verified the sheet drawer can be hidden and the zoom stage remains full-width.
+- **Committed:** `10a5461 feat(tauri): expand chr editor workspace`
+
+### Phase 5: Music Editor Comfort
+- **Status:** complete
+- Actions taken:
+  - Re-read `TrackerPanel.vue`, tracker store actions, and `ide.ts` tracker APIs before changing layout.
+  - Identified that the piano-roll metrics already adapt to `rollArea`, while the persistent instrument/effect inspector side column was the main source of cramped editing width.
+  - Converted the instrument/effect inspector into a toggleable overlay drawer.
+  - Added a tracker context bar with song path, current view, active cell, transport state, pattern size, and roll hover state.
+  - Made both Pattern and piano-roll surfaces fill the available body area with stable bordered work surfaces.
+  - Removed visible tutorial-style text from empty/roll status areas and replaced it with state readouts.
+  - Runtime verified Pattern and roll geometry in a Tauri/Dockview session using `/tmp/fc-tracker-verify`.
+- Initial observations:
+  - The three target editors already contain some ResizeObserver-based adaptive logic in script, so the likely bottleneck is template/CSS panel layout and workflow integration.
+  - Map/CHR binding is represented by `chrChoices` and `boundChrForActiveMap`, but the continuity of the interaction still needs inspection.
+- **Committed:** `a004cdf feat(tauri): expand tracker editor workspace`
+
+### Phase 2: Project And Resource Flow
+- **Status:** complete
+- Actions taken:
+  - Confirmed live emulator MCP is embedded in the running Tauri process, but `.mcp.json` still exposed the old headless `fc mcp` as `fc-emu`.
+  - Changed `.mcp.json` so `fc-emu` points to `target/debug/fc emu-mcp` and added `fc-emu-core` for the headless fallback.
+  - Updated AGENTS and M1 IDE usage docs to describe `fc-ide`, live `fc-emu`, headless `fc-emu-core`, and the Tauri DOM bridge separately.
+  - Expanded `FileTreePanel.vue` into a manifest-backed resource navigator with counts, filters, active-resource readout, inline map→CHR metadata, CHR dependent-map counts, and context-menu binding actions.
+  - Tightened resource classification so manifest-listed music `.s` outputs stay under music instead of source.
+  - Runtime verified a demo project at `/tmp/fc-resource-flow-verify` through the Tauri IDE MCP and DOM/store inspection.
+  - Runtime verified `target/debug/fc emu-mcp` initializes as `fc-tauri-emu-mcp`, lists live emulator tools, and loading `SuperMarioBro.nes` updates the visible Tauri player store.
+  - Added always-visible top-bar save/build/preview loop indicators to `IdeView.vue`, independent of whether the Build or Preview dock panels are open.
+  - Made those loop indicators compact and fixed-width after runtime DOM measurement showed full labels were squeezed too hard in the current 1040px viewport.
+  - Runtime verified the indicators with project creation, build, and run actions through the real Tauri webview/Pinia state.
+
+### Phase 3: Map Editor Comfort
+- **Status:** complete
+- Actions taken:
+  - Re-read `MapEditorPanel.vue`, map store actions, and Rust `map.rs` encoding before changing the final map comfort slice.
+  - Added explicit map view modes: Fit, Fill, and Manual. Fit keeps maps fully visible inside the parent work area; Fill expands until the parent is covered and uses scroll for overflow; Manual preserves zoom-wheel/range control.
+  - Split the map toolbar into a primary editing row and a parameter row so layer/tool/view/save controls remain stable while CHR binding, zoom, brush, dimensions, grid, and layer selectors stay scannable.
+  - Added layer-colored context/state feedback for active layer, hover value, and collision counts.
+  - Improved hover preview so attribute edits highlight their real 2x2 block and brush previews match the active layer color.
+  - Made the map tile resource drawer adaptive: it observes drawer size and computes tile preview columns/tile size instead of using a fixed 16-column sheet.
+  - Runtime verified the map panel through the real Tauri window and `fc-tauri` MCP using `/private/tmp/fc-map-comfort-verify-*`.
+  - Verified a real collision edit/save clears map dirty state and preserves the `.bin` format length/header.
+
+### Phase 7: Creative MCP End-To-End Authoring
+- **Status:** complete
+- Actions taken:
+  - Audited the embedded live IDE MCP tool list against the first-class creative resource types.
+  - Found that source, CHR, map, map→CHR binding, build/run, preview input, and memory read were covered, but tracker/music semantic read/write was missing.
+  - Added `ide_read_song` and `ide_write_song` to `fc-tauri/src-tauri/src/ide_mcp.rs`.
+  - `ide_write_song` now validates the song through the Rust `Song` serde model, writes pretty JSON, registers the path in `project.toml` `music`, and emits `ide-mcp-updated` with `changed: ["tree", "manifest", "music"]`.
+  - Updated the project store so MCP music updates reload an already-open tracker panel.
+  - Updated tracker save flow so UI-created `.song.json` files are also registered as music resources.
+  - Updated M1/M2 docs to list `ide_read_song` / `ide_write_song`.
+  - Runtime verified the new MCP tools through `target/debug/fc ide-mcp` against the live Tauri IDE socket and inspected the visible Pinia state through `fc-tauri` MCP.
+
+### Phase 8: Creative MCP Source Registration
+- **Status:** complete
+- Actions taken:
+  - Audited `ide_write_file` against UI `createSource()` and found that MCP-written `src/*.s` / `.asm` files were visible in the tree but not automatically registered in `project.toml` `sources`.
+  - Extended `ide_write_file` so `src/*.s` / `.asm` writes register as source build inputs and `music/*.s` / `.asm` writes register as music build inputs.
+  - Kept non-assembly files as plain file writes so arbitrary docs/configs do not mutate build manifests.
+  - Updated docs to explain auto-registration behavior for agent-written source and music assembly files.
+  - Runtime verified registration, build object output, visible Tauri store sync, and live preview run through the real Tauri app and `fc-ide` MCP.
+
+### Phase 9: End-To-End MCP Simple Game Verification
+- **Status:** complete
+- Actions taken:
+  - Reproduced the full agent-authored simple game loop through `target/debug/fc ide-mcp`, using the real Tauri app sockets instead of browser automation.
+  - Created an `AgentSimpleGame` demo project in a temp directory, then used IDE MCP tools to patch source, CHR pixels, map tiles/collision, tracker song JSON, and music assembly.
+  - Built the project and verified `build/game.nes` existed, `project.toml` contained source/CHR/map/music resources, CHR star pixels matched the requested pattern, and map collision data was changed.
+  - Ran the ROM through `ide_run` and verified live emulator memory changed after `ide_press_buttons Right`.
+  - Found that MCP `ide_run` loaded `game.nes` into the emulator but did not automatically mount the Dockview Preview panel.
+  - Added a `focusPreview` signal in the project store and a matching `IdeView.vue` watcher so MCP preview updates open/focus the Preview panel.
+  - Verified the real Tauri IDE after the fix: Dockview had an active `preview` panel and a visible canvas while staying in studio mode.
+  - Verified `target/debug/fc emu-mcp` reads the same live Tauri emulator state and captures a nonblank 256x240 frame.
+
+### Phase 10: Reliable Active Resource Tracking
+- **Status:** complete
+- Actions taken:
+  - Audited file tree active-resource display and found it was inferred from independent focus counters instead of a single authoritative state.
+  - Added `resourceFocusSeq` and `activeResource` to the project store.
+  - Added `markActiveResource()` / `clearActiveResource()` actions and wired them into source tab open/switch, CHR open/create, map open/create/resize/rebind, tracker open/create/import, rename, delete, and tab close flows.
+  - Simplified `FileTreePanel.vue` so the resource summary and active row use `store.activeResource` directly.
+  - Runtime verified the real Tauri file tree in studio mode after an IDE MCP-created project.
+  - Verified active summary/highlight followed source → map → CHR → song → source-tab operations.
+  - Verified renaming the active song updates the summary/highlight and deleting it clears active-resource state.
+
+### Phase 11: Build-Time Autosave For Creative Resources
+- **Status:** complete
+- Actions taken:
+  - Audited `project.build_()` and found it only auto-saved dirty source tabs before invoking the build pipeline.
+  - Moved the build store into `building=true` before autosave to prevent duplicate build triggers while saving.
+  - Added a build pre-save phase that persists dirty source tabs, CHR, map, and tracker song resources.
+  - Kept phase-specific status text so failures can distinguish build-time save failures from actual assembler/linker failures.
+  - Runtime verified through the real Tauri app: made CHR/map/song dirty in memory, called `build_()` directly, and confirmed the build succeeded with all dirty flags cleared.
+  - Read the saved project back through `target/debug/fc ide-mcp` to prove the edited CHR pixels, map tile/collision, and tracker song cell were written to disk before build.
+
+### Phase 12: Build Panel Run Opens Visible Preview
+- **Status:** complete
+- Actions taken:
+  - Audited run entry points and found BuildPanel health `运行` loaded the ROM with `keepMode=true` but did not open/focus the Preview dock panel.
+  - Added `requestPreviewFocus()` to the project store and reused it from MCP preview sync.
+  - Updated BuildPanel health run to request Preview focus after loading the built ROM.
+  - Runtime verified the real Tauri Build panel: after closing Preview, clicking health `运行` mounted Preview, made it active, and displayed a visible emulator canvas.
+  - Verified live `fc emu-mcp` reported the same Tauri emulator running the generated mapper 0 ROM.
+
+### Phase 13: Collision-Free Resource Defaults
+- **Status:** complete
+- Actions taken:
+  - Audited `FileTreePanel.vue` new-resource prompt defaults and found repeated create flows could start from paths already present in the project tree.
+  - Added tree-path lookup and next-available path generation for source, CHR, map, and song defaults.
+  - Preserved compound suffixes such as `.song.json` while incrementing the filename stem.
+  - Fixed trailing-number behavior so `map/level1.bin` advances to `map/level2.bin` rather than `map/level12.bin`.
+  - Runtime verified against the real Tauri IDE, using IDE MCP to create/open `/tmp/fc-default-names-NNyfNv` and add colliding resources.
+  - Verified the live FileTreePanel component and prompts returned `src/new_module2.s`, `chr/sprites3.chr`, `map/level2.bin`, and `music/theme2.song.json`.
+
+### Phase 14: Open Primary Source On Project Load
+- **Status:** complete
+- Actions taken:
+  - Audited `newProject`, `openProject`, and IDE MCP sync flows and found they reset source tabs without opening the manifest's existing main source.
+  - Added `openPrimarySource()` to the project store.
+  - Called it after UI project creation/open and after IDE MCP `project-new` / `project-open` updates.
+  - Runtime verified the real Tauri IDE after MCP project creation: `src/main.s` opened automatically, CodeMirror contained source text, active resource was `源码 src/main.s`, and the empty editor hint was hidden.
+  - Closed tabs and re-opened the same project through IDE MCP to verify the project-open path also restores `src/main.s`.
+
+### Phase 15: Build Failure Focuses Source Diagnostics
+- **Status:** complete
+- Actions taken:
+  - Audited build diagnostics, BuildPanel tab behavior, and CodeMirror source syncing.
+  - Added store `focusFirstDiagnostic()` and invoked it after failed manual builds.
+  - Updated BuildPanel build/run actions to remain on the Problems tab when diagnostics are produced.
+  - Changed EditorPanel to watch active-tab content replacement, so external store/MCP source writes are reflected in CodeMirror.
+  - Runtime verified a failing ca65 build in the real Tauri IDE with a deliberately inserted `BROKEN_OPCODE_FOR_DIAG` line.
+  - Verified the failing source line was visible and active in CodeMirror, `goto` targeted `src/main.s:2`, and BuildPanel showed the diagnostics tab/error row after its build action.
+
+### Phase 16: Run Focuses Playable Preview
+- **Status:** complete
+- Actions taken:
+  - Audited PreviewPanel and found keyboard handling already worked once the stage had focus, but top-level Run did not request stage focus.
+  - Changed top-level IDE Run to use `requestPreviewFocus()` instead of directly showing Preview.
+  - Updated PreviewPanel to focus the stage when preview focus is requested, when the ROM changes, and when the stage first mounts after Dockview opens the panel.
+  - Added short delayed focus retries to survive Dockview layout/focus churn after a panel is created.
+  - Runtime verified real Tauri top-level Run opens Preview, focuses the stage, changes the hint to `试玩中`, and accepts `ArrowRight` as controller input immediately.
+
+### Phase 17: IDE MCP Opens Visible Creative Resources
+- **Status:** complete
+- Actions taken:
+  - Audited IDE MCP and found it can write/read/build/run creative resources, but cannot directly ask the visible IDE to open the authored resource without using the Tauri DOM bridge.
+  - Added `ide_open_resource` to the embedded Tauri IDE MCP with `kind=auto|source|chr|map|music`.
+  - The Rust tool validates project-relative paths, infers resource kind from manifest/path when `kind=auto`, and emits a Tauri IPC update event.
+  - Added project-store `openResource()` handling that reuses existing source/CHR/map/tracker open actions, preserving active-resource state and Dockview panel focus behavior.
+  - Updated AppShell so IDE MCP project/resource updates switch the real Tauri shell into studio mode.
+  - Added Dockview onReady restoration so a resource-open event that arrives before studio Dockview mounts still opens the current source/CHR/map/music context.
+  - Fixed rapid resource-open ordering by serializing IDE MCP frontend sync events through a promise queue.
+  - Updated M1/M2 docs to list `ide_open_resource` as the non-DOM way for an agent to focus the creative editor it is working on.
+  - Runtime verified from launcher: IDE MCP created a demo project, wrote a tracker song, opened source/CHR/map/music resources in sequence, and the real Tauri IDE ended in studio mode with tracker active and all creative panels mounted.
+  - Runtime verified follow-up `ide_build`/`ide_run`: `build/game.nes` loaded into visible Preview, Preview stage was focused, and live emulator MCP read the same running ROM state.
+
+### Phase 18: IDE MCP Build Surfaces Diagnostics
+- **Status:** complete
+- Actions taken:
+  - Audited MCP build result handling and found `ide_build` updated build data but did not request the visible Build panel or trigger the first-diagnostic source jump used by manual builds.
+  - Added `focusBuild` and `buildPanelTab` state to the project store.
+  - Added `applyExternalBuildResult()` so MCP build results update build/source-map/tree/status, open Build, choose Problems vs Health, and focus the first source diagnostic on failures.
+  - Updated `IdeView.vue` to show the Build panel when `focusBuild` is bumped.
+  - Updated `BuildPanel.vue` to initialize from and watch the requested store tab.
+  - Runtime verified a failing `ide_build` from launcher/studio: Build panel was visible, Problems tab showed `src/main.s:2`, and the editor jumped to `BROKEN_OPCODE_FOR_MCP_BUILD`.
+  - Runtime verified a fixed successful `ide_build`: Build panel switched to Health, status read `MCP 构建成功 → build/game.nes`, and source map entries were updated.
+
+### Phase 19: Map And CHR Binding Navigation
+- **Status:** complete
+- Actions taken:
+  - Audited Map and CHR editor context bars and confirmed binding state was visible, but direct editor-to-editor navigation still required the file tree.
+  - Added `mapsUsingActiveChr`, `openBoundChrForActiveMap()`, and `openMapUsingActiveChr()` to the project store.
+  - Added an "打开 CHR" context-bar button in `MapEditorPanel.vue` that opens the active map's bound CHR.
+  - Added bound-map status plus an "打开地图" context-bar button in `ChrEditorPanel.vue`.
+  - Runtime verified in the real Tauri app with an IDE MCP-created demo project: map `map/room.bin` showed bound `chr/sprites.chr`, opened CHR, CHR showed `map/room.bin`, and reverse navigation returned to the Map panel.
+
+### Phase 20: IDE MCP Project State Radar
+- **Status:** complete
+- Actions taken:
+  - Audited `fc-tauri/src-tauri/src/ide_mcp.rs`, `project.rs`, `build_pipeline.rs`, and `watch.rs` for agent-visible project state gaps.
+  - Found `ide_get_state` returned raw root/manifest/tree only, and `BuildState` did not remember the latest build result.
+  - Added latest-build-result storage to `BuildState` and wired it into Tauri `build_run`, file-watch rebuild, and IDE MCP `ide_build`.
+  - Expanded `ide_get_state` with semantic `resources`, `build`, and `ready` summaries for programming agents.
+  - Added resource existence checks, map `bound_chr`, CHR `used_by_maps`, missing resources, unbound maps, orphan CHR sheets, build output bytes, source-map count, diagnostics, and log tail.
+  - Added `output_status` / `output_current` so stale ROMs left after failed builds are explicit.
+  - Updated `docs/M1-创作IDE-使用说明.md` to describe `ide_get_state` as the state-query entry point for agents.
+  - Runtime verified through the real Tauri app and `target/debug/fc ide-mcp` with both successful and failing builds.
+
+### Phase 21: Map Selected Tile To CHR Focus
+- **Status:** complete
+- Actions taken:
+  - Audited `MapEditorPanel.vue`, `ChrEditorPanel.vue`, and the project store selected-tile/focus flow.
+  - Added `chrTileFocus` state plus `requestChrTileFocus()` and `openChr(path, focusTile)` in the project store.
+  - Updated Map editor "打开 CHR" to pass the current selected map tile into the bound CHR open action.
+  - Updated CHR editor to apply pending tile focus on mount, CHR path changes, and tile-focus signal changes.
+  - Runtime verified in the real Tauri app with an IDE MCP-created demo project: Map selected tile 11 opened the CHR editor at `图块 11 / 511`.
+  - Runtime verified an out-of-range tile request clamps to the final tile (`图块 511 / 511`).
+
+### Phase 22: IDE MCP Semantic Resource Focus
+- **Status:** complete
+- Actions taken:
+  - Audited IDE MCP tool coverage and found `ide_open_resource` can open editor panels but cannot land on a specific source line, CHR tile, or map cell without DOM scripting.
+  - Added `ide_focus_resource` to the embedded Tauri IDE MCP tool list and call dispatcher.
+  - Implemented backend resource validation and a `resource-focus` IPC event carrying `line`, `tile`, `x`, `y`, and optional map `layer`.
+  - Added project-store `focusResource()` routing: source uses `gotoSource()`, CHR uses `openChr(path, tile)`, map uses `openMap(path, { x, y, layer })`.
+  - Added `mapCellFocus` state and Map editor consumption so MCP focus requests highlight/select the target cell and scroll it into view after Dockview mounting.
+  - Updated M1/M2 docs to document `ide_focus_resource` as the semantic, non-DOM way to focus exact resource locations.
+  - Runtime verified in the real Tauri app with `target/debug/fc ide-mcp`: `src/main.s:12` focused CodeMirror line 12, `chr/sprites.chr` selected tile 13, and `map/room.bin` focused cell `9,6` on the collision layer.
+
+### Phase 23: IDE MCP Granular Resource Patching
+- **Status:** complete
+- Actions taken:
+  - Audited `fc-tauri/src-tauri/src/ide_mcp.rs` and found agents still had to send full CHR pixel arrays or full map objects for small resource edits.
+  - Added `ide_patch_chr_tile` to patch exactly one CHR tile from 64 palette-index pixels while preserving the existing `.chr` planar encoding.
+  - Added `ide_patch_map_cells` to patch tile, attr, or collision layer cells in-place while preserving the existing `map/*.bin` layout.
+  - Made both patch tools emit resource-targeted IPC payloads with tile/cell focus metadata.
+  - Updated the project store so `chr-patch` and `map-patch` refresh visible resources through `focusResource()` and land on the patched tile/cell.
+  - Runtime verified with the real Tauri app and `target/debug/fc ide-mcp`: CHR tile 22 focused in the visible CHR editor, map tile/collision/attr patches focused the visible Map editor, and disk readback matched the patched values.
+
+### Phase 24: IDE MCP Granular Tracker Patching
+- **Status:** complete
+- Actions taken:
+  - Resumed in `/Users/sunmeng/workspace/fc-creative-mode` on `codex/creative-mode-simple-game`; initial dirty state was only the partially registered `ide_patch_song_cell` tool.
+  - Implemented the Rust backend `ide_patch_song_cell` dispatcher target in `fc-tauri/src-tauri/src/ide_mcp.rs`.
+  - Added validation for active project root, project-relative path, pattern index, row index, channel index, optional `u8` fields, and "at least one changed field".
+  - Made the patch write pretty `.song.json`, register the path in `project.toml` music if needed, and emit `song-patch` with `changed=["tree","manifest","music","resource"]`.
+  - Added project-store `songCellFocus`, `requestSongCellFocus()`, and `openTracker(path, focusCell)` support.
+  - Routed `song-patch` through the IDE MCP sync queue so the visible Tracker panel reloads and focuses the patched Pattern cell.
+  - Updated `TrackerPanel.vue` to consume pending song-cell focus, switch to Pattern view, clamp target coordinates, and scroll the selected cell into view.
+  - Updated M1/M2 usage docs to document `ide_patch_song_cell`.
+  - Static verified with `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml`, `npm --prefix fc-tauri run build`, and `git diff --check`.
+  - Runtime verified through the real Tauri app and `target/debug/fc ide-mcp` by creating `/var/folders/.../fc-song-patch-*`, writing `music/patch_verify.song.json`, patching row 7/channel 2 to C4 with effect `134`, reading disk state back, and inspecting the visible Tauri Tracker state through the project MCP.
+  - Confirmed Pinia `songCellFocus={path:"music/patch_verify.song.json",pattern:0,row:7,channel:2}`, active resource `music/patch_verify.song.json`, manifest music registration, patched cell `{note:37,instrument:0,volume:13,fx:1,param:52}`, and DOM selected tracker cell row 7/channel 2.
+
+### Phase 25: IDE MCP Semantic Resource Creation
+- **Status:** complete
+- Actions taken:
+  - Confirmed worktree `/Users/sunmeng/workspace/fc-creative-mode` is clean on `codex/creative-mode-simple-game`.
+  - Audited IDE MCP tool list and found whole-resource writes/patches exist, but no semantic blank resource creation equivalent to the visible file-tree "新建源码/CHR/地图/乐曲" workflow.
+  - Audited frontend store creation methods and backend resource types. Existing UI creates source templates, blank CHR sheets, blank maps, and blank songs, but agents currently need to handcraft full payloads to do the same through MCP.
+  - Added `ide_create_resource` to the Tauri-hosted IDE MCP with `kind=source|chr|map|music`.
+  - Source creation writes a ca65 module template and registers it in `manifest.sources`.
+  - CHR creation writes a blank encoded `.chr` sheet with configurable tile count and registers it in `manifest.chr`.
+  - Map creation writes a blank `map/*.bin` with configurable width/height, optionally records a CHR binding, and registers it in `manifest.maps`.
+  - Music creation writes a blank tracker `.song.json` with configurable row count and registers it in `manifest.music`.
+  - Routed `resource-create` through the project store so the visible IDE opens the new resource editor using the same path as `ide_open_resource`.
+  - Updated M1/M2 docs to document semantic resource creation for programming agents.
+  - Static verified with `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml`, `npm --prefix fc-tauri run build`, and `git diff --check`.
+  - Runtime verified through the real Tauri app and `target/debug/fc ide-mcp` by creating `src/agent_logic.s`, `chr/agent_tiles.chr` with 4 tiles, `map/agent_room.bin` at 6×5 bound to the new CHR, and `music/agent_theme.song.json` with 12 rows.
+  - Read resources back through IDE MCP: source template exported `agent_logic_init/tick`, CHR had 4 tiles / 256 pixels, map was 6×5 with 30 tile cells, song had 12 Pattern rows, and `ide_get_state` reported counts source=2/chr=2/map=2/music=1 with no missing resources.
+  - Inspected the visible Tauri state through the Tauri MCP: studio mode, active resource `music/agent_theme.song.json`, Tracker visible, manifest registered all created resources, and `ide_build` succeeded with `build/game.nes` and 0 diagnostics.
+
+### Phase 26: IDE MCP Semantic Tracker Export
+- **Status:** complete
+- Actions taken:
+  - Resumed in `/Users/sunmeng/workspace/fc-creative-mode` on `codex/creative-mode-simple-game`; git status was clean.
+  - Re-read planning files and confirmed the next useful slice is tracker export through the Tauri-hosted IDE MCP.
+  - Audited `ide_mcp.rs`, `tracker.rs`, `project.ts`, and docs; found frontend export exists but no `ide_export_song` MCP tool.
+  - Added reusable `tracker::export_song_to_project()` and kept the existing `tracker_export` Tauri command on the same helper.
+  - Added `ide_export_song` to the embedded IDE MCP tool list and dispatcher. The tool reads a project `.song.json`, exports ca65 song data, copies `music/fc_player.s`, registers both assembly inputs in `project.toml`, and emits `song-export`.
+  - Updated M1/M2 docs to steer programming agents toward `ide_export_song` after composing tracker JSON.
+  - Static verification passed: `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml`, `npm --prefix fc-tauri run build`, and `git diff --check`.
+  - Runtime verification used real `npm --prefix fc-tauri run tauri dev` plus `target/debug/fc ide-mcp` only. It created `/var/folders/.../SongExportGame`, created/patched `music/agent_theme.song.json`, exported `music/agent_theme.s` + `music/fc_player.s`, and confirmed manifest/tree/resource radar updated.
+  - Real Tauri store verification showed studio mode, `MCP 已更新：song-export`, the expected music file list, and tracker still focused on the semantic `.song.json`.
+  - Follow-up `ide_build` succeeded with `build/game.nes`, zero diagnostics, `output_status=current`, and the visible Build state on Health.
 
 ## Test Results
-| Test | Input | Expected | Actual | Status |
-|------|-------|----------|--------|--------|
-| Rust workspace tests | `cargo test` | Pass | 6 fc-core tests passed; other crates had 0 tests | PASS |
-| CLI build | `cargo build -p fc-cli` | Build succeeds | Build succeeded | PASS |
-| APU blargg singles | `target/debug/fc testsuite nes-test-roms/apu_test/rom_singles/*.nes --frames 3000` | Broad pass | 4/8 passed; failures in jitter, len_timing, irq_flag_timing, dmc_rates | FAIL |
-| Older APU suite | `target/debug/fc testsuite nes-test-roms/blargg_apu_2005.07.30/*.nes --frames 3000` | Useful signal | 0/11, all timeout | BLOCKED |
-| PPU VBL/NMI singles | `target/debug/fc testsuite nes-test-roms/ppu_vbl_nmi/rom_singles/*.nes --frames 3000` | Broad pass | 0/10 passed; failures indicate VBL/NMI timing issues | FAIL |
-| MMC3 IRQ tests | `target/debug/fc testsuite nes-test-roms/mmc3_irq_tests/*.nes --frames 3000` | Useful signal | 0/6, all timeout | BLOCKED |
-| CPU timing after BRK/RTS/RTI fix | `target/debug/fc testsuite nes-test-roms/instr_timing/rom_singles/1-instr_timing.nes --frames 30000` | Official timing improves | Official/NOP sections complete; remaining failures are unsupported unofficial opcodes | PARTIAL |
-| PPU spot checks after CPU fix | `target/debug/fc testsuite nes-test-roms/ppu_vbl_nmi/rom_singles/01-vbl_basics.nes nes-test-roms/ppu_vbl_nmi/rom_singles/09-even_odd_frames.nes --frames 3000` | Pass | 2/2 passed | PASS |
-| DMC rates after CPU fix | `target/debug/fc testsuite nes-test-roms/apu_test/rom_singles/8-dmc_rates.nes --frames 3000` | Pass | Passed | PASS |
-| APU frame timing after CPU fix | `target/debug/fc testsuite nes-test-roms/apu_test/rom_singles/4-jitter.nes ... 6-irq_flag_timing.nes --frames 3000` | Pass | Remaining failures now say frame IRQ/length clocks are too soon | FAIL |
-| APU after frame sequencer fix | `target/debug/fc testsuite nes-test-roms/apu_test/rom_singles/*.nes --frames 3000` | Pass | 8/8 passed | PASS |
-| PPU VBL/NMI after CPU/APU fixes | `target/debug/fc testsuite nes-test-roms/ppu_vbl_nmi/rom_singles/*.nes --frames 3000` | Improve or pass | 3/10 passed; remaining failures are fine NMI/VBL edge timing | PARTIAL |
-| MMC3 after fixes | `target/debug/fc testsuite nes-test-roms/mmc3_test/*.nes --frames 3000` | No regression | 3/6 passed, same failure areas as baseline | PARTIAL |
-| CPU misc/timing after fixes | `target/debug/fc testsuite nes-test-roms/instr_misc/rom_singles/*.nes nes-test-roms/instr_timing/rom_singles/*.nes --frames 12000` | Improve/no regression | 03-dummy_reads now passes; official instruction timing section completes; unsupported unofficial opcodes still fail; dummy_reads_apu still timeout | PARTIAL |
-| Full Rust tests final | `cargo test` | Pass | Workspace tests passed | PASS |
-| CLI build final | `cargo build -p fc-cli` | Build succeeds | Build succeeded | PASS |
-| Final APU ROM suite | `target/debug/fc testsuite nes-test-roms/apu_test/rom_singles/*.nes --frames 3000` | Pass | 8/8 passed | PASS |
-| Final PPU VBL/NMI suite | `target/debug/fc testsuite nes-test-roms/ppu_vbl_nmi/rom_singles/*.nes --frames 3000` | Improve | 4/10 passed; `01`, `03`, `04`, `09` pass | PARTIAL |
-| Final MMC3 suite | `target/debug/fc testsuite nes-test-roms/mmc3_test/*.nes --frames 3000` | No regression | 3/6 passed | PARTIAL |
-| Final CPU misc/timing suite | `target/debug/fc testsuite nes-test-roms/instr_misc/rom_singles/*.nes nes-test-roms/instr_timing/rom_singles/*.nes --frames 12000` | Improve/no regression | 4/6 passed; remaining failures noted above | PARTIAL |
-| Mapper first compatibility batch | `cargo test -p fc-core mapper::tests -- --nocapture` | Pass | 34/34 mapper tests passed after adding 72/79/80/82 | PASS |
+| Test | Result |
+|------|--------|
+| `cd fc-tauri && npx vue-tsc --noEmit` | PASS |
+| `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml` | PASS |
+| `npm --prefix fc-tauri run build` | PASS, with existing Vite large chunk warning |
+| `git diff --check` | PASS |
+| `npm --prefix fc-tauri run tauri dev` | PASS; Tauri app started and all three MCP sockets appeared |
+| `target/debug/fc emu-mcp` initialize/tools-list | PASS; server identified as `fc-tauri-emu-mcp` |
+| `target/debug/fc ide-mcp` `ide_patch_song_cell` runtime verification | PASS; patched song cell persisted and visible Tracker selected row 7/channel 2 |
+| `target/debug/fc ide-mcp` `ide_create_resource` runtime verification | PASS; created source/CHR/map/music skeletons, opened the visible Tracker editor, and build succeeded |
+| live `emu_load_rom` with `/Users/sunmeng/workspace/fc/roms/SuperMarioBro.nes` | PASS; visible Vue store switched to player/main with `SuperMarioBro.nes` |
+| live `emu_set_speed`, `emu_control`, `emu_step_frame`, `emu_get_state` | PASS; store and runtime state reflected MCP operations |
+| Tauri DOM/store inspection | PASS; `window.__emu.liveMcp.online=true`, toolbar MCP pill class `mcpstat on` |
+| `tauri_screenshot` | FAILED in environment: window detection reported no visible window; direct store/DOM and MCP screenshot paths worked |
+| Tauri IDE MCP `ide_new_project` for `/tmp/fc-chr-verify` | PASS |
+| Tauri DOM/store CHR geometry inspection | PASS; CHR panel about 780x607, zoom stage about 752x421, sheet drawer overlay about 260x489 |
+| CHR sheet drawer toggle DOM inspection | PASS; drawer removed and zoom stage remained full-width |
+| Tauri IDE MCP `ide_new_project` for `/tmp/fc-tracker-verify` | PASS |
+| Tauri DOM/store tracker Pattern geometry inspection | PASS; Pattern grid about 756x467, inspector overlay about 236x455 |
+| Tauri DOM/store tracker roll geometry inspection | PASS; roll wrapper about 756x467, roll area about 754x433 with inspector hidden |
+| `target/debug/fc emu-mcp` initialize/tools-list | PASS; server identified as `fc-tauri-emu-mcp` and tool descriptions target the visible Tauri emulator |
+| `target/debug/fc emu-mcp` `emu_load_rom` `/Users/sunmeng/workspace/fc/roms/SuperMarioBro.nes` | PASS; Tauri store switched to player/main with `SuperMarioBro.nes` and `liveMcp.lastReason=emu_load_rom` |
+| Tauri IDE MCP `ide_new_project` for `/tmp/fc-resource-flow-verify` | PASS |
+| File tree resource chips and binding DOM inspection | PASS; demo initially showed `全部3|源码1|CHR1|地图1|音乐0`, `sprites.chr1 地图`, and `room.bin→ chr/sprites.chr` |
+| File tree map filter DOM inspection | PASS; map filter reduced rows to `map` and `room.bin→ chr/sprites.chr` |
+| File tree CHR rebinding verification | PASS; new `chr/alt.chr` binding updated Pinia state, row metadata, and `/tmp/fc-resource-flow-verify/project.toml` |
+| Tauri MCP loop indicator initial state | PASS; top bar showed `保存 已`, `构建 未`, `预览 待` with full title/aria metadata |
+| Tauri MCP loop indicator after build | PASS; `构建 成` and `预览 待` after `window.__project.build_()` succeeded |
+| Tauri MCP loop indicator after run | PASS; `预览 跑` while staying in studio mode and with Build/Preview panels closed |
+| Tauri MCP map comfort project/open | PASS; demo project opened `map/room.bin` with `chr/sprites.chr` binding in the visible studio shell |
+| Tauri DOM/store map Fit geometry | PASS; map panel about 780x607, body about 780x492, wrap about 756x468, 32x30 map canvas about 480x450 and centered |
+| Tauri DOM/store map Fill geometry | PASS; Fill mode expanded canvas to 768x720 with wrap scrolling and no resource drawer occupying layout when hidden |
+| Tauri DOM/store map layer feedback | PASS; switching to attr layer updated wrap class, layer chip, attr selector, and hover readout |
+| Tauri MCP map edit/save | PASS; collision paint set 1 blocked cell, save cleared dirty state, context read `碰撞 1/960` |
+| map `.bin` format check | PASS; saved demo map was 2164 bytes with header `32 0 30 0`, matching 4 + 960 tiles + 240 attrs + 960 collision |
+| `cargo test --manifest-path fc-tauri/src-tauri/Cargo.toml map_roundtrip` | PASS |
+| `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml` | PASS |
+| live `fc-ide` tools/list for song tools | PASS; `ide_read_song` and `ide_write_song` appeared in the embedded IDE MCP tool list |
+| live `fc-ide` `ide_write_song` / `ide_read_song` | PASS; wrote `music/mcp_theme.song.json`, read it back as `MCP Theme`, 4 rows |
+| live `fc-ide` `ide_build` after song write | PASS; build succeeded with output `build/game.nes`, proving `.song.json` registration does not break ca65 |
+| Tauri DOM/store MCP song sync | PASS; manifest.music contained `music/mcp_theme.song.json`, file tree contained the song, and build state was success |
+| Tauri DOM/store open tracker reload after MCP song write | PASS; already-open tracker updated to `MCP Theme Updated`, frames_per_row 5, and `songSaved` matched data |
+| Tauri DOM/store UI create/save song manifest registration | PASS; `music/ui_saved.song.json` appeared in manifest.music and file tree after `createSong()` |
+| live `fc-ide` `ide_write_file` auto-register source | PASS; `src/agent_extra.s` returned `registered: true`, appeared in manifest.sources, and built to `build/src__agent_extra.o` |
+| live `fc-ide` `ide_write_file` auto-register music asm | PASS; `music/agent_song.s` returned `registered: true`, appeared in manifest.music, and built to `build/music__agent_song.o` |
+| Tauri DOM/store source registration sync | PASS; visible Pinia manifest and file tree contained both MCP-written files after `ide-mcp-updated` |
+| live `fc-ide` `ide_run` after registered source/music writes | PASS; loaded `/private/tmp/fc-source-reg-verify-*/build/game.nes` into the live emulator preview |
+| Phase 9 IDE MCP simple-game authoring | PASS; MCP created `AgentSimpleGame`, wrote source/CHR/map/song/music asm, built a 40976-byte `build/game.nes`, and ran it in Tauri |
+| Phase 9 resource evidence | PASS; `chr/sprites.chr` stayed 8192 bytes, `map/room.bin` stayed 2164 bytes, CHR star pixels matched, and map collision had 29 blocked cells |
+| Phase 9 live preview input/memory | PASS; `ide_read_memory` changed after `ide_press_buttons Right frames=10`, proving the generated ROM was running and accepting input |
+| Tauri Preview auto-focus after MCP run | PASS; `window.__ideDockApi.getPanel("preview")` existed, active panel was `preview`, and the visible canvas measured 1024x960 backing pixels / about 524x393 CSS pixels |
+| live `fc emu-mcp` state after IDE MCP run | PASS; reported mapper 0 ROM, running worker/audio state, active CPU/PPU counters, and matching live memory |
+| live `fc emu-mcp` `emu_capture_screen` after IDE MCP run | PASS; captured a 256x240 PNG with 3376 bytes, 6 unique colors, and 6968 nonblack pixels |
+| active resource store/UI source-map-CHR-song sequence | PASS; real Tauri file tree summary and active row followed `src/main.s` → `map/room.bin` → `chr/sprites.chr` → `music/active_check.song.json` → `src/main.s` |
+| active resource rename/delete behavior | PASS; renaming active song updated summary/highlight and manifest.music; deleting it cleared summary to `未选中资源` and removed active row |
+| build autosaves dirty creative resources | PASS; direct `build_()` with dirty CHR/map/song cleared all dirty flags and produced `build/game.nes` successfully |
+| build autosave IDE MCP readback | PASS; saved CHR pixels `[1,2,0,0]`, map tile 0 `7`, collision 0 `1`, song `Autosave Theme Built`, first note `33` |
+| BuildPanel health run opens Preview | PASS; with Preview closed, health `运行` opened Preview as active panel, showed one visible canvas, loaded `game.nes`, and loop chips read `已/成/跑` |
+| live emulator state after BuildPanel health run | PASS; `fc emu-mcp` reported mapper 0, running worker, advancing PPU frame, and live memory bytes |
+| FileTreePanel collision-free resource defaults | PASS; real Tauri component suggested `src/new_module2.s`, `chr/sprites3.chr`, `map/level2.bin`, and `music/theme2.song.json` after IDE MCP-created collisions |
+| `npm --prefix fc-tauri run build` after resource-default change | PASS, with existing Vite large chunk warning |
+| `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml` after resource-default change | PASS |
+| `git diff --check` after resource-default change | PASS |
+| Primary source opens after IDE MCP project-new | PASS; real Tauri store showed tab/active path `src/main.s`, active resource `源码 src/main.s`, and CodeMirror content mounted |
+| Primary source opens after IDE MCP project-open | PASS; after closing tabs, reopening the project restored `src/main.s` as the active editor |
+| `npm --prefix fc-tauri run build` after primary-source change | PASS, with existing Vite large chunk warning |
+| `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml` after primary-source change | PASS |
+| `git diff --check` after primary-source change | PASS |
+| Build failure focuses first diagnostic | PASS; real Tauri build failure set `goto` to `src/main.s:2` and CodeMirror active line was `BROKEN_OPCODE_FOR_DIAG` |
+| BuildPanel failed build stays on Problems tab | PASS; BuildPanel action from Health switched to `diagnostics` and displayed the `src/main.s:2` error row |
+| EditorPanel reflects externally replaced active source content | PASS; after store content replacement, CodeMirror text contained `BROKEN_OPCODE_FOR_DIAG` before building |
+| `npm --prefix fc-tauri run build` after diagnostic-focus change | PASS, with existing Vite large chunk warning |
+| `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml` after diagnostic-focus change | PASS |
+| `git diff --check` after diagnostic-focus change | PASS |
+| Top-level IDE Run focuses Preview stage | PASS; real Tauri run left Preview active with `.stage.focused`, hint `试玩中`, and visible 438 x 328.5 canvas |
+| Preview stage receives keyboard controller input immediately | PASS; focused stage handled `ArrowRight`, setting `lastSentInput=128`, then keyup returned it to `0` |
+| `npm --prefix fc-tauri run build` after preview-focus change | PASS, with existing Vite large chunk warning |
+| `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml` after preview-focus change | PASS |
+| `git diff --check` after preview-focus change | PASS |
+| `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml` after IDE MCP open-resource change | PASS |
+| `npm --prefix fc-tauri run build` after IDE MCP open-resource change | PASS, with existing Vite large chunk warning |
+| `git diff --check` after IDE MCP open-resource change | PASS |
+| live `fc-ide` `tools/list` includes `ide_open_resource` | PASS |
+| live `fc-ide` `ide_open_resource` source/CHR/map/music from launcher | PASS; real Tauri switched to studio, mounted editor/tree/CHR/map/tracker, and ended active on tracker/music |
+| rapid `ide_open_resource` ordering | PASS after queue fix; final music request won instead of a slower map open stealing focus |
+| live `fc-ide` build/run after resource-open | PASS; built `build/game.nes`, loaded it into visible Preview, and focused the preview stage |
+| live `fc emu-mcp` state after resource-open build/run | PASS; reported mapper 0 `game.nes`, running worker/audio runtime, and advancing CPU/PPU counters |
+| MCP failed build surfaces visible diagnostics | PASS; real Tauri Build panel displayed `src/main.s:2` and editor active line was `BROKEN_OPCODE_FOR_MCP_BUILD` |
+| MCP successful build switches Build panel to Health | PASS; real Tauri Build panel showed Health, status `MCP 构建成功 → build/game.nes`, and source map count 5 |
+| Map editor opens bound CHR | PASS; real Tauri context bar showed enabled `打开 CHR`, and the action focused `chr/sprites.chr` in the CHR panel |
+| CHR editor opens dependent map | PASS; real Tauri CHR context bar showed `地图 map/room.bin`, and the action focused `map/room.bin` in the Map panel |
+| `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml` after IDE MCP state radar | PASS |
+| `npm --prefix fc-tauri run build` after IDE MCP state radar | PASS, with existing Vite large chunk warning |
+| `git diff --check` after IDE MCP state radar | PASS |
+| IDE MCP `ide_get_state` before build | PASS; real Tauri MCP-created demo returned resource counts, all resources existing, `map/room.bin -> chr/sprites.chr`, and `output_exists=false` |
+| IDE MCP `ide_get_state` after successful build | PASS; returned `output_status=current`, `output_current=true`, 40976 output bytes, and 444 source-map entries |
+| IDE MCP `ide_get_state` after failed build with old ROM on disk | PASS; returned `last.success=false`, one `src/main.s:1` diagnostic, `output_exists=true`, and `output_status=stale_after_failed_build` |
+| Tauri store sync after failed IDE MCP build | PASS; real store showed studio mode, active `src/main.s`, Build diagnostics tab requested, and status `MCP 构建失败（1 错误）` |
+| `npm --prefix fc-tauri run build` after Map→CHR tile focus | PASS, with existing Vite large chunk warning |
+| `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml` after Map→CHR tile focus | PASS |
+| `git diff --check` after Map→CHR tile focus | PASS |
+| Real Tauri Map selected tile opens CHR tile | PASS; Map `selTile=11` opened `chr/sprites.chr` and CHR editor showed `图块 11 / 511` |
+| Real Tauri Map selected tile clamp | PASS; requesting tile 9999 clamped CHR editor to `图块 511 / 511` |
+| `npm --prefix fc-tauri run build` after `ide_focus_resource` | PASS, with existing Vite large chunk warning |
+| `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml` after `ide_focus_resource` | PASS |
+| `git diff --check` after `ide_focus_resource` | PASS |
+| Real Tauri `ide_focus_resource` source line | PASS; visible editor focused `src/main.s`, CodeMirror content focused, DOM selection on line 12 |
+| Real Tauri `ide_focus_resource` CHR tile | PASS; visible CHR editor selected `图块 13 / 511` |
+| Real Tauri `ide_focus_resource` map cell | PASS; visible Map editor focused `map/room.bin`, layer `collision`, hover/selection at `9,6` |
+| `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml` after granular patch tools | PASS |
+| `npm --prefix fc-tauri run build` after granular patch tools | PASS, with existing Vite large chunk warning |
+| `git diff --check` after granular patch tools | PASS |
+| Real Tauri `ide_patch_chr_tile` | PASS; visible CHR editor selected `图块 22 / 511`, Pinia pixels and disk planar decode matched the requested tile |
+| Real Tauri `ide_patch_chr_pixels` and CHR active-context pixel patch | PASS; direct pixel patch and `ide_patch_active_context` updated tile 12 pixels, kept the visible CHR editor focused, and disk/Pinia readback matched |
+| Real Tauri `ide_patch_map_cells` tile layer | PASS; map tile at `4,5` became `21` in visible Pinia state and disk `map/room.bin` |
+| Real Tauri `ide_patch_map_cells` collision layer | PASS; map collision at `5,5` became `1` in visible Pinia state and disk `map/room.bin` |
+| Real Tauri `ide_patch_map_cells` attr layer | PASS; map attr for `6,5` became `3`, and visible Map editor focused `6,5` on `attr` layer |
+| Real Tauri map batch patch preserves region selection | PASS; direct `ide_patch_map_cells` returned/waited for selection `(3,4)..(5,5)`, active-context `scope=selection` reused it, and the visible context bar showed `选区 3×2` |
+| `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml` after `ide_wire_song_player` | PASS |
+| `npm --prefix fc-tauri run build` after `ide_wire_song_player` | PASS, with existing Vite large chunk warning |
+| `git diff --check` after `ide_wire_song_player` | PASS |
+| Real Tauri `fc ide-mcp` `tools/list` for `ide_wire_song_player` | PASS; the embedded live IDE MCP listed the new semantic wiring tool |
+| Real Tauri export → wire → build → run | PASS; MCP exported `music/wire_theme.s` + `music/fc_player.s`, wired `src/main.s`, built `build/game.nes`, and loaded it in visible Preview |
+| Real Tauri `ide_wire_song_player` idempotency | PASS; first call inserted import/init/tick, second call reported no source changes and returned the existing tick line |
+| Real Tauri `song-player-wire` source focus | PASS; visible Pinia state reported active source `src/main.s` and `goto.line=521` after the wiring event |
+| `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml` after workspace focus mode | PASS |
+| `npm --prefix fc-tauri run build` after workspace focus mode | PASS, with existing Vite large chunk warning |
+| `git diff --check` after workspace focus mode | PASS |
+| Real Tauri `fc ide-mcp` workspace-focus project setup | PASS; created `/tmp/fc-workspace-focus3-*`, opened `map/room.bin`, built `build/game.nes`, and ran it in visible Preview |
+| Real Tauri crowded→focused map geometry | PASS; crowded map work wrap `576x258` grew to `1016x468` after pressing `聚焦` |
+| Real Tauri focus restore and toolbar state | PASS; maximized mode showed only `聚焦` active, restore returned File/Output/Preview visibility and buttons |
+| `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml` after workspace focus follow | PASS |
+| `npm --prefix fc-tauri run build` after workspace focus follow | PASS, with existing Vite large chunk warning |
+| `git diff --check` after workspace focus follow | PASS |
+| Real Tauri focused Map→CHR→Map→Tracker follow | PASS; each switched panel became active, remained visible, and measured `1040x642` while Dockview stayed maximized |
+| `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml` after CHR tile usage navigation | PASS |
+| `npm --prefix fc-tauri run build` after CHR tile usage navigation | PASS, with existing Vite large chunk warning |
+| `git diff --check` after CHR tile usage navigation | PASS |
+| Real Tauri CHR selected tile usage chip | PASS; tile 7 showed `3 次` and first usage `map/room.bin 5,4` after MCP map patching |
+| Real Tauri CHR tile usage navigation | PASS; "打开位置" opened `map/room.bin`, selected tiles layer cell `5,4`, and showed `坐标 5,4 · 图块 7` |
+| `npm --prefix fc-tauri run build` after Tracker auto-scroll | PASS, with existing Vite large chunk warning |
+| `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml` after Tracker auto-scroll | PASS |
+| `git diff --check` after Tracker auto-scroll | PASS |
+| Real Tauri Tracker long Pattern arrow navigation | PASS; row `0x27` selected, `.grid.scrollTop=787`, selected cell visible |
+| Real Tauri Tracker note-entry auto-advance | PASS; `KeyZ` input advanced selection from row `0x30` to `0x3C`, kept `.tracker` focused, selected cell visible |
+| `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml` after `ide_patch_source` | PASS |
+| `npm --prefix fc-tauri run build` after `ide_patch_source` | PASS, with existing Vite large chunk warning |
+| `git diff --check` after `ide_patch_source` | PASS |
+| Real Tauri `ide_patch_source` existing source | PASS; inserted comments into `src/main.s`, emitted `source-patch`, and visible editor focused the patched source line after sync-order fix |
+| Real Tauri `ide_patch_source` new registered source | PASS; `src/agent_patch.s` stayed in `manifest.sources`, opened visibly, and had patched label `agent_patch_marker_updated:` |
+| Real Tauri build after source patches | PASS; follow-up `ide_build` succeeded with zero diagnostics |
+| `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml` after CHR brush handoff | PASS |
+| `npm --prefix fc-tauri run build` after CHR brush handoff | PASS, with existing Vite large chunk warning |
+| `git diff --check` after CHR brush handoff | PASS |
+| Real Tauri CHR unused tile handoff | PASS; tile 13 showed `未使用`, button `用于地图` opened Map with tile 13 selected as brush |
+| Real Tauri map paint after CHR brush handoff | PASS; painting `(6,4)` wrote tile 13, save cleared dirty state, disk readback matched |
+| map `.bin` format after CHR brush handoff | PASS; saved map remained 2164 bytes with header `[32,0,30,0]` |
+| `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml` after tile palette focus visibility | PASS |
+| `npm --prefix fc-tauri run build` after tile palette focus visibility | PASS, with existing Vite large chunk warning |
+| `git diff --check` after tile palette focus visibility | PASS |
+| Real Tauri CHR high-index tile focus visibility | PASS; `ide_focus_resource` selected tile 500, real CHR sheet drawer scrolled to `scrollTop=336`, and tile 500 was visible in the 12-column sheet |
+| Real Tauri CHR→Map brush palette visibility | PASS; tile 220 handoff selected Map brush tile 220 and palette drawer scrolled so row 18 was visible |
+| Real Tauri MCP map-cell focus palette visibility | PASS; `ide_patch_map_cells`/`ide_focus_resource` focused `(10,8)` tile 230 and Map palette drawer kept tile 230 visible |
+| Tauri dev shutdown after tile palette focus visibility | PASS; residual process check matched only the `pgrep` command itself |
+| `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml` after keyboard focus ownership | PASS |
+| `npm --prefix fc-tauri run build` after keyboard focus ownership | PASS, with existing Vite large chunk warning |
+| `git diff --check` after keyboard focus ownership | PASS |
+| Real Tauri CHR semantic focus owns keyboard | PASS; `ide_focus_resource` selected CHR tile 10, `.chr` became active, and `ArrowRight` advanced to tile 11 |
+| Real Tauri Map semantic focus owns keyboard | PASS; `ide_focus_resource` selected map cell `(6,1)`, `.maped` became active, and `f` switched the Map tool to fill |
+| Real Tauri inactive Map does not consume shortcuts | PASS; after focusing CHR tile 20, pressing `g` left CHR active and did not trigger Map's former global shortcut path |
+| Tauri dev shutdown after keyboard focus ownership | PASS; residual process check matched only the `pgrep` command itself |
+| `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml` after music cell focus | PASS |
+| `npm --prefix fc-tauri run build` after music cell focus | PASS, with existing Vite large chunk warning |
+| `git diff --check` after music cell focus | PASS |
+| Real Tauri IDE MCP music Pattern-cell focus | PASS; `ide_focus_resource` landed on `music/focus.song.json` pattern 0 row 37 channel 3, visible Tracker showed `行 25 · 噪声`, selected cell visible |
+| Real Tauri music focus clamp | PASS; out-of-range pattern/row/channel focus clamped to row `3F`, DPCM channel, selected cell visible |
+| Tauri dev shutdown after music cell focus | PASS; residual process check matched only the `pgrep` command itself |
+| `cargo check --manifest-path fc-tauri/src-tauri/Cargo.toml` after tracker batch phrase patch | PASS |
+| `cd fc-tauri && npx vue-tsc --noEmit` after tracker batch phrase patch | PASS |
+| `npm --prefix fc-tauri run build` after tracker batch phrase patch | PASS, with existing Vite large chunk warning |
+| `git diff --check` after tracker batch phrase patch | PASS |
+| Real Tauri `ide_patch_song_cells` phrase write | PASS; wrote `C4 D4 E4 === G4` into `music/theme.song.json`, returned `cell_count=5`, and disk readback matched |
+| Real Tauri `ide_patch_song_cells` exact cells write | PASS; wrote channel-specific note/effect cells, returned `cell_count=3`, and `ide_wait_ui_context` matched the visible Tracker focus |
+| Real Tauri music active-context phrase patch | PASS; after `ide_wait_ui_context`, `ide_patch_active_context scope=phrase` wrote `A4 B4 C5` from row 20/channel 0 and the visible Tracker selected `A4` |
+| Tauri dev shutdown after tracker batch phrase patch | PASS; residual process check matched only the `pgrep` command itself |
+| `fc-tauri/node_modules/.bin/vue-tsc --noEmit` | NOT RUN; local project has no `vue-tsc` binary |
+| `cd fc-tauri && npx vue-tsc --noEmit` | BLOCKED by restricted network; `npx` attempted `registry.npmmirror.com/vue-tsc` and failed DNS |
 
 ## Error Log
 | Timestamp | Error | Attempt | Resolution |
 |-----------|-------|---------|------------|
-| 2026-06-19 | `blargg_apu_2005.07.30` all timed out | 1 | Treat as lower-priority until confirming protocol/region expectations; `apu_test/rom_singles` gives actionable APU failures |
-| 2026-06-19 | `mmc3_irq_tests` all timed out | 1 | Treat as possible protocol/runtime mismatch or mapper issue; use README-mentioned `mmc3_test` suite as alternate baseline next |
-| 2026-06-22 | `cargo test -p fc-core` failed because `[u8; 256]` does not derive serde traits with this dependency set | 1 | Changed mapper 80 WRAM storage to `Vec<u8>` |
-
-### Phase 3: Failure Analysis
-- **Status:** complete
-- **Started:** 2026-06-19
-- Actions taken:
-  - Identified and fixed CPU cycle issues in BRK/RTS/RTI that affected hardware timing ROMs.
-  - Increased CLI `$6000` message capture from 64 to 512 bytes for actionable diagnostics.
-  - Determined remaining APU failures are likely `$4017` frame sequencer write-delay/phase issues.
-- Files created/modified:
-  - `/Users/sunmeng/workspace/fc/fc-core/src/cpu.rs`
-  - `/Users/sunmeng/workspace/fc/fc-cli/src/main.rs`
-
-### Phase 4: Implementation
-- **Status:** complete
-- Actions taken:
-  - Fixed CPU BRK/RTS/RTI cycle accounting.
-  - Modeled APU `$4017` delayed frame-counter reset, IRQ timing window, jitter, and 5-step tail timing.
-  - Delayed immediate NMI generated by PPU register writes until after the next CPU instruction poll.
-  - Removed leftover PPU `FC_TRACE` debug prints.
-- Files created/modified:
-  - `/Users/sunmeng/workspace/fc/fc-core/src/cpu.rs`
-  - `/Users/sunmeng/workspace/fc/fc-core/src/apu.rs`
-  - `/Users/sunmeng/workspace/fc/fc-core/src/bus.rs`
-  - `/Users/sunmeng/workspace/fc/fc-core/src/ppu.rs`
-  - `/Users/sunmeng/workspace/fc/fc-cli/src/main.rs`
-
-### Phase 5: Verification & Handoff
-- **Status:** complete
-- Actions taken:
-  - Ran final Rust and ROM regression tests; results recorded in the table above.
-- Files created/modified:
-  - `/Users/sunmeng/workspace/fc/task_plan.md`
-  - `/Users/sunmeng/workspace/fc/findings.md`
-  - `/Users/sunmeng/workspace/fc/progress.md`
-
-## 5-Question Reboot Check
-| Question | Answer |
-|----------|--------|
-| Where am I? | Phase 5: final handoff |
-| Where am I going? | Summarize changes, tests, and remaining hardware precision gaps |
-| What's the goal? | Improve emulator precision using repository test ROMs and safe core fixes |
-| What have I learned? | See findings.md |
-| What have I done? | Implemented CPU/APU/NMI timing fixes and verified with Rust tests plus ROM suites |
-
-## Continued Session: 2026-06-19
-- User requested commit then continue hardware accuracy work. Latest committed fixes are `6137adf`, `c1fac0c`, `b0df119`; only planning files are untracked.
-- Current focus: remaining `ppu_vbl_nmi` failures (`05`, `07`, `08`, `10`). Baseline output: `05` = `00 401 302 303 304 305 306 307 208 209`, `07` = `00 N01 N02 N03 N04 N05 N06 -07 -08 -`, `08` = `03 -04 -05 N06 N07 N...`, `10` fails subtest #3 with `08 07` (skip too late relative to enabling BG).
-
-### Continued Phase: PPU VBL/NMI edge timing
-- Implemented PPU-side NMI output delay and cancellation. Targeted run passed `02`, `04`, `05`, `06`, `07`, `08`; `05/07/08` moved from fail to pass.
-- Implemented pre-render dot 338 rendering-enable sample for odd-frame skipped-dot decision. `09-even_odd_frames` and `10-even_odd_timing` both pass.
-- Full `ppu_vbl_nmi/rom_singles/*.nes --frames 3000`: 10/10 passed.
-
-## Regression Results After PPU Edge Fix
-| Test | Result |
-|------|--------|
-| `cargo test -p fc-core` | PASS, 6 tests |
-| `apu_test/rom_singles/*.nes --frames 3000` | PASS, 8/8 |
-| `ppu_vbl_nmi/rom_singles/*.nes --frames 3000` | PASS, 10/10 |
-| `mmc3_test/*.nes --frames 3000` | PARTIAL, 4/6; existing failures remain `4-scanline_timing` and `6-MMC6` |
-
-### Continued Phase: MMC6 zero-reload edge
-- Implemented and committed `3152f58 fix(fc-core): model MMC6 zero-reload IRQ edge`.
-- Verification before commit: `cargo test -p fc-core` PASS; `mmc3_test/*.nes` now 5/6, only `4-scanline_timing` fails.
-
-### Final Status This Pass
-- New commits this continuation:
-  - `8f4ab47 fix(fc-core): refine PPU NMI edge timing`
-  - `3152f58 fix(fc-core): model MMC6 zero-reload IRQ edge`
-- Current suites:
-  - `apu_test/rom_singles/*.nes`: 8/8 PASS
-  - `ppu_vbl_nmi/rom_singles/*.nes`: 10/10 PASS
-  - `mmc3_test/*.nes`: 5/6 PASS, only `4-scanline_timing` remains
-  - `cargo test -p fc-core`: PASS, 6 tests
-- Temporary MMC3 scanline timing experiments and trace logging were reverted; no uncommitted code changes remain.
-
-### Continued Phase: unofficial opcode and dummy-read coverage
-- Added missing unofficial opcode implementations in `fc-core/src/cpu.rs`.
-- Verification:
-  - `instr_misc/rom_singles/*.nes` + `instr_timing/rom_singles/*.nes --frames 30000`: 6/6 PASS
-  - `apu_test/rom_singles/*.nes`: 8/8 PASS
-  - `ppu_vbl_nmi/rom_singles/*.nes`: 10/10 PASS
-  - `mmc3_test/*.nes`: 5/6, unchanged (`4-scanline_timing` remains)
-  - `cpu_interrupts_v2/rom_singles/*.nes`: 1/5, unchanged high-precision interrupt edge failures remain
-  - `cargo test -p fc-core`: PASS, 6 tests
-
-### Final Status After Continuing Precision Pass
-- Committed `4a05316 fix(fc-core): complete unofficial opcode dummy reads`.
-- Final verification repeated after commit:
-  - `instr_misc + instr_timing`: 6/6 PASS
-  - `apu_test`: 8/8 PASS
-  - `ppu_vbl_nmi`: 10/10 PASS
-  - `mmc3_test`: 5/6 PASS (`4-scanline_timing` remains)
-  - `cargo test -p fc-core`: PASS, 6 tests
-- No uncommitted code changes remain; only planning notes are untracked.
-
-## Continued Session: 2026-06-22 Mapper Compatibility
-- User asked to first count mapper gaps against FCEUX, FCEUmm, Mesen2, and Nestopia, then start implementing from the checklist.
-- Added `/Users/sunmeng/workspace/fc/docs/Mapper-适配差距清单.md`.
-- Updated `/Users/sunmeng/workspace/fc/docs/Mapper-适配引用记录.md` with references for mapper 72/79/80/82.
-- Implemented mapper 72 and 79 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/latch/discrete.rs`.
-- Implemented mapper 80 and 82 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/taito.rs`.
-- Wired the new mappers through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs` and added mapper behavior tests.
-- Narrow verification: `cargo test -p fc-core mapper::tests -- --nocapture` passed, 34/34.
-
-### Team-mode Mapper Pass
-- PM/integration role coordinated three parallel mapper slices:
-  - Noether: VRC/Konami mapper 21/22/23 plus refactor of mapper 25 into the same VRC2/VRC4 configuration table.
-  - Ohm: MMC3-derived mapper 37/44/47/52 via a shared `Mmc3OuterBank` mechanism.
-  - Hooke: Waixing mapper 253 with PRG/CHR/mirroring/IRQ and mapper-owned 2KB CHR-RAM window.
-- Integrated the worker WIP directly in the main worktree, then updated mapper gap and reference documents.
-- Verification:
-  - `cargo fmt --check`: PASS
-  - `git diff --check`: PASS
-  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 64/64 mapper tests.
-  - `cargo test -p fc-core`: PASS, 104/104 fc-core tests.
-  - `cargo test`: PASS, workspace tests.
-- New support count in `/Users/sunmeng/workspace/fc/docs/Mapper-适配差距清单.md`: 113 mapper numbers, with 380 remaining against the four-reference union.
-
-### Mapper 116 SL12 Pass
-- Implemented mapper 116 / Someri Team SL12 as an independent composite mapper in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/sl12.rs`.
-- Covered three ASIC modes from FCEUX/Mesen2/Nestopia baseline references:
-  - mode 0: VRC2-style PRG/CHR/mirroring.
-  - mode 1: MMC3-style PRG/CHR/mirroring and A12 IRQ.
-  - mode 2/3: MMC1-style serial register PRG/CHR/mirroring.
-- Wired mapper 116 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs` and updated capability guard tests. `watches_ppu_bus` is always true because the mapper can switch into MMC3 A12 mode at runtime.
-- Verification:
-  - `cargo test -p fc-core mapper::basic::sl12::tests -- --nocapture`: PASS, 3/3.
-  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 67/67 mapper tests.
-  - `cargo test -p fc-core`: PASS, 107/107 fc-core tests.
-- Updated mapper gap checklist and reference record. Supported mapper count is now 114; remaining union gap is 379.
-
-### Mapper 45 BMC-Hero Pass
-- Implemented mapper 45 / BMC-Hero as an MMC3-derived outer-bank variant in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs`.
-- Added four serial low-register slots with reset defaults `[0, 0, 0x0F, 0]`, lock-bit fall-through to WRAM, PRG AND/OR wrapping, CHR AND/OR wrapping, and normal MMC3 A12 IRQ behavior through the existing core.
-- Wired mapper 45 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs` and updated capability guard tables.
-- Updated mapper gap checklist and reference records with FCEUX, FCEUmm, Mesen2, and Nestopia source locations. Supported mapper count is now 115; remaining union gap is 378.
-- Verification so far:
-  - `cargo fmt --check`: PASS.
-  - `cargo test -p fc-core mapper::mmc3::tests::mapper45 -- --nocapture`: PASS, 2/2.
-  - `git diff --check`: PASS.
-  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 69/69 mapper tests.
-  - `cargo test -p fc-core`: PASS, 109/109 fc-core tests.
-  - `cargo test`: PASS, workspace tests.
-
-### Mapper 64 RAMBO-1 Pass
-- Implemented mapper 64 / Tengen RAMBO-1 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/rambo1.rs`.
-- Covered PRG bit-6 swap mode, CHR 2KB/1KB mode with extra regs 8/9, CHR A12 inversion, `$A000` mirroring, CPU-cycle IRQ mode, PPU A12 IRQ mode, IRQ assertion delay, and the CPU-mode force-clock quirk when switching IRQ source.
-- Wired mapper 64 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs` and updated capability guard tables. The mapper advertises both `watches_ppu_bus` and `clocks_cpu` because `$C001.0` can switch source at runtime.
-- Updated mapper gap checklist and reference records with FCEUX, FCEUmm, Mesen2, and Nestopia source locations. Supported mapper count is now 116; remaining union gap is 377.
-- Research notes from parallel agents:
-  - Mapper 68 / Sunsoft-4 needs nametable-to-CHR backing access in `Cartridge` before implementation.
-  - Next mechanical candidates are mapper 119, then 95/118; 114/115/121 need stronger MMC3 variant internals.
-- Verification so far:
-  - `cargo fmt --check`: PASS.
-  - `cargo test -p fc-core mapper::rambo1::tests -- --nocapture`: PASS, 4/4.
-  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 73/73 mapper tests.
-  - `git diff --check`: PASS.
-  - `cargo test -p fc-core`: PASS, 113/113 fc-core tests.
-  - `cargo test`: PASS, workspace tests.
-- Error note:
-  - Attempted to pass multiple test filters to one `cargo test` command; cargo accepts one filter, so reran mapper-wide tests instead.
-
-### Mapper 301/340/341/343 Long-tail Batch
-- Started from FCEUmm `asic_latch` references:
-  - `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/301.c:24-58`
-  - `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/340.c:24-50`
-  - `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/341.c:24-39`
-  - `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/343.c:24-52`
-- Planned implementation location: `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/multicart.rs`, with enum/factory/capability/behavior-test wiring.
-- Implemented mapper 301, 340, 341, and 343 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/multicart.rs`.
-- Wired the batch through `basic.rs`, `mapper.rs`, `dispatch.rs`, and `factory.rs`.
-- Added mapper-local tests and facade behavior/capability tests.
-- Updated `/Users/sunmeng/workspace/fc/docs/Mapper-适配差距清单.md` and `/Users/sunmeng/workspace/fc/docs/Mapper-适配引用记录.md`.
-- Verification so far:
-  - `cargo test -p fc-core mapper::basic::multicart::tests -- --nocapture`: PASS, 7/7.
-  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 66/66.
-  - `cargo fmt --check && git diff --check`: PASS.
-
-### Mapper 119 TQROM Pass
-- Implemented mapper 119 / TQROM by generalizing MMC3 mapper-owned CHR-RAM routing in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs`.
-- Replaced the single `chr_ram_bank_base` active path with `Mmc3ChrRamWindow { first, last }`, keeping the old field as a serde fallback for mapper 74/194 save-state compatibility.
-- Added `Mmc3::new_119()` with CHR bank range `$40..=$7F` mapped to 8KB CHR-RAM, matching FCEUX `TQWRAP` and Mesen2 `MMC3_ChrRam(0x40, 0x7F, 8)`.
-- Wired mapper 119 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs` and updated capability guard tables.
-- Updated mapper gap checklist and reference records. Supported mapper count is now 117; remaining union gap is 376.
-- Verification so far:
-  - `cargo fmt --check`: PASS.
-  - `cargo test -p fc-core mapper::mmc3::tests::mapper119 -- --nocapture`: PASS, 1/1.
-  - `cargo test -p fc-core mapper::tests::watches_ppu_bus_matches_notify_a12_overrides -- --nocapture`: PASS.
-  - `cargo test -p fc-core mapper::tests::clocks_cpu_matches_cpu_clock_overrides -- --nocapture`: PASS.
-  - `cargo test -p fc-core mapper::tests::clocks_hblank_matches_hblank_clock_overrides -- --nocapture`: PASS.
-  - `cargo fmt --check`: PASS.
-  - `git diff --check`: PASS.
-  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 124/124 mapper tests.
-  - `cargo test -p fc-core`: PASS, 165/165 fc-core tests.
-  - `cargo test`: PASS, workspace tests.
-  - `git diff --check`: PASS.
-  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 74/74 mapper tests.
-  - `cargo test -p fc-core`: PASS, 114/114 fc-core tests.
-  - `cargo test`: PASS, workspace tests.
-
-### Mapper 95/118 Nametable Banking Pass
-- Implemented mapper 95 / Namco 108 Rev. B in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/namco.rs`.
-  - Uses Namco108-style fixed PRG/CHR mode.
-  - Masks CHR register writes to 5 bits and routes bit5 to per-nametable CIRAM pages.
-- Implemented mapper 118 / TxSROM in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs`.
-  - Reuses MMC3 PRG/CHR/A12 IRQ core.
-  - Adds a serializable `Mmc3NametableLayout::TxSrom` that maps CHR bank bit7 to per-nametable CIRAM A10.
-  - Masks CHR bank bit7 out of CHR-ROM addressing and ignores ordinary `$A000` mirroring writes.
-- Wired mapper 95/118 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs` and capability tables.
-- Updated mapper gap checklist and reference records. Supported mapper count is now 119; remaining union gap is 374.
-- Verification so far:
-  - `cargo test -p fc-core mapper::basic::namco::tests::mapper95_routes_nametables_from_chr_register_high_bits -- --nocapture`: PASS, 1/1.
-  - `cargo test -p fc-core mapper::mmc3::tests::mapper118_uses_chr_bank_bit7_for_nametable_pages -- --nocapture`: PASS, 1/1.
-  - `cargo fmt --check`: initially failed on export-list formatting; fixed with `cargo fmt`.
-  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 38/38 mapper facade/capability tests.
-  - `cargo fmt --check`: PASS after formatting.
-  - `git diff --check`: PASS.
-  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 76/76 mapper tests.
-  - `cargo test -p fc-core`: PASS, 116/116 fc-core tests.
-  - `cargo test`: PASS, workspace tests.
-- Error note:
-  - Attempted to pass three test filters to one `cargo test` command; cargo accepts one filter, so reran the mapper facade group instead.
-
-### Continued Phase: PPU open-bus decay
-- Started: 2026-06-19 14:51:32 CST
-- Reproduced `ppu_open_bus/ppu_open_bus.nes` failure: subtest #3, "Decay value should become zero by one second".
-- Implemented PPU open-bus per-bit decay deadlines and per-register read refresh masks in `fc-core/src/ppu.rs`.
-- Verification:
-  - `cargo build -p fc-cli`: PASS
-  - `ppu_open_bus/ppu_open_bus.nes --frames 6000`: PASS, 1/1
-  - `ppu_vbl_nmi/rom_singles/*.nes --frames 3000`: PASS, 10/10
-  - `ppu_read_buffer/test_ppu_read_buffer.nes --frames 6000`: PASS, 1/1
-  - `apu_test/rom_singles/*.nes --frames 3000`: PASS, 8/8
-  - `instr_misc/rom_singles/*.nes` + `instr_timing/rom_singles/*.nes --frames 30000`: PASS, 6/6
-  - `mmc3_test/*.nes --frames 3000`: PARTIAL, 5/6; known `4-scanline_timing` failure remains
-  - `cargo test -p fc-core`: PASS, 6 tests
-  - `cargo test`: PASS, workspace tests
-
-### Continued Phase: APU reset state and reset-aware testsuite
-- Implemented and committed `58a6d6c fix(fc-core): emulate PPU open-bus decay`.
-- Added CLI handling for blargg `$6000=$81` reset requests so reset-sensitive ROMs can complete under `fc testsuite`.
-- After enabling reset protocol support, `apu_reset/*.nes` showed real reset-state failures: `$4015` not cleared, frame IRQ not cleared, `$4017` power/reset timing too early, and writes immediately after reset not matching hardware.
-- Implemented APU reset state in `fc-core/src/apu.rs` and routed `ControlDeck::reset()` through it.
-- Verification:
-  - `cargo build -p fc-cli`: PASS
-  - `apu_reset/*.nes --frames 12000`: PASS, 6/6; `4017_timing` printed delay 9
-  - `apu_test/rom_singles/*.nes --frames 3000`: PASS, 8/8
-  - `ppu_vbl_nmi/rom_singles/*.nes --frames 3000`: PASS, 10/10
-  - `ppu_open_bus/ppu_open_bus.nes --frames 6000`: PASS, 1/1
-  - `ppu_read_buffer/test_ppu_read_buffer.nes --frames 6000`: PASS, 1/1
-  - `instr_misc/rom_singles/*.nes` + `instr_timing/rom_singles/*.nes --frames 30000`: PASS, 6/6
-  - `mmc3_test/*.nes --frames 3000`: PARTIAL, 5/6; known `4-scanline_timing` failure remains
-  - `cargo test`: PASS, workspace tests
-
-### Phase 9: High-risk CPU IRQ/DMA timing
-- Started implementing a real CPU interrupt poll model instead of the previous step-boundary IRQ/NMI shortcut.
-- Added per-CPU-cycle NMI/IRQ sampling in `Cpu::rd/wr/io`; IRQ uses the previous cycle's sampled level at instruction poll points, while NMI uses the CPU latch so PPU edge tests remain aligned.
-- Added explicit interrupt queueing at instruction poll points, including the taken non-page-crossing branch special poll point.
-- Split BRK and hardware IRQ/NMI vector-selection timing so NMI can hijack BRK/IRQ in the correct windows.
-- Removed the old bus-level `nmi_delay_polls` compensation and the old `i_poll` shortcut; no save-state compatibility fields were kept per user direction.
-- Verification:
-  - `cpu_interrupts_v2/rom_singles/*.nes --frames 12000`: 4/5 PASS; `4-irq_and_dma` remains a DMA timing failure.
-  - `ppu_vbl_nmi/rom_singles/*.nes --frames 3000`: 10/10 PASS.
-  - `apu_test/rom_singles/*.nes --frames 3000`: 8/8 PASS.
-  - `mmc3_test/*.nes --frames 3000`: 5/6 PASS; `3-A12_clocking` remains PASS and known `4-scanline_timing` remains FAIL #2.
-- Follow-up OAM DMA alignment fix:
-  - Added one extra OAM DMA halt/alignment tick in `Bus::oam_dma`.
-  - `cpu_interrupts_v2/rom_singles/*.nes --frames 12000`: 5/5 PASS.
-  - `sprdma_and_dmc_dma/*.nes --frames 12000`: still FAIL, confirming DMC/OAM DMA overlap remains unmodeled.
-  - Regression checks remained stable: `apu_test` 8/8, `ppu_vbl_nmi` 10/10, `mmc3_test` 5/6 with only known `4-scanline_timing`.
-  - Committed `f833645 fix(fc-core): align OAM DMA halt timing`.
-- Committed `927d27d fix(fc-core): model APU reset state`.
-
-### Continued Phase: Unified DMA arbiter verification
-- User implemented and committed `8a8bf6c refactor(fc-core): unified per-cycle DMA arbiter (OAM + DMC)`.
-- Verification after that commit:
-  - `cargo test -p fc-core`: PASS, 6 tests.
-  - `cargo build -p fc-cli`: PASS.
-  - `cpu_interrupts_v2/rom_singles/*.nes --frames 12000`: PASS, 5/5.
-  - `apu_test/rom_singles/*.nes --frames 20000`: PASS, 8/8.
-  - `ppu_vbl_nmi/rom_singles/*.nes --frames 20000`: PASS, 10/10.
-  - `mmc3_test/*.nes --frames 20000`: PARTIAL, 5/6; known `4-scanline_timing` failure remains, `3-A12_clocking` still PASS.
-  - `dmc_dma_during_read4/*.nes --frames 20000`: FAIL/TIMEOUT, 0/5.
-  - `sprdma_and_dmc_dma/*.nes --frames 30000`: FAIL/TIMEOUT, 0/2.
-- Manual screenshots after many frames for `dma_4016_read.nes` and `sprdma_and_dmc_dma.nes` were black, with CPU still executing in the test ROM instead of exiting through `$6000`.
-- Initial code review flags:
-  - `Cpu::pump_dma()` only drains DMA before a halt-able CPU cycle; a DMC request generated by the `bus.tick()` of the current CPU read cannot halt/repeat that same read until the next CPU micro-op.
-  - `Bus::dma_clock()` treats DMC requests arriving while OAM has already halted the CPU as `dmc_dummy_done = true`, so those requests skip the dummy/repeated CPU read side effect.
-  - `Bus::tick()` still samples `apu.dmc_dma()` after APU tick, but `Apu::dmc_dma()` appears level-like, so repeated request generation must be checked against DMC supply timing.
-- Implemented DMC DMA precision follow-up:
-  - Added one-shot DMC DMA request kinds (`Load`, `Reload`) instead of exposing a raw buffer-empty level.
-  - CPU read/internal cycles now let a DMC request that matures during the cycle halt the same CPU read before it commits.
-  - DMC alignment retries repeat the held CPU read for `$2007`, but controller `$4016/$4017` use a non-shifting peek on those alignment retries so only the dummy read steals a joypad bit.
-- Verification after follow-up:
-  - `cargo test -p fc-core`: PASS, 6 tests.
-  - `cargo build -p fc-cli`: PASS.
-  - `cpu_interrupts_v2/rom_singles/*.nes --frames 12000`: PASS, 5/5.
-  - `apu_test/rom_singles/*.nes --frames 12000`: PASS, 8/8.
-  - `ppu_vbl_nmi/rom_singles/*.nes --frames 12000`: PASS, 10/10.
-  - `mmc3_test/*.nes --frames 12000`: PARTIAL, 5/6; known `4-scanline_timing` remains, `3-A12_clocking` PASS.
-  - `dmc_dma_during_read4` checked by frame screenshots because this suite does not complete via `$6000` testsuite scoring:
-    - `dma_4016_read`: PASS (`08 08 07 08 08`).
-    - `dma_2007_read`: allowed output/CRC (`33 44`, `159A7A8F`).
-    - `dma_2007_write`: PASS.
-    - `read_write_2007`: PASS.
-    - `double_2007_read`: allowed output/CRC.
-  - `sprdma_and_dmc_dma` and `_512`: now reach result screens but still FAIL; tables are closer than the previous timeout/black-screen state and remain the next overlap-cadence target.
-  - `dmc_tests/*.nes --frames 20000`: still TIMEOUT under current `$6000` runner; protocol/visual output needs separate investigation.
-
-### Continued Phase: CPU reset semantics
-- Reproduced `cpu_reset/registers.nes` failure after reset-aware testsuite support: soft reset incorrectly restored power-on register values.
-- Implemented separate `Cpu::power_on()` and `Cpu::reset()` paths; `ControlDeck::new()` and `load_rom()` use power-on, while soft reset preserves A/X/Y, decrements SP by 3, ORs P with I, and reloads PC.
-- Verification:
-  - `cargo build -p fc-cli`: PASS
-  - `cpu_reset/*.nes --frames 12000`: PASS, 2/2
-  - `apu_reset/*.nes --frames 12000`: PASS, 6/6
-  - `apu_test/rom_singles/*.nes --frames 3000`: PASS, 8/8
-  - `ppu_vbl_nmi/rom_singles/*.nes --frames 3000`: PASS, 10/10
-  - `ppu_open_bus/ppu_open_bus.nes` + `ppu_read_buffer/test_ppu_read_buffer.nes --frames 6000`: PASS, 2/2
-  - `instr_misc/rom_singles/*.nes` + `instr_timing/rom_singles/*.nes --frames 30000`: PASS, 6/6
-  - `mmc3_test/*.nes --frames 3000`: PARTIAL, 5/6; known `4-scanline_timing` failure remains
-  - `cargo test`: PASS, workspace tests
-
-### Continued Phase: MMC3 scanline timing / PPU fetch phase
-- Started: 2026-06-19 21:25:44 CST
-- Implemented dot-scheduled mapper-visible sprite pattern fetches:
-  - `evaluate_sprites` now selects sprites and stores their pattern addresses at dot 257.
-  - Actual CHR reads for sprite pattern low/high bytes happen in the 257-320 sprite fetch window, so MMC3 A12 sees the correct phase instead of a burst at dot 257.
-- Adjusted background pattern fetch phase by one PPU dot so `$2000=$10` background-driven A12 edges line up with `mmc3_test/4-scanline_timing`.
-
-## Continued Session: 2026-06-20
-
-### Phase 10: PAL APU frame sequencer timing
-- Started: 2026-06-20 09:15:13 CST
-- Confirmed only planning files are untracked before this pass.
-- Current target: `pal_apu_tests/04.clock_jitter.nes` reports `APU CLOCK JITTER FAILED: #2` under PAL, while `01.len_ctr`, `02.len_table`, and `03.irq_flag` already pass visually.
-- Code finding: `fc-core/src/apu.rs` still uses NTSC-only frame-sequencer constants; `Region` only affects `cpu_hz` sampling rate in APU today.
-- Implemented region-selected APU frame-sequencer timing and stored the APU region in save state. Save-state version bumped from 2 to 3.
-- PAL `04.clock_jitter`, `05.len_timing_mode0`, `06.len_timing_mode1`, `07.irq_flag_timing`, and `08.irq_timing` passed visually after region timing.
-- `10.len_halt_timing` and `11.len_reload_timing` then exposed same-boundary length write arbitration; implemented queued length halt/reload side effects that apply after a same-tick half-frame length clock, while immediate non-length register side effects still happen on the write.
-- Final PAL visual screenshots at 120 frames:
-  - `01.len_ctr`, `02.len_table`, `03.irq_flag`, `04.clock_jitter`, `05.len_timing_mode0`, `06.len_timing_mode1`, `07.irq_flag_timing`, `08.irq_timing`, `10.len_halt_timing`, `11.len_reload_timing`: PASS.
-
-## Regression Results: PAL APU Timing Pass
-| Test | Result |
-|------|--------|
-| `cargo build -p fc-cli` | PASS |
-| `cargo test -p fc-core` | PASS, 6 tests |
-| `apu_test/rom_singles/*.nes --frames 12000` | PASS, 8/8 |
-| `apu_reset/*.nes --frames 12000` | PASS, 6/6 |
-| `cpu_interrupts_v2/rom_singles/*.nes --frames 12000` | PASS, 5/5 |
-| `ppu_vbl_nmi/rom_singles/*.nes --frames 12000` | PASS, 10/10 |
-| `mmc3_test/*.nes --frames 12000` | PASS, 6/6 |
-| `sprdma_and_dmc_dma/*.nes --frames 30000` | PASS, 2/2 |
-| `instr_misc + instr_timing --frames 30000` | PASS, 6/6 |
-| `instr_test-v3/v5 official_only/all_instrs --frames 30000` | PASS, 4/4 |
-| `ppu_open_bus + ppu_read_buffer --frames 12000` | PASS, 2/2 |
-| `git diff --check` | PASS |
-
-## Error Log Additions
-| Timestamp | Error | Attempt | Resolution |
-|-----------|-------|---------|------------|
-| 2026-06-20 09:20 | `pal_apu_tests` timed out under `$6000` `testsuite` runner | 1 | Treat these old PAL ROMs as screen-result ROMs and verify via `fc run --region pal --shot` screenshots |
-| 2026-06-20 09:36 | Mis-typed `instr_test-v3/v5` paths as `rom_singles/official_only.nes` | 1 | Located actual ROM paths and reran `official_only.nes`/`all_instrs.nes` from suite root; 4/4 PASS |
-
-### Continued Scan After Commit `d067758`
-- `cpu_exec_space/*.nes --frames 12000`: PASS, 2/2.
-- `oam_read/oam_read.nes` screenshot at 600 frames: PASS.
-- `read_joy3/*.nes` and `blargg_nes_cpu_test5/*.nes` time out under current `$6000` `testsuite` runner; treat as protocol/visual/interactive candidates, not direct failures.
-- Visual/self-check follow-up:
-  - `sprite_hit_tests_2005.10.05/01.basics.nes` and `11.edge_timing.nes`: PASS screenshots.
-  - `vbl_nmi_timing/2.vbl_timing.nes`: PASS screenshot.
-  - `cpu_timing_test6/cpu_timing_test.nes` at 1200 frames: PASS official/NOP screen.
-  - `read_joy3/thorough_test.nes`: PASS screenshot.
-  - `read_joy3/count_errors.nes` and `count_errors_fast.nes` show expected DMC conflict/error diagnostics rather than a pass/fail condition; source comments say `count_errors` conflicts are compensated by `read_joy`, while `thorough_test` remains the correctness test.
-  - `oam_stress/oam_stress.nes --frames 6000`: PASS.
-  - `blargg_nes_cpu_test5/official.nes` and `cpu.nes` at 3600 frames: "All tests complete" screenshots.
-  - `cpu_dummy_writes_oam.nes` and `cpu_dummy_writes_ppumem.nes`: PASS screenshots.
-  - `blargg_apu_2005.07.30/08`, `09`, `10`, `11` screenshots show `$01` pass code.
-- Non-target observations:
-  - MMC5 ROMs fail at load with `unsupported mapper 5`; this is a larger mapper feature, not a timing precision tweak.
-  - `blargg_ppu_tests_2005.09.15b/power_up_palette.nes` shows `$02`, but the readme says the expected palette power-up values are probably unique to the author's NES, so this is not a clean accuracy target.
-  - `nrom368/test1.nes` has 48KB PRG with mapper 0 and grey-screens; this is a malformed/edge iNES compatibility case rather than a clean hardware precision target.
-
-### Continued Phase: region-aware testsuite and `$AB` investigation
-- Started: 2026-06-20
-- Removed a temporary `$AB` environment-variable experiment from `fc-core/src/cpu.rs`; the core is back to the stable `A = X & imm; X = A` implementation before further analysis.
-- Added and committed `184a038 test(fc-cli): allow region selection for testsuite`.
-- Verification before commit:
-  - `cargo fmt`: PASS
-  - `cargo build -p fc-cli`: PASS
-  - `cargo test -p fc-core`: PASS
-  - `apu_test/rom_singles/*.nes --frames 12000`: PASS, 8/8
-  - `mmc3_test/*.nes --frames 12000`: PASS, 6/6
-- Reproduced current precision gap:
-  - `instr_test-v5/*.nes --frames 60000`: `official_only` PASS, `all_instrs` FAIL at `AB ATX #n`, test 3/16.
-  - Source review confirms `03-immediate.s` checks CRC over `P, A, X, Y, S, operand` for fixed value tables; the next step is to reproduce that CRC path exactly before changing unstable `$AB` semantics.
-- Reproduced blargg CRC paths offline:
-  - Immediate CRC now matches known-good checksums for `LDA`, `LDX`, `LDY`, `DOP`, `AAC`, `ASR`, `ARR`, and `AXS`.
-  - `$AB` expected checksum matches immediate `LAX` semantics (`A = X = imm`), not the previous `X & imm` implementation.
-  - Absolute indexed CRC now matches known-good `STA a,X`, `STA a,Y`, `TOP abs,X`, and `LAX abs,Y`; `SYA/SXA` require unstable high-address masking based on `(base_high + 1) & register`.
-- Implemented:
-  - `$AB` immediate `LAX` behavior in `fc-core/src/cpu.rs`.
-  - Shared `unstable_indexed_store` helper for `SYA abs,X` and `SXA abs,Y`.
-- Verification after implementation:
-  - `cargo fmt`: PASS
-  - `cargo test -p fc-core`: PASS, 6 tests
-  - `cargo build -p fc-cli`: PASS
-  - `instr_test-v5/*.nes --frames 60000`: PASS, 2/2
-  - `instr_test-v3/*.nes --frames 60000`: PASS, 2/2
-  - `instr_misc/rom_singles/*.nes` + `instr_timing/rom_singles/*.nes --frames 30000`: PASS, 6/6
-  - `apu_test/rom_singles/*.nes --frames 12000`: PASS, 8/8
-  - `ppu_vbl_nmi/rom_singles/*.nes --frames 12000`: PASS, 10/10
-  - `mmc3_test/*.nes --frames 12000`: PASS, 6/6
-  - `cpu_interrupts_v2/rom_singles/*.nes --frames 12000`: PASS, 5/5
-  - `oam_read` + `oam_stress`: PASS, 2/2
-  - `ppu_open_bus` + `ppu_read_buffer`: PASS, 2/2
-  - `sprdma_and_dmc_dma/*.nes --frames 30000`: PASS, 2/2
-  - `cpu_exec_space/*.nes --frames 30000`: PASS, 2/2
-
-### Continued Phase: DMC request lifetime / read_joy3
-- Reproduced `read_joy3/thorough_test.nes --frames 30000` panic:
-  - `fc-core/src/apu.rs:452: attempt to subtract with overflow`
-  - Backtrace path: `Dmc::supply` <- `Apu::dmc_supply` <- `Bus::dma_clock` <- `Cpu::pump_dma`.
-- Inspection result:
-  - APU owns `dma_pending`, but Bus copies it into `dma.dmc_req/dmc_active`.
-  - `$4015` disable clears only APU `dma_pending`; stale Bus-side DMC request can still reach sample get.
-  - Next implementation should cancel Bus DMC when the APU no longer reports the same `(addr, kind)` and validate supply.
-- Implemented tokenized DMC DMA requests:
-  - APU now exposes a `DmcDmaRequest { addr, kind, id }`.
-  - Bus validates cached DMC requests against the current APU request before halt/get/supply.
-  - Soft reset and APU register writes cancel stale bus-side DMC state.
-- Verification so far:
-  - `cargo test -p fc-core`: PASS.
-  - `cargo build -p fc-cli`: PASS.
-  - `read_joy3/*.nes --frames 30000`: no panic; `$6000` timeout is expected for this non-blargg/interactive suite.
-  - `fc run read_joy3/thorough_test.nes --frames 30000 --shot`: screen shows `thorough_test Passed`.
-  - `fc run read_joy3/test_buttons.nes --frames 30000 --shot`: screen shows interactive prompt `Press indicated buttons`.
-  - `fc run read_joy3/count_errors*.nes --frames 30000 --shot`: screens show ongoing conflict/error statistics, not exit status.
-  - `sprdma_and_dmc_dma/*.nes --frames 30000`: PASS, 2/2.
-  - `cpu_interrupts_v2/rom_singles/*.nes --frames 12000`: PASS, 5/5.
-  - `apu_test/rom_singles/*.nes --frames 12000`: PASS, 8/8.
-  - `mmc3_test/*.nes --frames 12000`: PASS, 6/6.
-  - `ppu_vbl_nmi/rom_singles/*.nes --frames 12000`: PASS, 10/10.
-  - `ppu_read_buffer` + `ppu_open_bus`: PASS, 2/2.
-  - `instr_misc` + `instr_timing`: PASS, 6/6.
-  - `cargo test`: PASS, workspace tests.
-  - `cpu_reset/*.nes` + `apu_reset/*.nes --frames 12000`: PASS, 8/8.
-  - `dmc_dma_during_read4` screenshots after 20000 frames:
-    - `dma_4016_read`: PASS, expected `08 08 07 08 08`.
-    - `dma_2007_read`: allowed output/CRC (`33 44`, `159A7A8F`).
-    - `dma_2007_write`: PASS.
-    - `read_write_2007`: PASS.
-    - `double_2007_read`: allowed output/CRC (`D844F6B5`).
-
-### Continued Phase: CPU execution from I/O/open-bus space
-- Baseline:
-  - `cpu_exec_space/test_cpu_exec_space_apu.nes --frames 30000`: FAIL, screen and `$6000` output show failure after printing `4020`, because execution landed unexpectedly.
-  - `cpu_exec_space/test_cpu_exec_space_ppuio.nes --frames 30000`: FAIL #5, missing dummy fetch after `RTS` from `$2001`.
-- Analysis:
-  - `$4018..$40FF` in this NROM test should return CPU open bus. Current Bus treats `$4020..$5FFF` as cartridge space, but no supported mapper handles it, so the read becomes `0`.
-  - One-byte instructions currently use `io()` for their extra cycle, which advances clocks but does not perform the visible next-opcode read. This misses PPU register side effects when the opcode is fetched from `$2001`.
-- Implemented:
-  - Added `Cpu::dummy_fetch()` for the visible second-cycle read of one-byte implied/accumulator/stack opcodes.
-  - Kept non-fetch internal cycles as `io()`.
-  - Treated `$4018..$5FFF` as CPU open bus/unmapped expansion space for reads and ignored writes; PRG RAM remains `$6000..$7FFF`.
-- Verification:
-  - `cpu_exec_space/*.nes --frames 30000`: PASS, 2/2.
-  - `instr_misc` + `instr_timing --frames 30000`: PASS, 6/6.
-  - `cpu_interrupts_v2 --frames 12000`: PASS, 5/5.
-  - `cpu_dummy_writes --frames 30000`: PASS, 2/2.
-  - `mmc3_test --frames 12000`: PASS, 6/6.
-  - `apu_test --frames 12000`: PASS, 8/8.
-  - `ppu_vbl_nmi --frames 12000`: PASS, 10/10.
-  - `sprdma_and_dmc_dma --frames 30000`: PASS, 2/2.
-  - `ppu_read_buffer` + `ppu_open_bus --frames 12000`: PASS, 2/2.
-  - `cpu_reset` + `apu_reset --frames 12000`: PASS, 8/8.
-  - `cargo test`: PASS.
-
-### Post-commit candidate scan
-- Committed DMC request lifetime fix as `3b91d96 fix(fc-core): validate DMC DMA request lifetime`.
-- Committed CPU dummy opcode fetch / open-bus execution-space fix as `8253d3b fix(fc-core): emulate CPU dummy opcode fetches`.
-- Additional scans:
-  - `oam_read/oam_read.nes` + `oam_stress/oam_stress.nes --frames 12000`: PASS, 2/2.
-  - `blargg_ppu_tests_2005.09.15b/*.nes`, `sprite_hit_tests_2005.10.05/*.nes`, `sprite_overflow_tests/*.nes`, `blargg_nes_cpu_test5/*.nes`, `cpu_timing_test6/*.nes`, `vbl_nmi_timing/*.nes`, `MMC1_A12/*.nes`, `scanline*/*.nes`, and `dmc_tests/*.nes` timed out under the CLI `$6000` runner; these are likely old screen/interactive/protocol-mismatched suites and were not used as failure evidence.
-  - `pal_apu_tests` was not run because the `testsuite` command currently has no region option.
-
-### Continued Phase: PAL testsuite access and unofficial opcode coverage
-- Added `--region ntsc|pal|dendy` to `fc testsuite` so non-NTSC `$6000` ROMs can be scored.
-- `pal_apu_tests/*.nes --region pal --frames 30000`: TIMEOUT 0/10, likely older/non-`$6000` protocol; not used as PAL APU failure evidence.
-- `instr_test-v3/*.nes --frames 60000`: `official_only` PASS, `all_instrs` FAIL at `AB ATX #n`.
-- `instr_test-v5/*.nes --frames 60000`: `official_only` PASS, `all_instrs` FAIL at `AB ATX #n`.
-- Verification:
-  - `cargo test -p fc-core`: PASS, 6 tests.
-  - `cargo build -p fc-cli`: PASS.
-  - `mmc3_test/*.nes --frames 12000`: PASS, 6/6.
-  - `ppu_vbl_nmi/rom_singles/*.nes --frames 12000`: PASS, 10/10.
-  - `apu_test/rom_singles/*.nes --frames 12000`: PASS, 8/8.
-  - `cpu_interrupts_v2/rom_singles/*.nes --frames 12000`: PASS, 5/5.
-  - `sprdma_and_dmc_dma/*.nes --frames 30000`: PASS, 2/2.
-  - `ppu_read_buffer/test_ppu_read_buffer.nes` + `ppu_open_bus/ppu_open_bus.nes --frames 12000`: PASS, 2/2.
-  - `instr_misc/rom_singles/*.nes` + `instr_timing/rom_singles/*.nes --frames 30000`: PASS, 6/6.
-  - `sprite_hit_tests_2005.10.05/*.nes --frames 12000`: TIMEOUT under the CLI `$6000` runner; treated as protocol mismatch rather than a scored regression.
-
-### Continued Phase: sprite overflow obscure scan
-- Started: 2026-06-20
-- Used screenshots for old screen-result ROMs rather than treating `$6000` timeouts as failures.
-- Baseline screenshot results:
-  - `sprite_hit_tests_2005.10.05/01.basics.nes`: PASSED
-  - `sprite_hit_tests_2005.10.05/09.timing_basics.nes`: PASSED
-  - `sprite_overflow_tests/1.Basics.nes`: PASSED
-  - `sprite_overflow_tests/2.Details.nes`: PASSED
-  - `sprite_overflow_tests/3.Timing.nes`: FAILED #5
-  - `sprite_overflow_tests/4.Obscure.nes`: FAILED #2
-  - `sprite_overflow_tests/5.Emulator.nes`: PASSED
-- Implemented the documented sprite overflow bug in `Ppu::evaluate_sprites`: after secondary OAM is full, range misses advance the OAM byte phase so later sprite tile/attribute/X bytes can be interpreted as Y coordinates.
-- Target verification after build:
-  - `sprite_overflow_tests/1.Basics.nes`: PASSED
-  - `sprite_overflow_tests/2.Details.nes`: PASSED
-  - `sprite_overflow_tests/4.Obscure.nes`: PASSED
-  - `sprite_overflow_tests/5.Emulator.nes`: PASSED
-  - `sprite_overflow_tests/3.Timing.nes`: still FAILED #5, recorded as separate dot-timing work.
-  - `sprite_hit_tests_2005.10.05/*.nes` screenshot sweep: all reached PASSED result screens.
-- Regression verification:
-  - `cargo test -p fc-core`: PASS, 6 tests
-  - `cargo build -p fc-cli`: PASS
-  - `ppu_vbl_nmi/rom_singles/*.nes --frames 12000`: PASS, 10/10
-  - `mmc3_test/*.nes --frames 12000`: PASS, 6/6
-  - `cpu_interrupts_v2/rom_singles/*.nes --frames 12000`: PASS, 5/5
-  - `apu_test/rom_singles/*.nes --frames 12000`: PASS, 8/8
-  - `sprdma_and_dmc_dma/*.nes --frames 30000`: PASS, 2/2
-  - `instr_test-v5/*.nes` + `instr_test-v3/*.nes --frames 60000`: PASS, 4/4
-  - `ppu_open_bus/ppu_open_bus.nes` + `ppu_read_buffer/test_ppu_read_buffer.nes --frames 12000`: PASS, 2/2
-
-### Continued Phase: sprite overflow timing
-- Started: 2026-06-20
-- Target: `sprite_overflow_tests/3.Timing.nes`, previously FAILED #5 ("set too late for first scanline").
-- Implemented sprite overflow flag scheduling:
-  - Each visible scanline computes when the hardware OAM evaluation scan would assert overflow.
-  - Misses advance the scan by 2 PPU dots; copied in-range sprites advance by 8 PPU dots.
-  - The existing obscure byte-phase bug is reused for post-full secondary OAM scanning.
-  - Rendering sprite selection and pattern fetches still happen through the existing dot-257/257-320 paths.
-- Target verification:
-  - `sprite_overflow_tests/1.Basics.nes`: PASSED screenshot
-  - `sprite_overflow_tests/2.Details.nes`: PASSED screenshot
-  - `sprite_overflow_tests/3.Timing.nes`: PASSED screenshot
-  - `sprite_overflow_tests/4.Obscure.nes`: PASSED screenshot
-  - `sprite_overflow_tests/5.Emulator.nes`: PASSED screenshot
-- Regression verification:
-  - `cargo test -p fc-core`: PASS, 6 tests
-  - `cargo build -p fc-cli`: PASS
-  - `ppu_vbl_nmi/rom_singles/*.nes --frames 12000`: PASS, 10/10
-  - `mmc3_test/*.nes --frames 12000`: PASS, 6/6
-  - `cpu_interrupts_v2/rom_singles/*.nes --frames 12000`: PASS, 5/5
-  - `apu_test/rom_singles/*.nes --frames 12000`: PASS, 8/8
-  - `sprdma_and_dmc_dma/*.nes --frames 30000`: PASS, 2/2
-  - `instr_test-v5/*.nes` + `instr_test-v3/*.nes --frames 60000`: PASS, 4/4
-  - `ppu_open_bus/ppu_open_bus.nes` + `ppu_read_buffer/test_ppu_read_buffer.nes --frames 12000`: PASS, 2/2
-  - `cpu_exec_space/*.nes --frames 30000`: PASS, 2/2
-
-### Continued Phase: PAL 2A07 DMC/noise timing
-- Started: 2026-06-20
-- Implemented region-selected PAL 2A07 DMC rate table and noise period table in `fc-core/src/apu.rs`.
-- Added `Region::has_dmc_read_conflict()` and routed DMC dummy/alignment extra-read side effects through it in `fc-core/src/bus.rs`; PAL suppresses the NTSC controller/PPUDATA extra-read defect, NTSC/Dendy keep the existing behavior.
-- Added unit tests:
-  - PAL DMC/noise period table selection.
-  - NTSC DMC dummy read advances controller shift.
-  - PAL DMC dummy read does not advance controller shift.
-- Verification so far:
-  - `cargo fmt`: PASS
-  - `cargo test -p fc-core`: PASS, 9 tests
-  - `cargo build -p fc-cli`: PASS
-  - `apu_test/rom_singles/*.nes --frames 12000`: PASS, 8/8
-  - `sprdma_and_dmc_dma/*.nes --frames 30000`: PASS, 2/2
-  - `cpu_interrupts_v2/rom_singles/*.nes --frames 12000`: PASS, 5/5
-  - `mmc3_test/*.nes --frames 12000`: PASS, 6/6
-  - `ppu_vbl_nmi/rom_singles/*.nes --frames 12000`: PASS, 10/10
-  - `instr_misc` + `instr_timing --frames 30000`: PASS, 6/6
-  - `ppu_open_bus` + `ppu_read_buffer --frames 12000`: PASS, 2/2
-  - `cpu_reset` + `apu_reset --frames 12000`: PASS, 8/8
-  - `instr_test-v3/v5 official_only/all_instrs --frames 60000`: PASS, 4/4
-  - `cpu_exec_space/*.nes --frames 30000`: PASS, 2/2
-  - PAL screenshots: `pal_apu_tests/08.irq_timing.nes` PASS, `pal_apu_tests/11.len_reload_timing.nes` PASS
-  - DMC read-conflict screenshots: `dmc_dma_during_read4/dma_4016_read.nes` PASS, `dma_2007_read.nes` allowed CRC `159A7A8F`
-  - `read_joy3/thorough_test.nes` without `--autostart`: PASS screenshot
-  - `read_joy3/count_errors.nes` without `--autostart`: `Conflicts: 60/1000`, same expected diagnostic pattern
-  - `target/debug/fc testsuite nes-test-roms/apu_test/rom_singles/8-dmc_rates.nes --region pal --frames 12000`: FAIL "Rate 0's period is too short"; recorded as expected proof that this NTSC ROM sees PAL rate-table selection, not a regression.
-
-### Continued Phase: PAL/Dendy CPU-to-PPU ratio
-- Started: 2026-06-20
-- Implemented `Region::ppu_dots_per_cpu_cycle()` and a `Bus::ppu_phase` accumulator.
-- NTSC remains 3 PPU dots per CPU cycle. PAL/Dendy now use exact 16/5 stepping, matching the project requirement instead of the old NTSC-only 3:1 stepping.
-- Added unit test `pal_ppu_clock_uses_16_to_5_cpu_ratio`.
-- PAL sanity:
-  - `pal_apu_tests/04.clock_jitter.nes --region pal`: PASS screenshot.
-  - `pal_apu_tests/08.irq_timing.nes --region pal`: PASS screenshot.
-  - `pal_apu_tests/11.len_reload_timing.nes --region pal`: PASS screenshot.
-  - PAL frame CPU count is now about 3,348,178 cycles over 120 frames, i.e. about 27,901 cycles/frame, matching `312*341*5/16`.
-- Regression verification:
-  - `cargo fmt`: PASS
-  - `cargo test -p fc-core`: PASS, 10 tests
-  - `cargo build -p fc-cli`: PASS
-  - `apu_test/rom_singles/*.nes --frames 12000`: PASS, 8/8
-  - `ppu_vbl_nmi/rom_singles/*.nes --frames 12000`: PASS, 10/10
-  - `mmc3_test/*.nes --frames 12000`: PASS, 6/6
-  - `sprdma_and_dmc_dma/*.nes --frames 30000`: PASS, 2/2
-  - `cpu_interrupts_v2/rom_singles/*.nes --frames 12000`: PASS, 5/5
-  - `instr_misc` + `instr_timing --frames 30000`: PASS, 6/6
-  - `ppu_open_bus` + `ppu_read_buffer --frames 12000`: PASS, 2/2
-  - `cpu_reset` + `apu_reset --frames 12000`: PASS, 8/8
-  - `instr_test-v3/v5 official_only/all_instrs --frames 60000`: PASS, 4/4
-  - `cpu_exec_space/*.nes --frames 30000`: PASS, 2/2
-  - `cargo test`: PASS, workspace tests
-
-### Continued Phase: MMC5 mapper support
-- Started: 2026-06-20
-- Baseline:
-  - `target/debug/fc info nes-test-roms/mmc5test/mmc5test.nes`: `unsupported mapper 5`
-  - `target/debug/fc info nes-test-roms/mmc5test_v2/mmc5test.nes`: `unsupported mapper 5`
-  - `target/debug/fc info nes-test-roms/exram/mmc5exram.nes`: `unsupported mapper 5`
-- Source/test inventory:
-  - `mmc5test_v2` uses CHR banking registers `$5120..$512B`, ExRAM mode `$5104`, nametable mapping `$5105`, fill tile/color `$5106/$5107`, IRQ disable/status `$5200/$5204`, and writes ExRAM at `$5C00`.
-  - `exram` uses PRG mode `$5100`, CHR mode `$5101`, ExRAM mode `$5104`, nametable mapping `$5105`, CHR high-bank registers `$5127/$512B`, IRQ disable/status `$5200/$5204`, and executes code copied to `$5C00`.
-- Implementation plan:
-  - Extend mapper/cartridge/bus with expansion-area read/write hooks without changing ordinary mapper open-bus behavior.
-  - Add MMC5 mapper state for PRG/CHR modes, ExRAM, nametable mapping/fill, multiplier, and basic scanline IRQ.
-  - Add PPU nametable callbacks so MMC5 can provide ExRAM/fill-mode data instead of only coarse `Mirroring`.
-- Resumed continuation:
-  - Current uncommitted MMC5 first-pass implementation touches `fc-core/src/mapper.rs`, `fc-core/src/cartridge.rs`, `fc-core/src/bus.rs`, and `fc-core/src/ppu.rs`.
-  - `cargo build -p fc-cli`: PASS.
-  - Active local ROM surface remains ExRAM `$5C00..$5FFF`, nametable routing/fill, separated BG/sprite CHR bank registers, multiplier, and IRQ status.
-- MMC5 refinement:
-  - Fixed MMC5 CHR mode decoding so `$5128..$512B` background registers obey `$5101` bank size instead of always acting as 1KB banks.
-  - Split expansion-area CPU reads from debugger peeks so `$5204` real reads can clear IRQ pending while disassembly/debug memory reads stay side-effect-free.
-  - Added mapper unit tests for ExRAM CPU mode/multiplier, background CHR mode decoding, and `$5204` IRQ status clear behavior.
-  - `cargo test -p fc-core`: PASS, 13 tests.
-  - `cargo build -p fc-cli`: PASS.
-  - Screenshot check: `exram/mmc5exram.nes` now displays readable "MMC5 Executable ExRAM Test" text and color bars instead of the previous full-screen tile garbage.
-  - Screenshot check: `mmc5test_v2/mmc5test.nes` remains readable on the CHR bank test screen.
-
-### Continued Phase: mapper module organization
-- Started: 2026-06-20
-- Current issue: `fc-core/src/mapper.rs` has grown to 1297 lines after MMC5, and future mapper additions would make a single-file mapper registry hard to maintain.
-- Refactor direction:
-  - Preserve the public facade `crate::mapper::{Mapper, MapperOps, ChrAccess}`.
-  - Keep the serializable `Mapper` enum and dispatch table in `mapper.rs`.
-  - Move chip/family implementations into `fc-core/src/mapper/*.rs`.
-  - Keep behavior unchanged; verify with unit tests and mapper/hardware ROM regressions.
-- Implemented layout:
-  - `fc-core/src/mapper.rs`: facade, trait, enum registry, dispatch.
-  - `fc-core/src/mapper/basic.rs`: NROM/UNROM/CNROM/AxROM/Color Dreams/GxROM/Codemasters.
-  - `fc-core/src/mapper/mmc1.rs`, `mmc2.rs`, `mmc3.rs`, `mmc4.rs`, `mmc5.rs`: chip-specific implementations.
-  - Updated `fc-core/src/lib.rs` mapper list comment to include current mapper coverage.
-- Verification:
-  - `cargo fmt`: PASS
-  - `cargo test -p fc-core`: PASS, 13 tests
-  - `cargo build -p fc-cli`: PASS
-  - `cargo test`: PASS
-  - `mmc3_test/*.nes --frames 12000`: PASS, 6/6
-  - `apu_test/rom_singles/*.nes --frames 12000`: PASS, 8/8
-  - `ppu_vbl_nmi/rom_singles/*.nes --frames 12000`: PASS, 10/10
-  - `cpu_interrupts_v2/rom_singles/*.nes --frames 12000`: PASS, 5/5
-  - `sprdma_and_dmc_dma/*.nes --frames 30000`: PASS, 2/2
-  - `instr_misc + instr_timing --frames 30000`: PASS, 6/6
-  - MMC5 screenshots: `exram/mmc5exram.nes` and `mmc5test_v2/mmc5test.nes` still render correctly.
-
-### Continued Phase: enhanced sprite display planning
-- Started: 2026-06-20
-- User request: plan a performance/display optimization for excessive active objects causing screen flicker; research other emulator approaches first and create a plan.
-- Research summary:
-  - NES hardware renders at most 8 sprites per scanline; excess sprites are omitted, and many games rotate OAM order to make this omission flicker rather than permanently hide one object.
-  - Other emulators expose this as an optional "allow more than 8 sprites per scanline" / "remove sprite limit" video enhancement. It is a visual enhancement rather than accurate hardware emulation.
-- Local code summary:
-  - `Ppu` has fixed `[SpriteUnit; 8]` and `[u16; 8]` scanline sprite state.
-  - `evaluate_sprites()` selects only 8 renderable sprites and sets overflow behavior.
-  - `fetch_sprite_pattern()` keeps the 8-slot hardware fetch model required by MMC3 timing.
-  - `render_pixel()` composites only `sprite_count` selected sprites.
-- Planning conclusion:
-  - Add an optional enhanced-sprite rendering path that can render more than 8 sprites per scanline.
-  - Preserve default hardware-accurate path and all CPU-visible PPU state.
-  - Do not change DMA, OAM memory, sprite overflow status, sprite-0 hit timing, or mapper A12 fetch timing in the enhancement.
-
-### Continued Phase: enhanced sprite display implementation
-- Started: 2026-06-20
-- Implemented core runtime option:
-  - Added `PpuRenderOptions { remove_sprite_limit }`, default off.
-  - Kept hardware scanline state as `[SpriteUnit; 8]`, overflow, sprite-0 hit, OAM/DMA, and mapper A12 fetch timing unchanged.
-  - Added an enhanced visual-only sprite list that is prepared on demand during pixel compositing when the option is enabled.
-  - `ControlDeck` exposes `set_remove_sprite_limit()` and preserves the runtime option across save-state loads.
-- Frontend integration:
-  - `fc-gui` gets a top-menu `reduce flicker` checkbox.
-  - `fc-tauri` backend exposes `set_remove_sprite_limit`.
-  - Pinia display state adds `removeSpriteLimit`; ControlPanel adds a `减少闪烁` switch.
-- Verification so far:
-  - `cargo fmt`: PASS
-  - `cargo test -p fc-core`: PASS, 13 tests
-  - `cargo build -p fc-cli`: PASS
-  - `cargo build -p fc-gui`: PASS
-  - `cargo build --manifest-path fc-tauri/src-tauri/Cargo.toml`: PASS, existing dead-code warning only.
-- Blocked check:
-  - `(cd fc-tauri && npx vue-tsc --noEmit)` failed because npm could not resolve `registry.npmmirror.com` while trying to fetch `vue-tsc`; no local `fc-tauri/node_modules` vue-tsc binary was available.
-
-### Continued Phase: mapper compatibility gap closure — architecture-first batch
-- Started: 2026-06-22
-- Implemented:
-  - Added Mapper 75 / VRC1 in `fc-core/src/mapper/basic/konami.rs`.
-  - Added Mapper 76 as an MMC3 CHR-layout variant in `fc-core/src/mapper/mmc3.rs`.
-  - Added `MapperOps::hblank_clock()` / `clocks_hblank()` plus cached `Cartridge::mapper_clocks_hblank` and a Bus HBlank call site for FCEUX-style scanline IRQ boards.
-  - Added Mapper 91 / JY Company in `fc-core/src/mapper/basic/jy.rs`, including submapper 1 outer bank and mirroring latch behavior.
-  - Updated mapper gap checklist and mapper reference records for 75/76/91 and the HBlank architecture hook.
-- Verification so far:
-  - `cargo fmt`: PASS
-  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 49 tests
-- Notes:
-  - Initial mapper91 test incorrectly expected fixed banks to resolve as the last two physical PRG pages; corrected to `0x0E/0x0F` per current FCEUmm-style mapper91 path.
-
-### Mapper 206 / 207 Namco-Taito Batch
-- Implemented mapper 206 / Namco108 subset in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/namco.rs`.
-- Extended mapper 80's Taito X1-005 implementation for mapper 207 alternate mirroring in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/taito.rs` without changing mapper 80 default behavior.
-- Wired mapper 206/207 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs` and updated capability guard tables.
-- Updated mapper gap and reference documents. Supported mapper count is now 121; remaining four-reference union gap is 372.
-- Verification so far:
-  - `cargo test -p fc-core mapper::basic::namco::tests::mapper206 -- --nocapture`: PASS.
-  - `cargo test -p fc-core mapper::basic::taito::tests::mapper207 -- --nocapture`: PASS.
-  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 38/38 mapper facade tests.
-  - `cargo fmt --check`: PASS.
-  - `git diff --check`: PASS.
-  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 78/78 mapper tests.
-  - `cargo test -p fc-core`: PASS, 118/118 fc-core tests.
-  - `cargo test`: PASS, workspace tests.
-
-### Mapper 192 / 195 / 228 / 232 / 255 Low-risk Batch
-- Implemented mapper 192 and 195 as MMC3 CHR-RAM window variants in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs`.
-- Implemented mapper 232 / Codemasters BF9096 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/core.rs`.
-- Implemented mapper 228 / Action Enterprises and mapper 255 / BMC255 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/multicart.rs`.
-- Wired all five through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs` and updated capability guard tables.
-- Updated mapper gap and reference documents. Supported mapper count is now 126; remaining four-reference union gap is 367.
-- Verification so far:
-  - `cargo test -p fc-core mapper::basic::core::tests::mapper232 -- --nocapture`: PASS, 2/2.
-  - `cargo test -p fc-core mapper::mmc3::tests -- --nocapture`: PASS, 16/16.
-  - `cargo test -p fc-core mapper::basic::multicart::tests -- --nocapture`: PASS, 2/2.
-  - `cargo fmt --check`: PASS.
-  - `git diff --check`: PASS.
-  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 84/84 mapper tests.
-  - `cargo test -p fc-core`: PASS, 124/124 fc-core tests.
-  - `cargo test`: PASS, workspace tests.
-
-### Mapper 68 Sunsoft-4 Architecture Batch
-- Implemented `MapperOps::nametable_chr_index()` and cached `Cartridge::mapper_has_nametable_chr_mapping` so mappers can route nametable fetches to CHR-ROM/CHR-RAM without putting backing storage inside mapper logic.
-- Implemented mapper 68 / Sunsoft-4 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/latch/sunsoft.rs` with 16KB PRG banking, four 2KB CHR banks, mirroring control, and CHR-backed nametable page selection.
-- Wired mapper 68 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs` and added capability guard coverage.
-- Added a Cartridge-level mapper 68 test proving nametable writes/readbacks go through CHR-RAM and leave CIRAM untouched.
-- Updated mapper gap and reference documents. Supported mapper count is now 127; remaining four-reference union gap is 366.
-- Team-mode research results for the next work queue:
-  - Low-risk latch/discrete order: `149,122,133`, then `146,148,144`, then `154,155,108`, then `166/167`, `156`.
-  - MMC3 variant order: helper refactor, `49`, `115`, `114`, `121`.
-  - Mechanical A-grade later batch: `185,187,189,191,193,196,208,245,254`; external-device/PPU-read-hook boards should wait.
-- Verification so far:
-  - `cargo test -p fc-core mapper::basic::latch::sunsoft::tests -- --nocapture`: PASS, 2/2.
-  - `cargo test -p fc-core mapper68_nametable_chr_mapping_cache_and_chr_ram_bridge -- --nocapture`: PASS, 1/1.
-  - `cargo fmt --check`: PASS after formatting export order.
-  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 38/38 mapper facade tests.
-  - `git diff --check`: PASS.
-  - `cargo test -p fc-core`: PASS, 127/127 fc-core tests.
-  - `cargo test`: PASS, workspace tests.
-
-### Mapper 122 / 133 / 149 Low-risk Latch Batch
-- Implemented mapper 122 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/latch/discrete.rs`: fixed 32KB PRG mapping and two independent 4KB CHR latches selected by write-address A0.
-- Added `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/latch/sachen.rs` for mapper 133 / Sachen SA72008 and mapper 149 / Sachen SA0036.
-- Mapper 133 accepts Mesen2-style low writes where `(addr & 0x6100) == 0x4100` and high writes through the normal mapper-register path; latch bits select PRG32 and CHR8.
-- Mapper 149 keeps fixed PRG32 and selects CHR8 from bit 7 of the written value.
-- Wired all three through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs` and updated capability guard tables.
-- Updated mapper gap and reference documents. Supported mapper count is now 130; remaining four-reference union gap is 363.
-- Verification so far:
-  - `cargo fmt`: PASS.
-  - `cargo test -p fc-core mapper::basic::latch::sachen::tests -- --nocapture`: PASS, 2/2.
-  - `cargo test -p fc-core mapper::basic::latch::discrete::mapper122_tests -- --nocapture`: PASS, 1/1 after correcting the initial test expectation for CHR slot 1's reset bank.
-  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 38/38 mapper facade tests.
-  - `cargo fmt --check`: PASS.
-  - `git diff --check`: PASS.
-  - `cargo test -p fc-core`: PASS, 130/130 fc-core tests.
-  - `cargo test`: PASS, workspace tests.
-
-### Mapper 144 / 146 / 148 Low-risk Latch Batch
-- Implemented mapper 144 as a Color Dreams variant in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/core.rs`: odd-address high writes only, shared 4-bit PRG/CHR latch, and mapper-specific bit0-only bus conflict behavior.
-- Extended `MapperOps` with `apply_bus_conflict()` so mapper 144 can customize conflict resolution while existing bus-conflict mappers keep the default AND behavior.
-- Implemented mapper 146 / Sachen SA016-1M and mapper 148 / Sachen SA0037 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/latch/sachen.rs` using shared SA016-1M PRG32/CHR8 decoding.
-- Fixed the Sachen low-write path for mapper 133/146 by handling `$4100-$5FFF` through `write_expansion()`, matching the current Cartridge routing.
-- Wired 144/146/148 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs` and updated capability guard tables.
-- Updated mapper gap and reference documents. Supported mapper count is now 133; remaining four-reference union gap is 360.
-- Verification so far:
-  - `cargo fmt`: PASS.
-  - `cargo test -p fc-core mapper::basic::core::tests -- --nocapture`: initially failed due duplicate `tests` module, fixed by merging tests; PASS, 4/4.
-  - `cargo test -p fc-core mapper::basic::latch::sachen::tests -- --nocapture`: PASS, 4/4.
-  - `cargo fmt --check`: PASS.
-  - `git diff --check`: PASS.
-  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 38/38 mapper facade tests.
-  - `cargo test -p fc-core`: PASS, 134/134 fc-core tests.
-  - `cargo test`: PASS, workspace tests.
-
-### Mapper Board Compatibility Layer Planning
-- User asked why mapper translation cannot simply copy every few-hundred-line reference implementation and whether the current difficulty is architectural.
-- Decision: yes, the main scaling bottleneck is missing board-framework affordances, not mapper theory itself.
-- Added `/Users/sunmeng/workspace/fc/docs/Mapper-架构优化计划.md`.
-- Updated `/Users/sunmeng/workspace/fc/task_plan.md` with Phase 18: Mapper board compatibility layer.
-- Updated `/Users/sunmeng/workspace/fc/findings.md` with the architectural diagnosis.
-- Planned execution order:
-  - Finish and commit current 49/114/115/121 WIP.
-  - Add `BankMap` helper.
-  - Add CPU address handler helpers.
-  - Extract reusable IRQ units.
-  - Clean up MMC3 variant layer.
-  - Add expansion audio interface for FME7/N163/VRC6/VRC7.
-
-### Phase 18 CPU Address Handler Helper Pass
-- Refactored `/Users/sunmeng/workspace/fc/fc-core/src/cartridge.rs` CPU access handling into private helpers:
-  - expansion range: `cpu_read_expansion_with_open_bus`, `cpu_peek_expansion_with_open_bus`, `cpu_write_expansion`.
-  - low range: `cpu_read_low`, `cpu_peek_low`, `cpu_write_low`.
-  - high range: `cpu_read_high_with_open_bus`, `cpu_peek_high_with_open_bus`, `cpu_write_high`.
-- Preserved existing behavior while making priority/order explicit:
-  - expansion mapper read, expansion PRG-ROM mapping, otherwise open bus.
-  - low PRG-RAM backing with mapper low-register override, optional low PRG-ROM mapping, and write fall-through.
-  - high PRG-ROM backing with mapper register read side effects, cheat patches after readback, and bus conflicts before register writes.
-- Verification so far:
-  - `cargo fmt --check`: PASS.
-  - `cargo test -p fc-core cartridge::tests -- --nocapture`: PASS, 9/9.
-  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 105/105.
-  - `git diff --check`: PASS.
-  - `cargo test -p fc-core`: PASS, 146/146.
-  - `cargo test`: PASS, workspace tests.
-
-### Phase 18 MMC3 A12 IRQ Helper Pass
-- Added `/Users/sunmeng/workspace/fc/fc-core/src/mapper/irq.rs` with `Mmc3A12Irq`.
-- Migrated `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs` from local IRQ/A12 fields to `#[serde(flatten)] irq: Mmc3A12Irq`, preserving old save-state field names while making the IRQ unit reusable.
-- Left VRC4, RAMBO-1, Waixing, FME7, and `basic/irq.rs` CPU counter IRQs untouched; their prescaler/delay/overflow semantics differ and need a separate helper pass.
-- Initial helper unit tests failed because the assertions skipped the MMC3 reload edge timing. Corrected them so the first valid A12 edge reloads, the following valid edge clocks toward IRQ, and the zero-reload suppression case first decrements from 1 to 0.
-- Verification so far:
-  - `cargo fmt --check`: PASS.
-  - `cargo test -p fc-core mapper::irq -- --nocapture`: PASS, 2/2.
-  - `cargo test -p fc-core mapper::mmc3::tests -- --nocapture`: PASS, 20/20.
-  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 107/107.
-  - `git diff --check`: PASS.
-  - `cargo test -p fc-core`: PASS, 148/148.
-  - `cargo test`: PASS, workspace tests.
-
-### Phase 18 A12 Edge Filter Helper Pass
-- Extended `/Users/sunmeng/workspace/fc/fc-core/src/mapper/irq.rs` with `A12EdgeFilter`.
-- Migrated A12 low-time debounce state for:
-  - `Mmc3A12Irq` with 9-dot threshold.
-  - `/Users/sunmeng/workspace/fc/fc-core/src/mapper/rambo1.rs` with 30-dot threshold.
-  - `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/irq.rs` mapper 117 with `>=11` to preserve the old `>10` test.
-- Kept `#[serde(flatten)]` on migrated filter fields so `a12_prev` / `a12_low_since` save-state names remain stable.
-- Verification so far:
-  - `cargo fmt --check`: PASS.
-  - `git diff --check`: PASS.
-  - `cargo test -p fc-core mapper::irq -- --nocapture`: PASS, 3/3.
-  - `cargo test -p fc-core mapper::rambo1::tests -- --nocapture`: PASS, 4/4.
-  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 108/108.
-  - `cargo test -p fc-core`: PASS, 149/149.
-  - `cargo test`: PASS, workspace tests.
-
-### Phase 18 CPU-Cycle IRQ Helper Pass
-- Added `CpuCycleIrq` to `/Users/sunmeng/workspace/fc/fc-core/src/mapper/irq.rs`.
-- Migrated low-risk CPU-cycle up-counter mappers using `#[serde(flatten)]` to preserve old save-state field names:
-  - `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/unlicensed.rs` mapper 43: count to 4096 and disable on hit.
-  - `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/irq.rs` mapper 50: count to 0x1000 and disable on hit.
-  - `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/unlicensed.rs` mapper 106: write low/high counter bytes, count up to zero, then disable on hit.
-- Left decrementing/reload/prescaler IRQs for a later pass because their semantics differ materially.
-- Verification so far:
-  - `cargo fmt --check`: PASS.
-  - `git diff --check`: PASS.
-  - `cargo test -p fc-core mapper::irq -- --nocapture`: PASS, 5/5.
-  - `cargo test -p fc-core mapper::tests::unlicensed_mapper_batch_matches_reference_bank_and_irq_rules -- --nocapture`: PASS.
-  - `cargo test -p fc-core mapper::tests::additional_cpu_irq_mappers_follow_reference_bank_and_irq_rules -- --nocapture`: PASS.
-  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 110/110.
-  - `cargo test -p fc-core`: PASS, 151/151.
-
-### Mapper 49 / 114 / 115 / 121 MMC3 Protocol Variant Batch
-- Refactored MMC3 writes in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs` into `write_bank_select()`, `write_bank_data()`, and `write_standard_register()`.
-- Added mapper 49 / 114 / 115 / 121 as MMC3 variants:
-  - 49: outer latch with PRG32/MMC3 mode and CHR high-bit extension.
-  - 114: remapped high-register write protocol, command pending gate, forced PRG modes, and CHR extension bit.
-  - 115: PRG/CHR extension low registers and protection readback.
-  - 121: protection LUT/readback, scrambled extension register, PRG/CHR override behavior.
-- Wired all four through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs` and updated mapper capability guard tables.
-- Updated `/Users/sunmeng/workspace/fc/docs/Mapper-适配差距清单.md` and `/Users/sunmeng/workspace/fc/docs/Mapper-适配引用记录.md`; supported mapper count is now 137 and remaining four-reference union gap is 356.
-- Verification:
-  - `cargo fmt --check`: PASS.
-  - `git diff --check`: PASS.
-  - `cargo test -p fc-core mapper::mmc3::tests -- --nocapture`: PASS, 20/20.
-  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 38/38.
-  - `cargo test -p fc-core`: PASS, 138/138.
-  - `cargo test`: PASS.
-
-### Mapper Bank Helper Architecture Step
-- Added `/Users/sunmeng/workspace/fc/fc-core/src/mapper/bank.rs` with stateless helper functions mirroring board-style PRG/CHR page setup vocabulary:
-  - `prg_8k_at`, `prg_16k_at`, `prg_32k`
-  - `chr_1k_at`, `chr_2k_at`, `chr_4k_at`, `chr_8k`
-- Migrated `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/core.rs` ColorDreams/GxROM and `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/latch/sachen.rs` Sachen 133/146/148/149 to the helper.
-- This is intentionally a no-state first step so save-state compatibility and hot-path behavior stay simple while future mappers can read closer to reference `setprg`/`setchr` logic.
-- Verification so far:
-  - `cargo fmt --check`: PASS.
-  - `cargo test -p fc-core mapper::bank -- --nocapture`: PASS, 2/2.
-  - `cargo test -p fc-core mapper::basic::core::tests -- --nocapture`: PASS, 4/4.
-  - `cargo test -p fc-core mapper::basic::latch::sachen::tests -- --nocapture`: PASS, 4/4.
-  - `git diff --check`: PASS.
-  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 99/99.
-  - `cargo test -p fc-core`: PASS, 140/140.
-  - `cargo test`: PASS.
-- Error note:
-  - Tried to pass three test filters in one Cargo command; Cargo accepts one filter, so tests were split and rerun.
-
-### Mapper 108 / 154 / 155 Low-risk Board Batch
-- Implemented mapper 108 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/special.rs`: FDS conversion style `$6000-$7FFF` PRG-ROM window, high `$8000-$FFFF` fixed to the last 32KB, fixed CHR8, and write windows at `$8000-$8FFF` plus `$F000-$FFFF`.
-- Implemented mapper 154 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/namco.rs`: wraps the existing Namco118/Namco108 banking path and adds command-write bit6 single-screen mirroring.
-- Implemented mapper 155 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc1.rs`: routes through MMC1 with a saved variant marker for always-enabled WRAM behavior once MMC1 PRG-RAM disable gating exists.
-- Wired all three through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs` and updated mapper capability guard tables.
-- Updated `/Users/sunmeng/workspace/fc/docs/Mapper-适配差距清单.md` and `/Users/sunmeng/workspace/fc/docs/Mapper-适配引用记录.md`; supported mapper count is now 140 and remaining four-reference union gap is 353.
-- Verification so far:
-  - `cargo fmt --check`: PASS.
-  - `cargo test -p fc-core mapper::basic::special::tests -- --nocapture`: PASS, 1/1.
-  - `cargo test -p fc-core mapper::basic::namco::tests -- --nocapture`: PASS, 3/3.
-  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 38/38.
-  - `git diff --check`: PASS.
-  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 101/101 mapper tests.
-  - `cargo test -p fc-core`: PASS, 142/142 fc-core tests.
-  - `cargo test`: PASS, workspace tests.
-
-### Mapper 156 / 166 / 167 Low-risk Board Batch
-- Implemented mapper 156 / OpenCorp Daou306 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/opencorp.rs`: 16KB PRG select, fixed final 16KB PRG, 8 independent 1KB CHR low/high registers, `$C014` mirroring register, and reset behavior.
-- Implemented mapper 166/167 / Subor in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/subor.rs`: shared four-register PRG formula, UNROM/inverted UNROM/NROM-like modes, mapper 167 alternate bank order/fixed bank, fixed CHR8, and FCEUmm-style mirroring bit.
-- Wired 156/166/167 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs` and updated mapper capability guard tables.
-- Updated `/Users/sunmeng/workspace/fc/docs/Mapper-适配差距清单.md` and `/Users/sunmeng/workspace/fc/docs/Mapper-适配引用记录.md`; supported mapper count is now 143 and remaining four-reference union gap is 350.
-- Verification so far:
-  - `cargo fmt`: PASS.
-  - `cargo test -p fc-core mapper::basic::opencorp::tests -- --nocapture`: PASS, 1/1.
-  - `cargo test -p fc-core mapper::basic::subor::tests -- --nocapture`: PASS, 2/2.
-  - `cargo fmt --check`: PASS.
-  - `git diff --check`: PASS.
-  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 104/104 mapper tests.
-  - `cargo test -p fc-core`: PASS, 145/145 fc-core tests.
-  - `cargo test`: PASS, workspace tests.
-- Error note:
-  - Tried to pass two test filters in one Cargo command; Cargo accepts one filter, so tests were split and rerun.
-
-### Mapper Bank Helper Mixed CHR-ROM/RAM Window Step
-- Extended `/Users/sunmeng/workspace/fc/fc-core/src/mapper/bank.rs` with `ChrBankSource` and `ChrRamWindow`, covering selected 1KB CHR banks routed to mapper-owned CHR-RAM while all other banks stay CHR-ROM-backed.
-- Migrated `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs` away from its local `Mmc3ChrRamWindow` type. Mapper 74/119/192/194/195 now use the shared helper while preserving the legacy `chr_ram_bank_base` save-state fallback.
-- Updated `/Users/sunmeng/workspace/fc/docs/Mapper-架构优化计划.md`, `/Users/sunmeng/workspace/fc/task_plan.md`, and `/Users/sunmeng/workspace/fc/findings.md` to mark the mixed ROM/RAM window helper step complete.
-- Verification so far:
-  - `cargo fmt --check`: PASS.
-  - `git diff --check`: PASS.
-  - `cargo test -p fc-core mapper::bank -- --nocapture`: PASS, 3/3.
-  - `cargo test -p fc-core mapper::mmc3::tests -- --nocapture`: PASS, 20/20.
-  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 105/105 mapper tests.
-  - `cargo test -p fc-core`: PASS, 146/146 fc-core tests.
-  - `cargo test`: PASS, workspace tests.
-
-### Mapper 185 / 189 / 193 Mechanical Board Batch
-- Implemented mapper 185 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/discrete.rs`: fixed first/last PRG16, CNROM-style CHR0 when enabled, and dummy `0xFF` CHR reads/writes when protection disables CHR.
-- Implemented mapper 189 as `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs` `Mmc3OuterBank::Mapper189`: low-register `value | (value >> 4)` latch, PRG32 outer-bank wrapping, normal MMC3 CHR and IRQ behavior.
-- Implemented mapper 193 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/discrete.rs`: `$6000-$6003` low-register writes, switchable `$8000` PRG8, fixed `$A000/$C000/$E000` PRG8 tail, and CHR4/CHR2/CHR2 bank layout.
-- Wired all three through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs` and updated `/Users/sunmeng/workspace/fc/docs/Mapper-适配差距清单.md` plus `/Users/sunmeng/workspace/fc/docs/Mapper-适配引用记录.md`; supported mapper count is now 146 and remaining four-reference union gap is 347.
-- Verification:
-  - `cargo fmt --check`: PASS.
-  - `git diff --check`: PASS.
-  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 113/113 mapper tests.
-  - `cargo test -p fc-core`: PASS, 154/154 fc-core tests.
-  - `cargo test`: PASS, workspace tests.
-
-### Mapper 191 / 245 MMC3 Mechanical Board Batch
-- Implemented mapper 191 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs`: reuses the shared `ChrRamWindow` helper for CHR banks `$80-$FF` selecting a 2KB CHR-RAM window, while preserving normal MMC3 PRG and A12 IRQ behavior.
-- Implemented mapper 245 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs`: adds a thin `Mmc3OuterBank::Mapper245` variant that masks CHR banks to low 3 bits and extends PRG banks with CHR register 0 bit1.
-- Wired both through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs` and updated `/Users/sunmeng/workspace/fc/docs/Mapper-适配差距清单.md` plus `/Users/sunmeng/workspace/fc/docs/Mapper-适配引用记录.md`; supported mapper count is now 148 and remaining four-reference union gap is 345.
-- Verification:
-  - `cargo fmt --check`: PASS.
-  - `git diff --check`: PASS.
-  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 115/115 mapper tests.
-  - `cargo test -p fc-core`: PASS, 156/156 fc-core tests.
-  - `cargo test`: PASS, workspace tests.
-
-### Mapper 196 MMC3 Protocol Variant Batch
-- Implemented mapper 196 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs`: adds a `Mmc3OuterBank::Mapper196` PRG32 latch and remaps high-register address lines before routing writes through the shared MMC3 helper.
-- Wired mapper 196 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs`, updated capability guard tests, and refreshed mapper gap/reference docs; supported mapper count is now 149 and remaining four-reference union gap is 344.
-- Verification:
-  - `cargo fmt --check`: PASS.
-  - `git diff --check`: PASS.
-  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 116/116 mapper tests.
-  - `cargo test -p fc-core`: PASS, 157/157 fc-core tests.
-  - `cargo test`: PASS, workspace tests.
-
-### Mapper 254 Protected WRAM Batch
-- Implemented mapper 254 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs`: adds protected low WRAM reads using `read_low_register_with_prg_ram()`, `$8000` unlock, and `$A001` XOR mask while preserving normal MMC3 banking and A12 IRQ behavior.
-- Wired mapper 254 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs`, updated capability guard tests, and refreshed mapper gap/reference docs; supported mapper count is now 150 and remaining four-reference union gap is 343.
-- Verification:
-  - `cargo fmt --check`: PASS.
-  - `git diff --check`: PASS.
-  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 117/117 mapper tests.
-  - `cargo test -p fc-core`: PASS, 158/158 fc-core tests.
-  - `cargo test`: PASS, workspace tests.
-
-### Mapper 187 / 208 MMC3 Protection Batch
-- Implemented mapper 187 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs`: adds A98402-style protection reads, `$8000/$8001` command gate, forced PRG16/PRG32 outer modes, and CHR bit8 extension while preserving MMC3 A12 IRQ behavior.
-- Implemented mapper 208 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs`: adds Gouder 37017 PRG32 latch, 256-byte protection LUT/register readback, mapper-controlled mirroring for the default path, and FCEUmm-recorded submapper 1 PRG source behavior.
-- Wired both through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs`, updated capability guard tests, and refreshed mapper gap/reference docs; supported mapper count is now 152 and remaining four-reference union gap is 341.
-- Verification so far:
-  - `cargo test -p fc-core mapper::mmc3::tests -- --nocapture`: PASS, 27/27 MMC3 tests.
-  - `cargo test -p fc-core mapper::tests:: -- --nocapture`: PASS, 38/38 mapper facade tests.
-  - `cargo fmt --check`: PASS.
-  - `git diff --check`: PASS.
-  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 119/119 mapper tests.
-  - `cargo test -p fc-core`: PASS, 160/160 fc-core tests.
-  - `cargo test`: PASS, workspace tests.
-
-### Mapper 48 / 158 IRQ and Variant Batch
-- Implemented mapper 48 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/taito.rs`: reuses Taito TC0190 PRG/CHR banking, adds the mapper 48 `$C000-$FFFF` IRQ/mirroring write path, and clocks IRQ through the existing HBlank mapper hook.
-- Implemented mapper 158 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/rambo1.rs`: reuses RAMBO-1 PRG/CHR/IRQ behavior, ignores ordinary `$A000` mirroring, and maps CHR bank bit7 to mapper-owned per-nametable CIRAM pages.
-- Wired both through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs`, updated mapper capability guard tests, and refreshed `/Users/sunmeng/workspace/fc/docs/Mapper-适配差距清单.md` plus `/Users/sunmeng/workspace/fc/docs/Mapper-适配引用记录.md`; supported mapper count is now 154 and remaining four-reference union gap is 339.
-- Verification:
-  - `cargo test -p fc-core mapper::basic::taito::tests -- --nocapture`: PASS, 2/2.
-  - `cargo test -p fc-core mapper::rambo1::tests -- --nocapture`: PASS, 5/5.
-  - `cargo test -p fc-core mapper::tests::watches_ppu_bus_matches_notify_a12_overrides -- --nocapture`: PASS.
-  - `cargo test -p fc-core mapper::tests::clocks_cpu_matches_cpu_clock_overrides -- --nocapture`: PASS.
-  - `cargo test -p fc-core mapper::tests::clocks_hblank_matches_hblank_clock_overrides -- --nocapture`: PASS.
-  - `cargo fmt --check`: PASS.
-  - `git diff --check`: PASS.
-  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 121/121 mapper tests.
-  - `cargo test -p fc-core`: PASS, 162/162 fc-core tests.
-  - `cargo test`: PASS, workspace tests.
-- Error note:
-  - First mapper 158 test used `0x80` as the observable CHR bank value, but the 16KB CHR test fixture wraps it to bank 0; changed the assertion input to `0x84` so bit7 nametable selection and CHR bank mapping are both visible.
-
-### Mapper 188 / 197 / 198 Mechanical Board Batch
-- Implemented mapper 188 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/discrete.rs`: Karaoke Studio expansion cartridge PRG16 latch, fixed `$C000` PRG bank 7, fixed CHR8, horizontal mirroring, and `$6000-$7FFF` device read value 3.
-- Implemented mapper 197 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs`: adds an `Mmc3ChrLayout::Mapper197` 2KB CHR cwrap layer while preserving normal MMC3 PRG banking and A12 IRQ behavior. Submapper 0/1/2 CHR layouts are covered; submapper 3 low-register outer PRG/CHR remains future precision work.
-- Implemented mapper 198 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs`: adds a low `$5000-$5FFF` WRAM window through existing helper paths and a PRG pwrap mask for high bank numbers while preserving normal MMC3 CHR/A12 IRQ behavior.
-- Wired 188/197/198 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs`, updated mapper capability guard tests, and refreshed `/Users/sunmeng/workspace/fc/docs/Mapper-适配差距清单.md` plus `/Users/sunmeng/workspace/fc/docs/Mapper-适配引用记录.md`; supported mapper count is now 157 and remaining four-reference union gap is 336.
-- Mapper 199 was examined but intentionally deferred: FCEUX models mixed CHR-RAM/EXPREGS behavior while FCEUmm has a much simpler unbanked CHR-RAM + low WRAM path, so it should be a separate precision batch.
-- Verification:
-  - `cargo test -p fc-core mapper::basic::discrete::tests -- --nocapture`: PASS, 3/3.
-  - `cargo test -p fc-core mapper::mmc3::tests -- --nocapture`: PASS, 29/29.
-  - `cargo test -p fc-core mapper::tests::watches_ppu_bus_matches_notify_a12_overrides -- --nocapture`: PASS.
-  - `cargo test -p fc-core mapper::tests::clocks_cpu_matches_cpu_clock_overrides -- --nocapture`: PASS.
-  - `cargo test -p fc-core mapper::tests::clocks_hblank_matches_hblank_clock_overrides -- --nocapture`: PASS.
-
-### Mapper 35 / 221 Architecture Reuse Batch
-- Implemented mapper 35 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/jy.rs`: JY single-cart PRG8/CHR1 registers, `$D001` mirroring, and MMC3-style A12 IRQ using the shared `A12EdgeFilter`.
-- Implemented mapper 221 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/multicart.rs`: mode/address latch plus PRG latch, UNROM/NROM-256/NROM-128 banking, submapper 1 outer bit behavior, fixed CHR8, mirroring, and open-bus reads for unpopulated PRG banks.
-- Wired both through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs`, updated mapper capability guard tests, and refreshed `/Users/sunmeng/workspace/fc/docs/Mapper-适配差距清单.md` plus `/Users/sunmeng/workspace/fc/docs/Mapper-适配引用记录.md`; supported mapper count is now 159 and remaining four-reference union gap is 334.
-- Verification so far:
-  - `cargo test -p fc-core mapper35 -- --nocapture`: PASS, 1/1.
-  - `cargo test -p fc-core mapper221 -- --nocapture`: PASS, 1/1.
-  - `cargo fmt --check`: PASS.
-  - `git diff --check`: PASS.
-  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 126/126 mapper tests.
-  - `cargo test -p fc-core`: PASS, 167/167 fc-core tests.
-  - `cargo test`: PASS, workspace tests.
-- Error note:
-  - Tried to pass `mapper35 mapper221` as two Cargo test filters; Cargo accepts one filter, so the targeted tests were split and rerun.
-
-### Mapper 96 PPU Latch Batch
-- Implemented mapper 96 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/latch/discrete.rs`: Oeka Kids PRG32 register, fixed high CHR4 bank, PPU nametable-address latch for the low CHR4 bank, and fixed single-screen-low mirroring.
-- Wired mapper 96 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs`, marked it as a PPU-bus watcher, added facade behavior coverage, and refreshed mapper gap/reference docs; supported mapper count is now 160 and remaining four-reference union gap is 333.
-- Verification:
-  - `cargo fmt --check`: PASS.
-  - `git diff --check`: PASS.
-  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 127/127 mapper tests.
-  - `cargo test -p fc-core`: PASS, 168/168 fc-core tests.
-  - `cargo test`: PASS, workspace tests.
-
-### Mapper 12 MMC3 Expansion Register Batch
-- Implemented mapper 12 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs`: standard MMC3 PRG/IRQ behavior plus `$4100-$5FFF` expansion register writes that add CHR bank bit8 independently for `$0000-$0FFF` and `$1000-$1FFF`, language latch readback, and reset toggle with MMC3 register reset semantics.
-- Wired mapper 12 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs`, updated capability guard tables, and refreshed mapper gap/reference docs; supported mapper count is now 161 and remaining four-reference union gap is 332.
-- Verification:
-  - `cargo fmt --check`: PASS.
-  - `git diff --check`: PASS.
-  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 128/128 mapper tests.
-  - `cargo test -p fc-core`: PASS, 169/169 fc-core tests.
-  - `cargo test`: PASS, workspace tests.
-
-### Mapper 8 / 31 Latch and NSF Paging Batch
-- Implemented mapper 8 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/latch/discrete.rs`: FFE/FJ-007 style single latch, low 16KB PRG bank from `value >> 3`, fixed high 16KB PRG bank 1, 8KB CHR bank from `value & 3`, and fixed vertical mirroring.
-- Implemented mapper 31 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/latch/discrete.rs`: NSF/INL eight-slot 4KB PRG-ROM paging through `$5000-$5FFF`, with slot 7 initialized to `0xFF` and fixed CHR address passthrough.
-- Wired both through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs`, updated capability guard tests, and refreshed mapper gap/reference docs; supported mapper count is now 163 and remaining four-reference union gap is 330.
-- Verification:
-  - `cargo fmt --check`: PASS.
-  - `git diff --check`: PASS.
-  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 130/130 mapper tests.
-  - `cargo test -p fc-core`: PASS, 171/171 fc-core tests.
-  - `cargo test`: PASS, workspace tests.
-
-### Mapper 28 Action 53 Batch
-- Implemented mapper 28 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/multicart.rs`: Action 53 `reg/chr/prg/mode/outer` state, `$5000-$5FFF` register selection, CHR8 latch, PRG16 mode matrix, direct/single-screen/vertical/horizontal mirroring, and reset defaults for `outer=63` plus `prg=15`.
-- Wired mapper 28 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs`, updated capability guard tests, and refreshed mapper gap/reference docs; supported mapper count is now 164 and remaining four-reference union gap is 329.
-- Verification:
-  - `cargo test -p fc-core mapper28_action53 -- --nocapture`: PASS, 1/1.
-  - `cargo fmt --check`: PASS.
-  - `git diff --check`: PASS.
-  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 131/131 mapper tests.
-  - `cargo test -p fc-core`: PASS, 172/172 fc-core tests.
-  - `cargo test`: PASS, workspace tests.
-
-### Mapper 29 Sealie Computing Batch
-- Implemented mapper 29 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/latch/discrete.rs`: high-register latch with low 16KB PRG bank from `(value >> 2) & 7`, fixed high 16KB PRG bank, CHR8 from `value & 3`, and fixed vertical mirroring.
-- Added iNES default 32KB CHR-RAM sizing for mapper 29 in `/Users/sunmeng/workspace/fc/fc-core/src/cartridge.rs`, matching Mesen2's Sealie Computing board metadata.
-- Wired mapper 29 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs`, updated capability guard tests, and refreshed mapper gap/reference docs; supported mapper count is now 165 and remaining four-reference union gap is 328.
-- Verification:
-  - `cargo test -p fc-core mapper29_sealie -- --nocapture`: PASS, 1/1.
-  - `cargo test -p fc-core ines_mapper29 -- --nocapture`: PASS, 1/1.
-  - `cargo fmt --check`: PASS.
-  - `git diff --check`: PASS.
-  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 132/132 mapper tests.
-  - `cargo test -p fc-core`: PASS, 174/174 fc-core tests.
-  - `cargo test`: PASS, workspace tests.
-
-### Mapper 51 11-in-1 Ball Games Batch
-- Implemented mapper 51 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/multicart.rs`: bank/mode registers, `$6000-$7FFF` low PRG-ROM window, `$6000-$7FFF` mode writes, high bank writes, vertical/horizontal mirroring switch, and reset defaults.
-- Wired mapper 51 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs`, updated capability guard tests, and refreshed mapper gap/reference docs; supported mapper count is now 166 and remaining four-reference union gap is 327.
-- Verification:
-  - `cargo test -p fc-core mapper51 -- --nocapture`: PASS, 1/1.
-  - `cargo fmt --check`: PASS.
-  - `git diff --check`: PASS.
-  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 133/133 mapper tests.
-  - `cargo test -p fc-core`: PASS, 175/175 fc-core tests.
-  - `cargo test`: PASS, workspace tests.
-
-### Mapper 81 / 104 Latch Batch
-- Implemented mapper 81 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/latch/discrete.rs`: address latch selects the low 16KB PRG bank, high 16KB PRG is fixed to the last bank, data latch selects CHR8, and mirroring is fixed vertical.
-- Implemented mapper 104 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/special.rs`: Pegasus 5-in-1 dual PRG16 registers, `$8000-$9FFF` outer-bank write gate, `$C000-$FFFF` inner-bank write, fixed CHR8, fixed vertical mirroring, reset defaults, and ordinary `$6000-$7FFF` WRAM fallback through Cartridge.
-- Wired both through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs`, updated capability guard tests, and refreshed mapper gap/reference docs; supported mapper count is now 168 and remaining four-reference union gap is 325.
-- Verification:
-  - `cargo test -p fc-core mapper81 -- --nocapture`: PASS, 1/1.
-  - `cargo test -p fc-core mapper104 -- --nocapture`: PASS, 1/1.
-  - `cargo fmt --check`: PASS.
-  - `git diff --check`: PASS.
-  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 135/135 mapper tests.
-  - `cargo test -p fc-core`: PASS, 177/177 fc-core tests.
-  - `cargo test`: PASS, workspace tests.
-
-### Mapper 175 / 177 Special Batch
-- Implemented mapper 175 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/special.rs`: `$8000` mirroring latch, `$A000` PRG/CHR latch, delayed PRG window commit, and read `$FFFC` side effect through the high-register read hook.
-- Implemented mapper 177 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/special.rs`: PRG32 latch from `reg & 0x1f`, fixed CHR8, mirroring bit5, reset default, and ordinary `$6000-$7FFF` WRAM fallback through Cartridge.
-- Wired both through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs`, updated capability guard tests, and refreshed mapper gap/reference docs; supported mapper count is now 170 and remaining four-reference union gap is 323.
-- Verification:
-  - `cargo test -p fc-core reset_selected_and_read_side_effect_mappers_follow_reference_rules -- --nocapture`: PASS, 1/1.
-  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 47/47 mapper facade tests.
-  - `cargo fmt --check`: PASS.
-  - `git diff --check`: PASS.
-  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 135/135 mapper tests.
-  - `cargo test -p fc-core`: PASS, 177/177 fc-core tests.
-  - `cargo test`: PASS, workspace tests.
-
-### Mapper 250 MMC3 Address-Line Protocol Batch
-- Implemented mapper 250 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs`: address-line register remap `(addr & 0xE000) | ((addr & 0x0400) >> 10)`, data from `addr & 0xFF`, and reuse of normal MMC3 PRG/CHR/mirroring/A12 IRQ behavior.
-- Wired mapper 250 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs`, updated MMC3 capability guard tests, and refreshed mapper gap/reference docs; supported mapper count is now 171 and remaining four-reference union gap is 322.
-- Verification:
-  - `cargo test -p fc-core mapper250 -- --nocapture`: PASS, 1/1.
-  - `cargo fmt --check`: PASS.
-  - `git diff --check`: PASS.
-  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 136/136 mapper tests.
-  - `cargo test -p fc-core`: PASS, 178/178 fc-core tests.
-  - `cargo test`: PASS, workspace tests.
-
-### Mapper 205 MMC3 Outer Block Batch
-- Implemented mapper 205 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs`: low-register block select, PRG bank mask/OR, CHR bank block extension, low-write PRG-RAM fall-through, reset default, and normal MMC3 A12 IRQ reuse.
-- Wired mapper 205 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs`, updated capability guard tests, and refreshed mapper gap/reference docs; supported mapper count is now 172 and remaining four-reference union gap is 321.
-- Verification:
-  - `cargo test -p fc-core mapper205 -- --nocapture`: PASS, 1/1.
-  - `cargo fmt --check`: PASS.
-  - `git diff --check`: PASS.
-  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 137/137 mapper tests.
-  - `cargo test -p fc-core`: PASS, 179/179 fc-core tests.
-  - `cargo test`: PASS, workspace tests.
-
-### Mapper 249 MMC3 Security Batch
-- Implemented mapper 249 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs`: `$5000` security register, PRG small/large bank permutation, CHR bank permutation, reset default, and normal MMC3 A12 IRQ reuse.
-- Wired mapper 249 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs`, updated capability guard tests, and refreshed mapper gap/reference docs; supported mapper count is now 173 and remaining four-reference union gap is 320.
-- Verification:
-  - `cargo test -p fc-core mapper249 -- --nocapture`: PASS, 1/1.
-  - `cargo fmt --check`: PASS.
-  - `git diff --check`: PASS.
-  - `cargo test -p fc-core mapper:: -- --nocapture`: PASS, 138/138 mapper tests.
-  - `cargo test -p fc-core`: PASS, 180/180 fc-core tests.
-  - `cargo test`: PASS, workspace tests.
-
-### Mapper 265 / 277 / 280 / 283 Long-tail Latch Batch
-- Implemented mapper 265 / BMC-T-262 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/multicart.rs`: address/data latch, bit13 write lock, PRG16 fixed-high/same-bank modes, FCEUmm bank0 NROM32 compatibility branch, CHR8 fixed 0, mirroring from address bit1, and reset clear.
-- Implemented mapper 277 in `multicart.rs`: latch-data PRG mode matrix, reset default `0x08`, bit5 write lock, CHR8 fixed 0, mapper-controlled mirroring when bit3 is set, and header-mirroring fallback when bit3 is clear.
-- Implemented mapper 280 in `multicart.rs`: latch address/data, reset mode toggle for PRG sizes above 32 x 16KB, mode/submapper-dependent PRG banking, fixed vertical mirroring in mode 1, and CHR-RAM write-protect gate.
-- Implemented mapper 283 / BMC-GS-2004 in `multicart.rs`: `$6000-$7FFF` low PRG-ROM window, high PRG32 latch, CHR8 fixed 0, header mirroring, and reset to the last PRG32 bank following FCEUX/Mesen2/Nestopia.
-- Wired all four through `basic.rs`, `mapper.rs`, `dispatch.rs`, and `factory.rs`; added mapper-local tests plus mapper facade/capability tests.
-- Updated `/Users/sunmeng/workspace/fc/docs/Mapper-适配差距清单.md` and `/Users/sunmeng/workspace/fc/docs/Mapper-适配引用记录.md`; supported mapper count is now 233 and remaining four-reference union gap is 260.
-- Verification:
-  - `cargo test -p fc-core mapper::basic::multicart::tests -- --nocapture`: PASS, 11/11.
-  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 67/67.
-  - `cargo fmt --check`: PASS.
-  - `git diff --check`: PASS.
-  - `cargo test -p fc-core`: PASS, 249/249.
-  - `cargo test`: PASS, workspace tests.
-
-### Mapper Facade Split
-- Split the public mapper facade in `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs` by moving the `MapperOps` trait and `ChrAccess` enum into `/Users/sunmeng/workspace/fc/fc-core/src/mapper/ops.rs`, and the serialized `Mapper` enum into `/Users/sunmeng/workspace/fc/fc-core/src/mapper/kind.rs`.
-- Kept all public re-exports unchanged so existing `crate::mapper::MapperOps`, `crate::mapper::ChrAccess`, and `crate::mapper::Mapper` call sites keep compiling without behavior changes.
-- Verification:
-  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 67/67.
-  - `cargo test -p fc-core mapper::tests::behavior::long_tail_latch_multicarts_265_277_280_283_follow_reference_banking -- --nocapture`: PASS, 1/1.
-  - `cargo test -p fc-core mapper::tests::capability -- --nocapture`: PASS, 3/3.
-  - `cargo fmt --check`: PASS.
-  - `cargo test`: PASS, workspace tests.
-
-### Mapper Test Split
-- Split `fc-core/src/mapper/tests/behavior.rs` into family modules under `fc-core/src/mapper/tests/behavior/` (`asic`, `audio`, `bandai`, `irq`, `latch`, `txc`) without changing any assertions or mapper behavior.
-- Kept the public `mapper::tests::behavior::*` test names intact, only moving the implementation bodies into submodules so the test surface stays the same while the source file stops growing monolithically.
-- Verification:
-  - `cargo fmt --check`: PASS.
-  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 67/67.
-
-### MMC3 Module Split
-- Split `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs` into focused private submodules without behavior changes:
-  - `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3/state.rs` now owns `Mmc3ChrLayout`, `Mmc3OuterBank`, `Mmc3NametableLayout`, and the mapper 208 protection LUT.
-  - `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3/constructors.rs` now owns `Mmc3::new*` constructors and serde default helpers.
-  - `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3/tests.rs` now owns the 47 MMC3 behavior tests.
-- Kept constructor visibility scoped to `crate::mapper` so `factory.rs` can instantiate boards while the state types remain private to the MMC3 module.
-- Verification:
-  - `cargo fmt --check`: PASS.
-  - `git diff --check`: PASS.
-  - `cargo test -p fc-core mapper::mmc3::tests -- --nocapture`: PASS, 47/47.
-  - `cargo test`: PASS, workspace tests.
-
-### MapperOps High-Write Default
-- Changed `/Users/sunmeng/workspace/fc/fc-core/src/mapper/ops.rs` so `MapperOps::write_register()` defaults to a no-op, matching the existing default style of optional low/expansion/read hooks.
-- Removed 18 explicit empty `write_register()` implementations from mappers without high-register behavior (`Nrom`, `Mmc5`, discrete/latch/special boards, etc.) without changing any mapper state transitions.
-- Verification:
-  - `cargo fmt --check`: PASS.
-  - `git diff --check`: PASS.
-  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 67/67.
-  - `cargo test`: PASS, workspace tests.
-
-### Mapper 293 / 294 Long-tail Latch Batch
-- Implemented mapper 293 / NewStar 12-in-1 and 76-in-1 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/multicart.rs`: two register latches, `$8000-$9FFF` same-value writes, `$A000-$BFFF`/`$C000-$DFFF` split writes, UNROM/NROM128/NROM256 PRG modes, fixed CHR8, reset clear, and bit7 mirroring.
-- Implemented mapper 294 in `multicart.rs`: high-register low-3-bit inner bank writes, `$4020-$7FFF` outer bank writes gated by A8 through expansion/low hooks, no PRG-RAM fall-through for the low handler window, PRG16 fixed-high, fixed CHR8, reset clear, and latch bit7 mirroring.
-- Wired both through `basic.rs`, `mapper.rs`, `kind.rs`, `dispatch.rs`, and `factory.rs`; added mapper-local tests, facade latch tests, and capability guard rows.
-- Updated `/Users/sunmeng/workspace/fc/docs/Mapper-适配差距清单.md` and `/Users/sunmeng/workspace/fc/docs/Mapper-适配引用记录.md`; supported mapper count is now 235 and remaining four-reference union gap is 258.
-- Verification:
-  - `cargo test -p fc-core mapper::basic::multicart::tests -- --nocapture`: PASS, 13/13.
-  - `cargo test -p fc-core mapper::tests::behavior::latch::long_tail_latch_multicarts_293_294_follow_reference_banking -- --nocapture`: PASS, 1/1.
-  - `cargo test -p fc-core mapper::tests::capability -- --nocapture`: PASS, 3/3.
-  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 68/68.
-  - `cargo fmt --check`: PASS.
-  - `git diff --check`: PASS.
-  - `cargo test -p fc-core`: PASS, 252/252.
-
-### Mapper 271 / 285 / 310 / 319 / 326 Long-tail Batch
-- Added `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/longtail.rs` as a separate long-tail module instead of expanding `multicart.rs` further.
-- Implemented mapper 271 as a FCEUmm data-latch board: PRG32 high nibble, CHR8 low nibble, and bit5 mirroring.
-- Implemented mapper 285 with submapper-specific PRG/mirroring formulas and `$5000-$5FFF` reset DIP pad reads.
-- Implemented mapper 310 / K-1053 with two data registers, address-selected PRG modes, CHR8 register, mirroring bit, and CHR-RAM write gate.
-- Implemented mapper 319 / BMC T-2291 with low-register writes, high latch, expansion pad read, disabled default low PRG-RAM, and soft-reset pad toggling.
-- Implemented mapper 326 with PRG8/CHR1 registers and mapper-owned per-page CIRAM nametable mapping.
-- Wired all five through `basic.rs`, `mapper.rs`, `kind.rs`, `dispatch.rs`, and `factory.rs`; added mapper-local tests, facade latch tests, and capability guard rows.
-- Updated `/Users/sunmeng/workspace/fc/docs/Mapper-适配差距清单.md` and `/Users/sunmeng/workspace/fc/docs/Mapper-适配引用记录.md`; supported mapper count is now 240 and remaining four-reference union gap is 253.
-- Verification:
-  - `cargo fmt --check`: PASS.
-  - `cargo test -p fc-core mapper::basic::longtail::tests -- --nocapture`: PASS, 5/5.
-  - `cargo test -p fc-core mapper::tests::behavior::latch::long_tail_latch_multicarts_271_285_310_319_326_follow_reference_banking -- --nocapture`: PASS, 1/1.
-  - `cargo test -p fc-core mapper::tests::capability -- --nocapture`: PASS, 3/3.
-  - `git diff --check`: PASS.
-  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 69/69.
-  - `cargo test -p fc-core`: PASS, 258/258.
-  - `cargo test`: PASS, workspace tests.
-
-### Mapper 298 / 321 / 334 Long-tail ASIC Batch
-- Implemented mapper 298 / NTDEC UNL-TF1201 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/ntdec.rs`: two 8KB PRG registers, eight 1KB CHR nibble registers, mirroring, PRG swap mode, reset state, and CPU-clock prescaled IRQ based on the Mesen2/Nestopia independent TF1201 model.
-- Added mapper 321 as an MMC3 outer-bank variant: low-register outer latch, normal MMC3 PRG/CHR wrapping when bit3 is clear, forced PRG32 mode when bit3 is set, AX5202P-style low-write fall-through, and standard MMC3 reset.
-- Added mapper 334 as an MMC3 outer-bank variant: low-register PRG32 latch, odd low writes ignored but consumed, open-bus/DIP low reads, and reset-cycled DIP with standard MMC3 register reset.
-- Wired all three through `basic.rs`, `mapper.rs`, `kind.rs`, `dispatch.rs`, and `factory.rs`; added mapper-local tests, MMC3 variant tests, facade behavior tests, and capability guard rows.
-- Updated `/Users/sunmeng/workspace/fc/docs/Mapper-适配差距清单.md` and `/Users/sunmeng/workspace/fc/docs/Mapper-适配引用记录.md`; supported mapper count is now 243 and remaining four-reference union gap is 250.
-- Verification:
-  - `cargo test -p fc-core mapper::basic::ntdec::tests -- --nocapture`: PASS, 2/2.
-  - `cargo test -p fc-core mapper::mmc3::tests::mapper321 -- --nocapture`: PASS, 1/1.
-  - `cargo test -p fc-core mapper::mmc3::tests::mapper334 -- --nocapture`: PASS, 1/1.
-  - `cargo test -p fc-core mapper::tests::behavior::asic::ntdec_tf1201 -- --nocapture`: PASS, 1/1.
-  - `cargo test -p fc-core mapper::tests::behavior::asic::mmc3_long_tail_variants -- --nocapture`: PASS, 1/1.
-  - `cargo fmt --check`: PASS.
-  - `git diff --check`: PASS.
-  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 71/71.
-  - `cargo test -p fc-core`: PASS, 264/264.
-  - `cargo test`: PASS, workspace tests.
-
-### Mapper 281 / 282 / 288 / 295 JY and GKCX1 Batch
-- Extended `/Users/sunmeng/workspace/fc/fc-core/src/mapper/ops.rs` with `MapperOps::map_cpu_read_addr()` and routed it through `/Users/sunmeng/workspace/fc/fc-core/src/mapper/dispatch.rs` plus `/Users/sunmeng/workspace/fc/fc-core/src/cartridge.rs`, allowing high-register CPU reads to remap PRG-ROM address lines before the PRG byte is fetched.
-- Added JY ASIC variants 281 / 282 / 295 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/jy.rs` by refactoring PRG and CHR/nametable outer masks into variant helpers while keeping existing mapper 90/209/211 behavior covered by the same tests.
-- Added mapper 288 / GKCX1 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/multicart.rs`: address-latched PRG32, CHR8, bit5 mirroring, reset-cycled low-4-bit DIP, and FCEUmm-style DIP read address remap.
-- Wired all four through `/Users/sunmeng/workspace/fc/fc-core/src/mapper/factory.rs`, added facade behavior tests and capability guard rows, and refreshed `/Users/sunmeng/workspace/fc/docs/Mapper-适配差距清单.md` plus `/Users/sunmeng/workspace/fc/docs/Mapper-适配引用记录.md`; supported mapper count is now 247 and remaining four-reference union gap is 246.
-- Verification so far:
-  - `cargo fmt --check`: PASS.
-  - `cargo test -p fc-core mapper::tests::behavior::asic::jy_asic_mappers_switch_prg_chr_alu_nametable_and_irq -- --nocapture`: PASS, 1/1.
-  - `cargo test -p fc-core mapper::tests::behavior::latch::address_latch_compatibility_batch_decodes_reference_bits -- --nocapture`: PASS, 1/1.
-  - `cargo test -p fc-core mapper::tests::behavior::latch::mapper288_reset_dip_remaps_high_read_address -- --nocapture`: PASS, 1/1.
-  - `cargo test -p fc-core mapper::tests::capability -- --nocapture`: PASS, 3/3.
-  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 72/72.
-  - `cargo test -p fc-core`: PASS, 265/265.
-  - `cargo test`: PASS, workspace tests.
-
-### Mapper 267 / 291 MMC3 Long-tail Batch
-- Added mapper 267 / JY-119 as an MMC3 outer-bank variant in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs`: FCEUmm-style outer bank formula, PRG8/CHR1 wrappers, low-register latch that stops updating after bit7 is set while still consuming writes, and standard MMC3 reset.
-- Added mapper 291 as an MMC3 outer-bank variant: low-register CHR bit8, normal MMC3 PRG mode with an outer bit, and bit5-forced PRG32 mode.
-- Wired both through `/Users/sunmeng/workspace/fc/fc-core/src/mapper/factory.rs`, added mapper-local tests, facade behavior coverage, and capability guard rows, and refreshed `/Users/sunmeng/workspace/fc/docs/Mapper-适配差距清单.md` plus `/Users/sunmeng/workspace/fc/docs/Mapper-适配引用记录.md`; supported mapper count is now 249 and remaining four-reference union gap is 244.
-- Verification:
-  - `cargo fmt --check`: PASS.
-  - `git diff --check`: PASS.
-  - `cargo test -p fc-core mapper::mmc3::tests::mapper267 -- --nocapture`: PASS, 1/1.
-  - `cargo test -p fc-core mapper::mmc3::tests::mapper291 -- --nocapture`: PASS, 1/1.
-  - `cargo test -p fc-core mapper::mmc3::tests -- --nocapture`: PASS, 51/51.
-  - `cargo test -p fc-core mapper::tests::behavior::asic::mmc3_long_tail_variants_267_291_321_334_use_outer_registers_and_dip_reads -- --nocapture`: PASS, 1/1.
-  - `cargo test -p fc-core mapper::tests::capability -- --nocapture`: PASS, 3/3.
-  - `cargo test -p fc-core`: PASS, 267/267.
-  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 72/72.
-  - `cargo test`: PASS, workspace tests.
-
-### Mapper 258 MMC3 Protection Batch
-- Added mapper 258 / UNL-158B as an MMC3 outer-bank variant in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs`: protection register at `$5000-$5FFF` when `addr & 7 == 0`, normal MMC3 PRG masked to 4 bits, forced mirrored PRG16 / PRG32 modes from bit7/bit5, and standard MMC3 reset.
-- Added open-bus-aware `$5000-$5FFF` protection reads using the FCEUX/Mesen2 LUT, while leaving CHR, mirroring, and A12 IRQ on the standard MMC3 path.
-- Wired mapper 258 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper/factory.rs`, added mapper-local/facade/capability tests, and refreshed `/Users/sunmeng/workspace/fc/docs/Mapper-适配差距清单.md` plus `/Users/sunmeng/workspace/fc/docs/Mapper-适配引用记录.md`; supported mapper count is now 250 and remaining four-reference union gap is 243.
-- Verification:
-  - `cargo fmt --check`: PASS.
-  - `git diff --check`: PASS.
-  - `cargo test -p fc-core mapper::mmc3::tests::mapper258 -- --nocapture`: PASS, 1/1.
-  - `cargo test -p fc-core mapper::tests::behavior::asic::mmc3_long_tail_variants_258_267_291_321_334_use_outer_registers_and_dip_reads -- --nocapture`: PASS, 1/1.
-  - `cargo test -p fc-core mapper::mmc3::tests -- --nocapture`: PASS, 52/52.
-  - `cargo test -p fc-core mapper::tests::capability -- --nocapture`: PASS, 3/3.
-  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 72/72.
-  - `cargo test -p fc-core`: PASS, 268/268.
-  - `cargo test`: PASS, workspace tests.
-
-### Mapper 266 BMC F-15 Batch
-- Started: 2026-06-26 14:54:52.
-- Added mapper 266 / BMC F-15 as an MMC3 outer-bank variant in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs`.
-- Added generic MMC3 `$A001` PRG-RAM control storage so mapper 266 can gate its `$6000-$7FFF` latch on bit7 while existing mapper 44 `$A001` block-select behavior remains intact.
-- Implemented FCEUX/FCEUmm F-15 PRG behavior: low-register `reg&0x0F`, bit3 mirrored PRG16 vs paired 16KB mapping, low writes consumed regardless of gate state, CHR and A12 IRQ through ordinary MMC3.
-- Wired mapper 266 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper/factory.rs`, added mapper-local/facade/capability tests, and refreshed `/Users/sunmeng/workspace/fc/docs/Mapper-适配差距清单.md` plus `/Users/sunmeng/workspace/fc/docs/Mapper-适配引用记录.md`; supported mapper count is now 251 and remaining four-reference union gap is 242.
-- Verification so far:
-  - `cargo fmt --check`: PASS.
-  - `cargo test -p fc-core mapper::mmc3::tests::mapper266 -- --nocapture`: PASS, 1/1.
-  - `git diff --check`: PASS.
-  - `cargo test -p fc-core mapper::tests::capability -- --nocapture`: PASS, 3/3.
-  - `cargo test -p fc-core mapper::tests::behavior::asic::mmc3_long_tail_variants_258_266_267_291_321_334_use_outer_registers_and_dip_reads -- --nocapture`: PASS, 1/1.
-  - `cargo test -p fc-core mapper::mmc3::tests -- --nocapture`: PASS, 53/53.
-  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 72/72.
-  - `cargo test -p fc-core`: PASS, 269/269.
-  - `cargo test`: PASS, workspace tests.
-
-### Mapper 273 VRC2 Custom IRQ Batch
-- Started: 2026-06-26 15:07:09.
-- Extended `/Users/sunmeng/workspace/fc/fc-core/src/mapper/vrc4.rs` with `VrcIrqKind` so VRC2/VRC4 boards can select no IRQ, standard VRC4 IRQ, or mapper 273's custom CPU-cycle IRQ without cloning PRG/CHR banking code.
-- Added mapper 273 / VRC2-derived custom IRQ board: VRC2 PRG8/CHR1/mirroring with address lines `0x04/0x08`, `$F000/$F008` IRQ writes, 8-bit prescaler mask phase, and CPU-cycle clock capability.
-- Preserved old VRC save-state compatibility by keeping `Vrc24Config::is_vrc4` and adding serde defaults for the new IRQ kind and mapper 273 IRQ mask field.
-- Wired mapper 273 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper/factory.rs`, added VRC-local/facade/capability tests, and refreshed `/Users/sunmeng/workspace/fc/docs/Mapper-适配差距清单.md` plus `/Users/sunmeng/workspace/fc/docs/Mapper-适配引用记录.md`; supported mapper count is now 252 and remaining four-reference union gap is 241.
-- Verification:
-  - `cargo fmt --check`: PASS.
-  - `cargo test -p fc-core mapper::vrc4::tests -- --nocapture`: PASS, 7/7.
-  - `cargo test -p fc-core mapper::tests::capability -- --nocapture`: PASS, 3/3.
-  - `cargo test -p fc-core mapper::tests::behavior::asic::mapper273_uses_vrc2_banks_and_custom_cpu_irq -- --nocapture`: PASS, 1/1.
-  - `git diff --check`: PASS.
-  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 73/73.
-  - `cargo test -p fc-core`: PASS, 272/272.
-  - `cargo test`: PASS, workspace tests.
-
-### Mapper 308 VRC2 Custom IRQ Batch
-- Started: 2026-06-26.
-- Added mapper 308 / UNL-TH2131-1 as another `Vrc4`/VRC2-derived custom IRQ variant in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/vrc4.rs`.
-- Reused VRC2b address lines `0x01/0x02`, PRG8/CHR1/mirroring decode, and added the FCEUmm `308.c` IRQ write protocol: `$F000` clear/disable/reset low phase, `$F001` enable, `$F003` load high counter from `value >> 4`.
-- Implemented the CPU-cycle IRQ phase from FCEUmm: 12-bit low counter increments every CPU cycle, high counter decrements at low phase 2048, and IRQ asserts when high is zero during the low half of the phase.
-- Wired mapper 308 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper/factory.rs`, added VRC-local/facade/capability tests, and refreshed `/Users/sunmeng/workspace/fc/docs/Mapper-适配差距清单.md` plus `/Users/sunmeng/workspace/fc/docs/Mapper-适配引用记录.md`; supported mapper count is now 253 and remaining four-reference union gap is 240.
-- Verification so far:
-  - `cargo fmt --check`: PASS.
-  - `git diff --check`: PASS.
-  - `cargo test -p fc-core mapper::vrc4::tests -- --nocapture`: PASS, 9/9.
-  - `cargo test -p fc-core mapper::tests::behavior::asic::mapper308_uses_vrc2_banks_and_custom_cpu_irq -- --nocapture`: PASS, 1/1.
-  - `cargo test -p fc-core mapper::tests::capability -- --nocapture`: PASS, 3/3.
-  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 74/74.
-  - `cargo test -p fc-core`: PASS, 275/275.
-  - `cargo test`: PASS, workspace tests.
-
-### Mapper 264 YOKO-derived Batch
-- Started: 2026-06-26.
-- Added mapper 264 as a `Mapper83` variant in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/unlicensed.rs`, reusing the existing YOKO mapper instead of adding a standalone clone.
-- Implemented the FCEUmm `83_264.c` differences: `prgAND=0x0F`, folded high-write address decode, four 2KB CHR banks through `reg[8]`, `reg[9]`, `reg[14]`, and `reg[15]`, mapper-owned `$5000-$5FFF` pad/scratch reads and writes, `$6000-$7FFF` PRG8 mapping via `reg[7]`, CPU-cycle IRQ mode, HBlank eight-clock IRQ mode, and soft-reset pad increment.
-- Kept save-state compatibility for old mapper 83 states by leaving the original 11-byte `regs` array intact and adding a defaulted `regs_ext` sidecar for mapper 264's `reg[11..15]`.
-- Wired mapper 264 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper/factory.rs`, added facade behavior tests and capability guard rows, and refreshed `/Users/sunmeng/workspace/fc/docs/Mapper-适配差距清单.md` plus `/Users/sunmeng/workspace/fc/docs/Mapper-适配引用记录.md`; supported mapper count is now 254 and remaining four-reference union gap is 239.
-- Verification so far:
-  - `cargo test -p fc-core mapper::tests::behavior::latch::unlicensed_mapper_batch_matches_reference_bank_and_irq_rules -- --nocapture`: PASS, 1/1.
-  - `cargo test -p fc-core mapper::tests::capability -- --nocapture`: PASS, 3/3.
-  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 74/74.
-  - `cargo test -p fc-core`: PASS, 275/275.
-  - `cargo fmt --check`: PASS.
-  - `git diff --check`: PASS.
-  - `cargo test`: PASS, workspace tests.
-
-### Mapper 272 / 330 Bootleg Batch
-- Started: 2026-06-26 23:19:10 CST.
-- Added `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/bootleg.rs` with mapper 272 and mapper 330 first-pass support from FCEUmm references.
-- Mapper 272 covers PRG8 banking, VRC-style nibble-paired CHR1 registers, PAL chip mirroring override, PPU PA13 falling-edge IRQ, reset state, and mapper-owned nametable routing for the PAL mirroring override.
-- Mapper 330 covers PRG8/CHR1 register windows, per-nametable CIRAM page registers, CPU-cycle IRQ counter, reset state, and leaves the reference 8KB WRAM behavior on the existing Cartridge default `$6000-$7FFF` PRG-RAM path for now.
-- Wired both through `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic.rs`, `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs`, `/Users/sunmeng/workspace/fc/fc-core/src/mapper/kind.rs`, `/Users/sunmeng/workspace/fc/fc-core/src/mapper/dispatch.rs`, and `/Users/sunmeng/workspace/fc/fc-core/src/mapper/factory.rs`.
-- Added facade behavior coverage in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/tests/behavior/asic.rs` and capability guard rows in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/tests/capability.rs`.
-- Refreshed `/Users/sunmeng/workspace/fc/docs/Mapper-适配差距清单.md`, `/Users/sunmeng/workspace/fc/docs/Mapper-适配引用记录.md`, `/Users/sunmeng/workspace/fc/findings.md`, and `/Users/sunmeng/workspace/fc/task_plan.md`; supported mapper count is now 256 and remaining four-reference union gap is 237.
-- Verification so far:
-  - `cargo test -p fc-core mapper::tests::behavior::asic::bootleg_272_and_330_follow_reference_irq_and_nametable_rules -- --nocapture`: PASS, 1/1.
-  - `cargo test -p fc-core mapper::tests::capability -- --nocapture`: PASS, 3/3.
-  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 75/75.
-  - `cargo fmt`: PASS.
-  - `cargo fmt --check`: PASS.
-  - `git diff --check`: PASS.
-  - `cargo test -p fc-core`: PASS, 276/276.
-  - `cargo test`: PASS, workspace tests.
-
-### Mapper 297 MMC1/Mapper70 Composite Batch
-- Started: 2026-06-27 07:16:27 CST.
-- Added mapper 297 / 2-in-1 Uzi Lightgun MGC-002 as an MMC1 variant in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc1.rs`, following FCEUmm `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/mmc1.c:499-557`.
-- Factored MMC1 serial-register writes into `write_mmc1_register()` so mapper 297 can switch high-register writes between ordinary MMC1 serial behavior and Mapper70-style latch behavior without duplicating MMC1 register timing.
-- Implemented `$4120` mode writes, Mapper70 PRG16/CHR8/vertical mirroring branch, MMC1 PRG/CHR outer-bank hooks through mode bit0, and the reference power-on nuance where initial output remains MMC1 reset mapping until the Mapper70 branch is explicitly synced.
-- Wired mapper 297 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper/factory.rs`, added mapper-local/facade behavior tests and capability guard rows, and refreshed `/Users/sunmeng/workspace/fc/docs/Mapper-适配差距清单.md` plus `/Users/sunmeng/workspace/fc/docs/Mapper-适配引用记录.md`; supported mapper count is now 257 and remaining four-reference union gap is 236.
-- Verification:
-  - `cargo fmt --check`: PASS.
-  - `git diff --check`: PASS.
-  - `cargo test -p fc-core mapper::mmc1::tests -- --nocapture`: PASS, 3/3.
-  - `cargo test -p fc-core mapper::tests::behavior::asic::mapper297_switches_between_mapper70_latch_and_mmc1_modes -- --nocapture`: PASS, 1/1.
-  - `cargo test -p fc-core mapper::tests::capability -- --nocapture`: PASS, 3/3.
-  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 76/76.
-  - `cargo test -p fc-core`: PASS, 278/278.
-  - `cargo test`: PASS, workspace tests.
-
-### Mapper 352 / 360 Latch Multicart Batch
-- Started: 2026-06-27 CST.
-- Added mapper 352 / reset-selected NROM-256 multicart in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/multicart.rs`, following FCEUmm `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/352.c:23-39`.
-- Added mapper 360 / Bit Corp 31-in-1 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/multicart.rs`, following FCEUmm `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/360.c:21-77`.
-- Mapper 352 covers soft-reset game rotation, PRG32/CHR8 same-game selection, and header mirroring. Mapper 360 covers submapper 0 reset DIP rotation, submapper 1 `$4100-$4FFF` register writes, fixed PRG8 bank `$40` mode, PRG32/PRG16 mirrored modes, CHR8, and mirroring.
-- Wired both through `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic.rs`, `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs`, `/Users/sunmeng/workspace/fc/fc-core/src/mapper/kind.rs`, `/Users/sunmeng/workspace/fc/fc-core/src/mapper/dispatch.rs`, and `/Users/sunmeng/workspace/fc/fc-core/src/mapper/factory.rs`.
-- Added mapper-local tests, facade behavior coverage, and capability guard rows; refreshed `/Users/sunmeng/workspace/fc/docs/Mapper-适配差距清单.md` plus `/Users/sunmeng/workspace/fc/docs/Mapper-适配引用记录.md`; supported mapper count is now 259 and remaining four-reference union gap is 234.
-- Verification:
-  - `cargo fmt --check`: PASS.
-  - `git diff --check`: PASS.
-  - `cargo test -p fc-core mapper::basic::multicart::tests::mapper352_rotates_nrom_games_on_soft_reset -- --nocapture`: PASS, 1/1.
-  - `cargo test -p fc-core mapper::basic::multicart::tests::mapper360_rotates_or_writes_bitcorp_31_in_1_latch -- --nocapture`: PASS, 1/1.
-  - `cargo test -p fc-core mapper::tests::behavior::latch::long_tail_latch_multicarts_352_360_follow_reset_and_register_banking -- --nocapture`: PASS, 1/1.
-  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 77/77.
-  - `cargo test -p fc-core`: PASS, 281/281.
-  - `cargo test`: PASS, workspace tests.
-
-### Mapper 354 / 358 Long-tail Batch
-- Started: 2026-06-27 CST.
-- Added mapper 354 / address-data latch multicart in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/multicart.rs`, following FCEUmm `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/354.c:23-102` and cross-checking FCEUX `/Users/sunmeng/workspace/fc/fceux/src/boards/354.cpp:23-98`.
-- Added mapper 358 as a `JyAsicVariant` in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/jy.rs`, following FCEUmm `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/jyasic.c:567-587`.
-- Mapper 354 covers submapper-specific high write window, PRG32/PRG16/PRG8/lower PRG8 mapping modes, CHR-RAM write gate, low PRG-RAM disable, mirroring, and reset. Mapper 358 reuses existing JY ASIC register/IRQ/ALU/nametable paths with its own PRG/CHR/NT outer mask formulas.
-- Wired both through `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic.rs`, `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs`, `/Users/sunmeng/workspace/fc/fc-core/src/mapper/kind.rs`, `/Users/sunmeng/workspace/fc/fc-core/src/mapper/dispatch.rs`, and `/Users/sunmeng/workspace/fc/fc-core/src/mapper/factory.rs`.
-- Added mapper-local/facade behavior tests and capability guard rows; refreshed mapper gap/reference docs; supported mapper count is now 261 and remaining four-reference union gap is 232.
-- Verification:
-  - `cargo test -p fc-core mapper::basic::multicart::tests::mapper354_decodes_latch_modes_low_prg_and_chr_gate -- --nocapture`: PASS, 1/1.
-  - `cargo test -p fc-core mapper::tests::behavior::latch::long_tail_latch_mapper354_decodes_latch_prg_and_chr_gate -- --nocapture`: PASS, 1/1.
-  - `cargo test -p fc-core mapper::tests::behavior::asic::jy_asic_mappers_switch_prg_chr_alu_nametable_and_irq -- --nocapture`: PASS, 1/1.
-  - `cargo test -p fc-core mapper::tests::capability -- --nocapture`: PASS, 3/3.
-  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 78/78.
-  - `git diff --check`: PASS.
-  - `cargo test -p fc-core`: PASS, 284/284.
-  - `cargo test`: PASS, workspace tests.
-  - `cargo test -p fc-core`: PASS, 283/283.
-
-### Mapper 357 Long-tail Multicart Batch
-- Started: 2026-06-27 CST.
-- Added mapper 357 / Bit Corp 4-in-1 in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/multicart.rs`, following FCEUmm `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/357.c:21-120`.
-- Mapper 357 covers reset DIP rotation, SMB2J mode `$5000` PRG4 and `$6000` PRG8 mappings, SMB2J high PRG8 bank table, UNROM-mode outer PRG16 banks, `$4022/$4120/$4122` low-register writes, high-register UNROM bank writes, CPU-cycle IRQ, CHR-RAM default indexing, and mirroring.
-- Wired mapper 357 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic.rs`, `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs`, `/Users/sunmeng/workspace/fc/fc-core/src/mapper/kind.rs`, `/Users/sunmeng/workspace/fc/fc-core/src/mapper/dispatch.rs`, and `/Users/sunmeng/workspace/fc/fc-core/src/mapper/factory.rs`.
-- Added mapper-local/facade behavior tests and capability guard rows; refreshed mapper gap/reference docs; supported mapper count is now 262 and remaining four-reference union gap is 231.
-- Candidate scan notes: `268/269` look like next MMC3-wrapper candidates, while `351/353/355/356/359` need larger composite/audio/peripheral architecture support before safe translation.
-- Verification so far:
-  - `cargo test -p fc-core mapper::basic::multicart::tests::mapper357_rotates_bitcorp_games_low_prg_and_irq -- --nocapture`: PASS, 1/1.
-  - `cargo test -p fc-core mapper::tests::behavior::latch::long_tail_latch_multicarts_352_360_follow_reset_and_register_banking -- --nocapture`: PASS, 1/1.
-  - `cargo fmt --check`: PASS.
-  - `cargo test -p fc-core mapper::tests::capability -- --nocapture`: PASS, 3/3.
-  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 78/78.
-  - `git diff --check`: PASS.
-
-### Mapper 361 MMC3 Long-tail Batch
-- Started: 2026-06-27 CST.
-- Added mapper 361 / OK-411 as an MMC3 outer-bank variant in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs`, following FCEUmm `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/361.c:26-49`.
-- Mapper 361 covers the data-latched outer PRG/CHR register, normal MMC3 high-register writes, A12 IRQ path, AX5202P-style low-register WRAM fall-through, and reset clear. FCEUX `/Users/sunmeng/workspace/fc/fceux/src/boards/mmc3.cpp:1218-1261` is recorded as GN-45 family cross-check; Mesen2 only supplies ROM DB metadata for mapper 361.
-- Wired mapper 361 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper/factory.rs`, added mapper-local/facade/capability tests, and refreshed `/Users/sunmeng/workspace/fc/docs/Mapper-适配差距清单.md` plus `/Users/sunmeng/workspace/fc/docs/Mapper-适配引用记录.md`; supported mapper count is now 263 and remaining four-reference union gap is 230.
-- Candidate scan notes: mapper 362 is a VRC4 reset-game variant, 366 likely belongs beside the GN-45 address-latch family, and 367/373 should be checked for existing MMC3 helper fit before touching larger composite/audio/peripheral candidates.
-- Verification so far:
-  - `cargo fmt --check`: PASS.
-  - `cargo test -p fc-core mapper::mmc3::tests::mapper361_data_latch_extends_mmc3_outer_banks -- --nocapture`: PASS, 1/1.
-  - `cargo test -p fc-core mapper::tests::behavior::asic::mmc3_long_tail_variants_258_266_267_291_321_334_361_use_outer_registers_and_dip_reads -- --nocapture`: PASS, 1/1.
-  - `cargo test -p fc-core mapper::tests::capability -- --nocapture`: PASS, 3/3.
-  - `git diff --check`: PASS.
-  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 78/78.
-  - `cargo test -p fc-core mapper::mmc3::tests -- --nocapture`: PASS, 54/54.
-  - `cargo test -p fc-core`: PASS, 285/285.
-  - `cargo test`: PASS, workspace tests.
-
-### Mapper 366 MMC3 Long-tail Batch
-- Started: 2026-06-27 CST.
-- Added mapper 366 / GN-45 as an MMC3 outer-bank variant in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs`, following FCEUmm `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/366.c:26-53` and cross-checking FCEUX `/Users/sunmeng/workspace/fc/fceux/src/boards/mmc3.cpp:1218-1261`.
-- Mapper 366 reuses mapper 361's AX5202P PRG/CHR outer formulas but latches the CPU address low byte on low-register writes and locks further updates once bit7 is set. It keeps ordinary MMC3 high writes, A12 IRQ, low WRAM fall-through, and reset clear behavior.
-- Wired mapper 366 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper/factory.rs`, added mapper-local/facade/capability tests, and refreshed mapper gap/reference docs; supported mapper count is now 264 and remaining four-reference union gap is 229.
-- Verification so far:
-  - `cargo fmt --check`: PASS.
-  - `cargo test -p fc-core mapper::mmc3::tests::mapper366_address_latch_extends_mmc3_outer_banks_until_locked -- --nocapture`: PASS, 1/1.
-  - `cargo test -p fc-core mapper::tests::behavior::asic::mmc3_long_tail_variants_258_266_267_291_321_334_361_366_use_outer_registers_and_dip_reads -- --nocapture`: PASS, 1/1.
-  - `cargo test -p fc-core mapper::tests::capability -- --nocapture`: PASS, 3/3.
-  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 78/78.
-  - `cargo test -p fc-core mapper::mmc3::tests -- --nocapture`: PASS, 55/55.
-  - `cargo test -p fc-core`: PASS, 286/286.
-  - `cargo test`: PASS, workspace tests.
-
-### Mapper 363 / 364 / 368 Long-tail Batch
-- Started: 2026-06-27 CST.
-- Added mapper 363 / address-latch bus-conflict board in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/multicart.rs`, following FCEUmm `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/363.c:24-39`.
-- Added mapper 364 as an MMC3 outer-bank variant in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs`, following FCEUmm `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/364.c:25-52`.
-- Added mapper 368 / Bit Corp SMB2J-derived fixed-bank board in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic/multicart.rs`, following FCEUmm `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/368.c:30-112`.
-- Mapper 363 covers A4 rising-edge address latch, AND bus conflict, PRG16 low/fixed-high mapping, CHR8 fixed 0, mirroring from latch address bit5, and reset clear. Cartridge-level coverage verifies the bus-conflict value is applied before the mapper stores latch data.
-- Mapper 364 covers the low `$6000-$7FFF` outer register, PRG/CHR mode-dependent masks, ordinary MMC3 PRG/CHR/mirroring/A12 IRQ reuse, no low WRAM fall-through, and standard MMC3 reset while preserving the outer register on soft reset.
-- Mapper 368 covers fixed PRG8 pages at `$6000/$8000/$A000/$E000`, `banks[preg]` at `$C000`, `$4022/$4120/$4122` register/status behavior, CPU-cycle IRQ after 4096 cycles, header mirroring, and reset-clears-IRQ behavior.
-- Wired all three through `/Users/sunmeng/workspace/fc/fc-core/src/mapper/basic.rs`, `/Users/sunmeng/workspace/fc/fc-core/src/mapper.rs`, `/Users/sunmeng/workspace/fc/fc-core/src/mapper/kind.rs`, `/Users/sunmeng/workspace/fc/fc-core/src/mapper/dispatch.rs`, and `/Users/sunmeng/workspace/fc/fc-core/src/mapper/factory.rs`.
-- Added mapper-local/facade behavior tests, a cartridge bus-conflict regression, and capability guard rows; refreshed mapper gap/reference docs. Supported mapper count is now 267 and remaining four-reference union gap is 226.
-- Verification:
-  - `cargo fmt --check`: PASS.
-  - `git diff --check`: PASS.
-  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 78/78.
-  - `cargo test -p fc-core mapper::mmc3::tests -- --nocapture`: PASS, 56/56.
-  - `cargo test -p fc-core`: PASS, 290/290.
-  - `cargo test`: PASS, workspace tests.
-
-### Mapper 367 MMC3 Long-tail Batch
-- Started: 2026-06-27 CST.
-- Added mapper 367 as an MMC3 outer-bank variant in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs`, following FCEUmm `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/mmc3.c:1241-1299`.
-- Extracted shared mapper 205/367 PRG/CHR outer-bank helper formulas, kept mapper 205's existing low-write fall-through unchanged, and implemented mapper 367's address-low-byte latch with no PRG-RAM fall-through.
-- Wired mapper 367 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper/factory.rs`, added mapper-local/facade/capability tests, and refreshed mapper gap/reference docs. Supported mapper count is now 268 and remaining four-reference union gap is 225.
-- Verification so far:
-  - `cargo fmt --check`: PASS.
-  - `cargo test -p fc-core mapper::mmc3::tests::mapper367_address_latch_uses_mapper205_outer_bank_formula -- --nocapture`: PASS, 1/1.
-  - `cargo test -p fc-core mapper::tests::behavior::asic::mmc3_long_tail_variants_258_266_267_291_321_334_361_364_366_367_use_outer_registers_and_dip_reads -- --nocapture`: PASS, 1/1.
-  - `cargo test -p fc-core mapper::tests::capability -- --nocapture`: PASS, 3/3.
-  - `git diff --check`: PASS.
-  - `cargo test -p fc-core mapper::mmc3::tests -- --nocapture`: PASS, 57/57.
-  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 78/78.
-  - `cargo test -p fc-core`: PASS, 291/291.
-  - `cargo test`: PASS, workspace tests.
-
-### Mapper 373 MMC3 Long-tail Batch
-- Started: 2026-06-27 CST.
-- Added mapper 373 as a mapper45-derived MMC3 outer-bank variant in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs`, following FCEUmm `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/mmc3.c:505-589,591-598`.
-- Reused mapper45 serial outer-register write, CHR wrapper, and low-write gating helpers, while adding mapper373-specific paired PRG mode when outer register 2 bit5 is set. Kept existing mapper45 reset behavior unchanged and made mapper373 reset standard MMC3 registers per reference.
-- Wired mapper 373 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper/factory.rs`, added mapper-local/facade/capability tests, and refreshed mapper gap/reference docs. Supported mapper count is now 269 and remaining four-reference union gap is 224.
-- Verification so far:
-  - `cargo fmt --check`: PASS.
-  - `cargo test -p fc-core mapper::mmc3::tests::mapper373_serial_outer_regs_can_pair_prg_windows -- --nocapture`: PASS, 1/1.
-  - `cargo test -p fc-core mapper::mmc3::tests::mapper45_serial_outer_regs_mask_prg_and_chr -- --nocapture`: PASS, 1/1.
-  - `cargo test -p fc-core mapper::tests::capability -- --nocapture`: PASS, 3/3.
-  - `git diff --check`: PASS.
-  - `cargo test -p fc-core mapper::mmc3::tests -- --nocapture`: PASS, 58/58.
-  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 78/78.
-  - `cargo test -p fc-core`: PASS, 292/292.
-  - `cargo test`: PASS, workspace tests.
-
-### Mapper 362 VRC4 Long-tail Batch
-- Started: 2026-06-28 CST.
-- Added mapper 362 as a VRC4 board variant in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/vrc4.rs`, following FCEUmm `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/362.c:31-58` and VRC helper behavior from `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/asic_vrc2and4.c:71-99,137-180,197-203,230-260`.
-- Extended the VRC4 architecture with `VrcBoardVariant`, VRC final PRG/CHR outer wrappers, and `use_repeat_bit` configuration while preserving default VRC2/VRC4 behavior through serde defaults.
-- Mapper 362 covers VRC4 address lines `0x01/0x02`, CPU-clock VRC IRQs with repeat-bit disabled, reset-selected outer game banking for large PRG ROMs, VRC register clear on reset, and no-reset-hook behavior for <=512KB PRG ROMs.
-- Wired mapper 362 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper/factory.rs`, added VRC-local/facade/capability tests, and refreshed mapper gap/reference docs. Supported mapper count is now 270 and remaining four-reference union gap is 223.
-- Verification so far:
-  - `cargo fmt --check`: PASS.
-  - `cargo test -p fc-core mapper::vrc4::tests -- --nocapture`: PASS, 10/10.
-  - `cargo test -p fc-core mapper::tests::capability -- --nocapture`: PASS, 3/3.
-  - `git diff --check`: PASS.
-  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 79/79.
-  - `cargo test -p fc-core`: PASS, 294/294.
-  - `cargo test`: PASS, workspace tests.
-
-### Mapper 370 MMC3 PPU-hook Long-tail Batch
-- Started: 2026-06-28 CST.
-- Added mapper 370 / F600 / Golden Mario Party II 6-in-1 as an MMC3 outer-bank variant in `/Users/sunmeng/workspace/fc/fc-core/src/mapper/mmc3.rs`, following FCEUmm `/Users/sunmeng/workspace/fc/libretro-fceumm/src/boards/370.c:21-95`.
-- Added `MapperOps::notify_ppu_bus_pre()` plus cached `Cartridge::mapper_watches_ppu_bus_pre` so the PPU can notify mapper 370 before resolving nametable/pattern access. Ordinary MMC3, MMC2/4, MMC5, JY, and mapper 272 remain on the existing post-fetch PPU bus path.
-- Mapper 370 covers `$5000-$5FFF` address-latched mode writes, solderpad bit7 reads/open-bus preservation, PRG/CHR outer wrappers including mode-6 CHR mask exception, A000 mirroring latch outside mode 1, PPU-address-slot selected single-screen mirroring in mode 1, CHR bank high-bit mirroring latches, and reset solderpad toggle plus standard MMC3 reset.
-- Wired mapper 370 through `/Users/sunmeng/workspace/fc/fc-core/src/mapper/factory.rs`, added mapper-local/facade/capability/cache tests, and refreshed mapper gap/reference docs. Supported mapper count is now 271 and remaining four-reference union gap is 222.
-- Verification so far:
-  - `cargo test -p fc-core mapper::mmc3::tests::mapper370_uses_outer_banks_solderpad_and_ppu_selected_mirroring -- --nocapture`: PASS, 1/1.
-  - `cargo test -p fc-core cartridge::tests::mapper_watches_ppu_bus_cache_set_and_refreshed -- --nocapture`: PASS, 1/1.
-  - `cargo test -p fc-core mapper::tests::capability -- --nocapture`: PASS, 4/4.
-  - `cargo test -p fc-core mapper::tests::behavior::asic::mmc3_long_tail_variants_258_266_267_291_321_334_361_364_366_367_370_373_use_outer_registers_and_dip_reads -- --nocapture`: PASS, 1/1.
-  - `cargo fmt --check`: PASS.
-  - `git diff --check`: PASS.
-  - `cargo check -p fc-core`: PASS.
-  - `cargo test -p fc-core mapper::mmc3::tests -- --nocapture`: PASS, 59/59.
-  - `cargo test -p fc-core mapper::tests -- --nocapture`: PASS, 80/80.
-  - `cargo test -p fc-core`: PASS, 296/296.
+| 2026-06-24 | Planning files were for old hardware accuracy goal | Session catchup/read found stale objective | Rewrote planning files for Creative IDE maturity |
+| 2026-06-24 | Runtime ROM path missing | Tried live `emu_load_rom` from `/Users/sunmeng/workspace/fc-creative-mode/roms/SuperMarioBro.nes` | Retried with `/Users/sunmeng/workspace/fc/roms/SuperMarioBro.nes` and verified visible player update |
+| 2026-06-24 | Native Tauri screenshot unavailable | Called `tauri_screenshot` after app launch | Used Tauri eval store/DOM inspection plus live MCP frame capture as verification |
+| 2026-06-24 | Tauri eval syntax error | Tried top-level `await window.__project.openChr(...)` | Retried with an async IIFE expression and verified CHR geometry |
+| 2026-06-24 | Long Tauri eval timed out during resource-flow verification | Tried one large expression querying many rows/chips at once | Used short targeted `tauri_eval` calls for store, chips, rows, and binding checks |
+| 2026-06-24 | `npx vue-tsc --noEmit` attempted network access | Current environment blocks DNS to `registry.npmmirror.com`; `vue-tsc` is not installed in local `.bin` | Used production `npm --prefix fc-tauri run build` plus live Tauri MCP runtime verification for this slice |
+| 2026-06-24 | MCP `ide_run` did not mount Preview panel | E2E simple-game run loaded `game.nes` into `window.__emu`, but the DOM had no preview canvas because Dockview panel `preview` was closed | Added `focusPreview` state and an `IdeView.vue` watcher to open Preview when MCP emits `changed: ["preview"]` |
+| 2026-06-24 | File-tree UI selectors were empty during active-resource verification | IDE MCP project creation left the app on the launcher, where Dockview/tree panels are not mounted | Switched the Tauri shell to `studio` via the app store, then reran UI verification against the mounted file tree |
+| 2026-06-24 | Tauri runtime still returned `map/level12.bin` after patch | The running Vite/HMR instance had not picked up the new `nextAvailablePath()` function | Reloaded the Tauri webview, reopened the MCP-created project through IDE MCP, and verified the component returned `map/level2.bin` |
+| 2026-06-25 | Looked for non-existent `fc-tauri/src-tauri/src/ide.rs` | Initial state-radar audit used the wrong backend file name | Continued from actual files: `ide_mcp.rs`, `project.rs`, `build_pipeline.rs`, and `watch.rs` |
+| 2026-06-25 | First Tauri dev link failed with `.llvm` undefined symbols | `npm --prefix fc-tauri run tauri dev` hit a stale/inconsistent Rust incremental link cache | Ran `CARGO_INCREMENTAL=0 cargo build --manifest-path fc-tauri/src-tauri/Cargo.toml`, then restarted `tauri dev` with `CARGO_INCREMENTAL=0` successfully |
+| 2026-06-25 | CHR editor first opened at tile 0 despite `chrTileFocus.tile=7` | Tile-focus signal arrived before the CHR editor mounted | Added pending focus application on CHR editor mount and CHR path changes |
+| 2026-06-25 | `ide_new_project` verification used `root` instead of `dir` | Initial Phase 28 script passed `{root, name}` and the IDE MCP returned `缺少参数 dir`, leaving no active project for build/run | Re-ran with `{dir, name}` and verified project creation, build, run, and layout focus |
+| 2026-06-26 | Long Tracker scroll verification eval timed out | A single `tauri_eval` dispatched many key events and waits, exceeding the bridge timeout | Used shorter real Tauri eval calls to inspect the already-updated UI and to verify note-entry auto-advance separately |
+| 2026-06-26 | `source-patch` focus landed on file top after tab refresh | Resource focus ran before refreshing an already-open source tab, so CodeMirror reload reset the selection | Refresh targeted source tabs before calling `focusResource()` when MCP events include both `source` and `resource` |
+| 2026-06-26 | IDE MCP script timed out waiting for `notifications/initialized` | Sent the initialized notification with a JSON-RPC id, but the Tauri-hosted MCP correctly returns no response for notifications | Treated initialized as a no-response notification and used only `initialize` plus `tools/call` requests for verification |
+| 2026-06-27 | Phase 53 MCP script assumed `tools/call` returns `{success,result}` | Read `scaffold.song_path`, but Tauri IDE MCP wraps tool results by adding `success` at the top level | Updated the script to read top-level tool fields such as `resources.song` |
+| 2026-06-27 | First active-context phrase check wrote from the previous Tracker focus | Called `ide_focus_resource` and immediately called `ide_patch_active_context` before the frontend published the new `ui.active_editor` | Re-ran with `ide_wait_ui_context` between focus and active-context patch; row 20/channel 0 wrote correctly |
+| 2026-06-28 | Same-path CHR focus discarded unsaved clipboard edits | During Phase 65 verification, a normal `ide_focus_resource` re-opened `chr/sprites.chr` from disk after an unsaved paste, clearing `chrDirty` and losing tile 8 changes | Changed `openChr()` to preserve an already-open dirty sheet on ordinary same-path focus; external `chr-patch`/refresh paths now pass `forceReload` |

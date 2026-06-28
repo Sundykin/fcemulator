@@ -11,7 +11,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tauri::State;
 
@@ -64,6 +64,7 @@ fn resolve_tool(name: &str) -> PathBuf {
 }
 
 /// Whether a cc65 tool is resolvable (vendored or on PATH). For other modules' tests.
+#[cfg(test)]
 pub fn tool_available(name: &str) -> bool {
     resolve_tool(name).exists()
 }
@@ -560,6 +561,7 @@ pub fn run_build(root: &Path, manifest: &ProjectManifest, cancel: Arc<AtomicBool
 pub struct BuildState {
     cancel: Arc<AtomicBool>,
     lock: Arc<std::sync::Mutex<()>>,
+    last_result: Arc<Mutex<Option<BuildResult>>>,
 }
 
 impl BuildState {
@@ -571,6 +573,15 @@ impl BuildState {
     }
     pub fn build_lock(&self) -> Arc<std::sync::Mutex<()>> {
         self.lock.clone()
+    }
+    pub fn set_last_result(&self, result: BuildResult) {
+        *self.last_result.lock().unwrap() = Some(result);
+    }
+    pub fn last_result(&self) -> Option<BuildResult> {
+        self.last_result.lock().unwrap().clone()
+    }
+    pub fn last_result_slot(&self) -> Arc<Mutex<Option<BuildResult>>> {
+        self.last_result.clone()
     }
 }
 
@@ -585,7 +596,9 @@ pub fn build_run(
     let manifest = project::load_manifest(&root)?;
     build.cancel.store(false, Ordering::Relaxed);
     let _guard = build.lock.lock().unwrap(); // serialize with watch rebuilds
-    Ok(run_build(&root, &manifest, build.cancel.clone()))
+    let result = run_build(&root, &manifest, build.cancel.clone());
+    build.set_last_result(result.clone());
+    Ok(result)
 }
 
 #[tauri::command]

@@ -427,8 +427,37 @@ pub fn tracker_import_ftm(src_path: String) -> Result<Song, String> {
 }
 
 /// 捆绑的回放引擎 asm 路径。
-fn engine_path() -> std::path::PathBuf {
+pub fn engine_path() -> std::path::PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("vendor/fc-player/fc_player.s")
+}
+
+pub fn export_song_to_project(
+    root: &Path,
+    out_rel: &str,
+    song: &Song,
+) -> Result<project::ProjectManifest, String> {
+    let out = resolve(root, out_rel)?;
+    if let Some(parent) = out.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {e}"))?;
+    }
+    std::fs::write(&out, export_ca65(song, Region::Ntsc))
+        .map_err(|e| format!("写入 {out_rel} 失败: {e}"))?;
+
+    let eng_rel = "music/fc_player.s";
+    let eng_dst = resolve(root, eng_rel)?;
+    if let Some(parent) = eng_dst.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {e}"))?;
+    }
+    std::fs::copy(engine_path(), &eng_dst).map_err(|e| format!("拷入回放引擎失败: {e}"))?;
+
+    let mut manifest = project::load_manifest(root)?;
+    for f in [out_rel.to_string(), eng_rel.to_string()] {
+        if !manifest.music.contains(&f) {
+            manifest.music.push(f);
+        }
+    }
+    project::save_manifest(root, &manifest)?;
+    Ok(manifest)
 }
 
 /// 导出乐曲为 ca65(`out_rel`)+ 捆绑回放引擎到 `music/fc_player.s`,并登记进
@@ -437,27 +466,7 @@ fn engine_path() -> std::path::PathBuf {
 #[tauri::command]
 pub fn tracker_export(out_rel: String, song: Song, state: State<ProjectState>) -> Result<(), String> {
     let root = state.active_root()?;
-    let out = resolve(&root, &out_rel)?;
-    if let Some(parent) = out.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {e}"))?;
-    }
-    std::fs::write(&out, export_ca65(&song, Region::Ntsc))
-        .map_err(|e| format!("写入 {out_rel} 失败: {e}"))?;
-
-    let eng_rel = "music/fc_player.s";
-    let eng_dst = resolve(&root, eng_rel)?;
-    if let Some(parent) = eng_dst.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {e}"))?;
-    }
-    std::fs::copy(engine_path(), &eng_dst).map_err(|e| format!("拷入回放引擎失败: {e}"))?;
-
-    let mut manifest = project::load_manifest(&root)?;
-    for f in [out_rel.clone(), eng_rel.to_string()] {
-        if !manifest.music.contains(&f) {
-            manifest.music.push(f);
-        }
-    }
-    project::save_manifest(&root, &manifest)?;
+    export_song_to_project(&root, &out_rel, &song)?;
     Ok(())
 }
 

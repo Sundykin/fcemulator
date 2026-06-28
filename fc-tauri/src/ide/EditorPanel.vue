@@ -14,6 +14,31 @@ let loadingDoc = false;
 
 const activeTab = computed(() => store.activeTab);
 
+function publishSourceContext() {
+  const tab = store.activeTab;
+  if (!tab || !view) {
+    store.setEditorContext("source", null);
+    return;
+  }
+  const selection = view.state.selection.main;
+  const line = view.state.doc.lineAt(selection.head).number;
+  const selectionRange = selection.empty
+    ? null
+    : {
+        line0: view.state.doc.lineAt(Math.min(selection.from, selection.to)).number,
+        line1: view.state.doc.lineAt(Math.max(selection.from, selection.to)).number,
+      };
+  store.setEditorContext("source", {
+    kind: "source",
+    path: tab.path,
+    line,
+    selection: selectionRange,
+    dirty: tab.content !== tab.saved,
+    tab_count: store.tabs.length,
+    active: store.activeResource.kind === "source" && store.activeResource.path === tab.path,
+  });
+}
+
 function loadActive() {
   if (!view) return;
   const tab = store.activeTab;
@@ -25,6 +50,10 @@ function loadActive() {
       extensions: [
         ca65Extensions((doc) => {
           if (!loadingDoc) store.updateContent(store.activePath, doc);
+          publishSourceContext();
+        }),
+        EditorView.updateListener.of((update) => {
+          if (update.selectionSet || update.focusChanged) publishSourceContext();
         }),
         breakpointGutter(store.bpLinesFor(path), (line, on) => {
           store.toggleLineBreakpoint(path, line, on).catch((e) => (store.status = "断点失败：" + e));
@@ -34,6 +63,7 @@ function loadActive() {
   );
   loadingDoc = false;
   if (tab) view.focus();
+  publishSourceContext();
 }
 
 onMounted(() => {
@@ -48,6 +78,7 @@ onBeforeUnmount(() => {
 
 // Reload editor content whenever the active tab changes.
 watch(() => store.activePath, loadActive);
+watch([activeTab, () => store.activeResource.seq, () => store.dirty], () => publishSourceContext(), { flush: "post" });
 
 // Scroll to a line when the store emits a goto signal (e.g. diagnostic click).
 watch(
@@ -60,12 +91,14 @@ watch(
     const line = view.state.doc.line(lineNo);
     view.dispatch({ selection: { anchor: line.from }, scrollIntoView: true });
     view.focus();
+    publishSourceContext();
   }
 );
-// If the active tab's content is replaced externally (e.g. it was just opened),
-// keep the editor in sync only when it differs from what we last loaded.
+// If the active tab's content is replaced externally (e.g. IDE MCP writes the
+// file), keep the editor in sync. Edits made by this CodeMirror view already
+// match the document text, so they do not cause a reload loop.
 watch(
-  () => store.tabs.length,
+  () => store.activeTab?.content,
   () => {
     if (store.activeTab && view && store.activeTab.content !== view.state.doc.toString()) loadActive();
   }

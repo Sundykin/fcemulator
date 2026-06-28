@@ -3,7 +3,9 @@ mod build_pipeline;
 mod chr;
 mod converters;
 mod emu;
+mod emu_mcp;
 mod famistudio;
+mod ide_mcp;
 mod map;
 mod palettes;
 mod project;
@@ -39,8 +41,14 @@ pub fn run() {
     builder
         .manage(EmuState::new())
         .manage(ProjectState::new())
+        .manage(ide_mcp::IdeUiState::new())
         .manage(BuildState::new())
         .manage(WatchState::new())
+        .setup(|app| {
+            ide_mcp::start(app.handle().clone());
+            emu_mcp::start(app.handle().clone());
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             emu::open_rom,
             emu::open_rom_id,
@@ -50,6 +58,9 @@ pub fn run() {
             emu::set_volume,
             emu::set_remove_sprite_limit,
             emu::runtime_stats,
+            emu_mcp::emu_mcp_status,
+            ide_mcp::ide_ui_update,
+            ide_mcp::ide_verify_game_ui,
             emu::list_palettes,
             emu::set_palette,
             emu::palette_preview,

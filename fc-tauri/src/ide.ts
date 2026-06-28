@@ -80,6 +80,19 @@ export const projectReadFile = (relPath: string) => invoke<string>("project_read
 export const projectWriteFile = (relPath: string, content: string) =>
   invoke("project_write_file", { relPath, content });
 
+export const ideUiUpdate = (snapshot: Record<string, unknown>) =>
+  invoke<Record<string, unknown>>("ide_ui_update", { snapshot });
+export interface GameVerifyResponse {
+  ok: boolean;
+  checks: Array<{ name: string; ok: boolean } & Record<string, unknown>>;
+  build: unknown;
+  run: unknown;
+  runtime: Record<string, unknown>;
+  frame: Record<string, unknown>;
+  input: Record<string, unknown> | null;
+}
+export const ideVerifyGameUi = () => invoke<GameVerifyResponse>("ide_verify_game_ui");
+
 // ---- CHR ----
 export interface ChrSheet {
   tiles: number;

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted } from "vue";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { NConfigProvider, NMessageProvider, darkTheme } from "naive-ui";
 import { naiveOverrides } from "../theme/naive";
 import { useEmuStore } from "../stores/emu";
@@ -27,6 +28,10 @@ const project = useProjectStore();
 useKeyboard();
 useHaltWatch();
 
+let ideMcpUiUnlisten: UnlistenFn | null = null;
+let emuMcpUiUnlisten: UnlistenFn | null = null;
+let emuMcpStatusUnlisten: UnlistenFn | null = null;
+
 // Esc closes an open session drawer.
 function onEsc(e: KeyboardEvent) {
   if (e.key === "Escape" && store.panel) {
@@ -35,9 +40,59 @@ function onEsc(e: KeyboardEvent) {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   library.refresh();
   store.initPalettes();
+  project.listenIdeMcp();
+  ideMcpUiUnlisten = await listen<{ reason?: string; changed?: string[]; extra?: { rom?: emuApi.RomInfo; romPath?: string } }>(
+    "ide-mcp-updated",
+    (e) => {
+      const changed = e.payload?.changed || [];
+      const extra = e.payload?.extra;
+      if (changed.some((item) => item === "project" || item === "resource" || item === "source" || item === "chr" || item === "map" || item === "music")) {
+        store.setMode("studio");
+      }
+      if (changed.includes("preview") && extra?.rom) {
+        store.romPath = extra.romPath || "";
+        store.onLoaded(extra.rom, true);
+        store.setMode("studio");
+      }
+    },
+  );
+  emuMcpStatusUnlisten = await listen<{ ok?: boolean; socket?: string; error?: string }>(
+    "emu-mcp-status",
+    (e) => {
+      store.setLiveMcpStatus(e.payload || {});
+    },
+  );
+  emuApi.emuMcpStatus()
+    .then((status) => store.setLiveMcpStatus(status))
+    .catch((e) => store.setLiveMcpStatus({ ok: false, error: String(e) }));
+  emuMcpUiUnlisten = await listen<{
+    reason?: string;
+    changed?: string[];
+    extra?: { rom?: emuApi.RomInfo; romPath?: string; paused?: boolean; speed?: number; status?: string };
+  }>("emu-mcp-updated", (e) => {
+    const changed = e.payload?.changed || [];
+    const extra = e.payload?.extra || {};
+    store.noteLiveMcpUpdate(e.payload?.reason || "emu-mcp", changed);
+    if (changed.includes("rom") && extra.rom) {
+      store.romPath = extra.romPath || "";
+      store.onLoaded(extra.rom);
+      store.setMode("player");
+      store.setView("main");
+    }
+    if (typeof extra.paused === "boolean") {
+      store.paused = extra.paused;
+      store.navPaused = false;
+    }
+    if (typeof extra.speed === "number") {
+      store.speed = extra.speed;
+    }
+    if (extra.status) {
+      store.status = extra.status;
+    }
+  });
   window.addEventListener("keydown", onEsc);
   if (import.meta.env.DEV) {
     const w = window as unknown as {
@@ -52,7 +107,12 @@ onMounted(() => {
     w.__emuApi = emuApi;
   }
 });
-onUnmounted(() => window.removeEventListener("keydown", onEsc));
+onUnmounted(() => {
+  ideMcpUiUnlisten?.();
+  emuMcpUiUnlisten?.();
+  emuMcpStatusUnlisten?.();
+  window.removeEventListener("keydown", onEsc);
+});
 </script>
 
 <template>

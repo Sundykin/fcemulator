@@ -13,14 +13,22 @@ const tool = ref<Tool>("pencil");
 const selTile = ref(0);
 const pickingSlot = ref<number | null>(null); // which of the 4 slots is being recolored
 const root = ref<HTMLElement | null>(null);
+const sheetPanelOpen = ref(true);
+type TilePixels = number[];
+type TileTransform = (src: TilePixels) => TilePixels;
+const tileClipboard = ref<TilePixels | null>(null);
 
 const sheet = computed(() => store.chr);
 const tileCount = computed(() => sheet.value?.tiles ?? 0);
 const undoStack = ref<number[][]>([]);
 const redoStack = ref<number[][]>([]);
 const hoverPixel = ref<{ x: number; y: number; value: number } | null>(null);
+const tileUsages = ref<{ map: string; x: number; y: number; count: number }[]>([]);
+let tileUsageSeq = 0;
 const hasUndo = computed(() => undoStack.value.length > 0);
 const hasRedo = computed(() => redoStack.value.length > 0);
+const hasTileClipboard = computed(() => !!tileClipboard.value);
+const canDuplicateTile = computed(() => tileCount.value > 0 && selTile.value < tileCount.value - 1);
 const toolLabel = computed(() => {
   if (tool.value === "eraser") return "擦除";
   if (tool.value === "fill") return "填充";
@@ -29,8 +37,34 @@ const toolLabel = computed(() => {
 });
 const pixelStatus = computed(() => {
   const p = hoverPixel.value;
-  return p ? `像素 ${p.x},${p.y} · 槽 ${p.value}` : "指向像素查看颜色槽";
+  return p ? `像素 ${p.x},${p.y} · 槽 ${p.value}` : "像素 --,-- · 槽 -";
 });
+const sheetLabel = computed(() => sheet.value?.path ?? "未打开 CHR");
+const currentTileLabel = computed(() =>
+  tileCount.value ? `图块 ${selTile.value} / ${Math.max(0, tileCount.value - 1)}` : "无图块"
+);
+const sheetDensityLabel = computed(() => `图块表 ${overviewCols.value} 列 · ${overviewTile.value}px`);
+const boundMaps = computed(() => store.mapsUsingActiveChr);
+const boundMapsLabel = computed(() => {
+  if (!sheet.value) return "地图 0";
+  if (!boundMaps.value.length) return "未绑定地图";
+  const first = boundMaps.value[0];
+  return boundMaps.value.length === 1 ? `地图 ${first}` : `地图 ${first} +${boundMaps.value.length - 1}`;
+});
+const tileUsageCount = computed(() => tileUsages.value.reduce((sum, item) => sum + item.count, 0));
+const tileUsageLabel = computed(() => {
+  if (!sheet.value) return "图块使用 --";
+  if (!boundMaps.value.length) return "无绑定地图";
+  if (!tileUsageCount.value) return `图块 ${selTile.value} 未使用`;
+  const first = tileUsages.value[0];
+  return first
+    ? `图块 ${selTile.value} · ${tileUsageCount.value} 次 · ${first.map} ${first.x},${first.y}`
+    : `图块 ${selTile.value} · ${tileUsageCount.value} 次`;
+});
+const mapActionLabel = computed(() => tileUsageCount.value ? "打开位置" : "用于地图");
+const mapActionTitle = computed(() =>
+  tileUsageCount.value ? "打开当前图块在地图中的第一个使用位置" : "打开绑定地图并将当前图块设为绘制画笔"
+);
 
 const HISTORY_LIMIT = 50;
 let editBefore: number[] | null = null;
@@ -56,6 +90,27 @@ function replacePixels(pixels: number[]) {
   sheet.value.pixels = pixels.slice();
   drawZoom();
   drawSheet();
+}
+
+function currentTilePixels(): TilePixels | null {
+  const s = sheet.value;
+  if (!s) return null;
+  const base = selTile.value * 64;
+  return s.pixels.slice(base, base + 64).map((v) => v & 3);
+}
+
+function writeTilePixels(tile: number, pixels: TilePixels): boolean {
+  const s = sheet.value;
+  if (!s || tile < 0 || tile >= tileCount.value) return false;
+  const base = tile * 64;
+  let changed = false;
+  for (let i = 0; i < 64; i++) {
+    const next = pixels[i] & 3;
+    if (s.pixels[base + i] === next) continue;
+    s.pixels[base + i] = next;
+    changed = true;
+  }
+  return changed;
 }
 
 function tileChangedSinceEdit(base: number) {
@@ -226,31 +281,123 @@ function floodFill(sx: number, sy: number, nextColor = color.value) {
     stack.push([x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]);
   }
 }
-function flipH() {
+function transformTile(label: string, transform: TileTransform) {
   if (!sheet.value) return;
+  stopStroke();
   beginEdit();
   const base = selTile.value * 64;
-  for (let y = 0; y < 8; y++)
-    for (let x = 0; x < 4; x++) {
-      const a = base + y * 8 + x, b = base + y * 8 + (7 - x);
-      const t = sheet.value.pixels[a]; sheet.value.pixels[a] = sheet.value.pixels[b]; sheet.value.pixels[b] = t;
-    }
+  const current = sheet.value.pixels.slice(base, base + 64);
+  const next = transform(current).slice(0, 64).map((v) => v & 3);
+  for (let i = 0; i < 64; i++) sheet.value.pixels[base + i] = next[i] ?? 0;
   if (tileChangedSinceEdit(base)) markEditChanged();
   finishEdit();
-  drawZoom(); drawSheet();
+  drawZoom();
+  drawSheet();
+  store.status = `${label} CHR 图块 ${selTile.value}`;
+}
+
+function flipH() {
+  transformTile("水平翻转", (src) => {
+    const out = new Array<number>(64);
+    for (let y = 0; y < 8; y++)
+      for (let x = 0; x < 8; x++) out[y * 8 + x] = src[y * 8 + (7 - x)] ?? 0;
+    return out;
+  });
 }
 function flipV() {
-  if (!sheet.value) return;
-  beginEdit();
-  const base = selTile.value * 64;
-  for (let y = 0; y < 4; y++)
-    for (let x = 0; x < 8; x++) {
-      const a = base + y * 8 + x, b = base + (7 - y) * 8 + x;
-      const t = sheet.value.pixels[a]; sheet.value.pixels[a] = sheet.value.pixels[b]; sheet.value.pixels[b] = t;
+  transformTile("垂直翻转", (src) => {
+    const out = new Array<number>(64);
+    for (let y = 0; y < 8; y++)
+      for (let x = 0; x < 8; x++) out[y * 8 + x] = src[(7 - y) * 8 + x] ?? 0;
+    return out;
+  });
+}
+function rotateTile(direction: "cw" | "ccw") {
+  transformTile(direction === "cw" ? "顺时针旋转" : "逆时针旋转", (src) => {
+    const out = new Array<number>(64);
+    for (let y = 0; y < 8; y++) {
+      for (let x = 0; x < 8; x++) {
+        const dst = direction === "cw" ? x * 8 + (7 - y) : (7 - x) * 8 + y;
+        out[dst] = src[y * 8 + x] ?? 0;
+      }
     }
-  if (tileChangedSinceEdit(base)) markEditChanged();
-  finishEdit();
-  drawZoom(); drawSheet();
+    return out;
+  });
+}
+function shiftTile(dx: number, dy: number, wrap = false) {
+  const label = dx < 0 ? "左移" : dx > 0 ? "右移" : dy < 0 ? "上移" : "下移";
+  transformTile(`${wrap ? "循环" : "清空"}${label}`, (src) => {
+    const out = new Array<number>(64).fill(0);
+    for (let y = 0; y < 8; y++) {
+      for (let x = 0; x < 8; x++) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (wrap) out[((ny + 8) % 8) * 8 + ((nx + 8) % 8)] = src[y * 8 + x] ?? 0;
+        else if (nx >= 0 && nx < 8 && ny >= 0 && ny < 8) out[ny * 8 + nx] = src[y * 8 + x] ?? 0;
+      }
+    }
+    return out;
+  });
+}
+
+function copyTile(): boolean {
+  const pixels = currentTilePixels();
+  if (!pixels) {
+    store.status = "没有可复制的 CHR 图块";
+    return false;
+  }
+  tileClipboard.value = pixels;
+  store.status = `已复制 CHR 图块 ${selTile.value}`;
+  return true;
+}
+
+function pasteTile(): boolean {
+  if (!sheet.value || !tileClipboard.value) {
+    store.status = "没有可粘贴的 CHR 图块";
+    return false;
+  }
+  stopStroke();
+  const before = clonePixels();
+  const changed = writeTilePixels(selTile.value, tileClipboard.value);
+  if (!changed) {
+    store.status = `目标图块 ${selTile.value} 已是剪贴板内容`;
+    drawZoom();
+    drawSheet();
+    return false;
+  }
+  pushUndo(before);
+  drawZoom();
+  drawSheet();
+  refreshTileUsage();
+  store.status = `已粘贴到 CHR 图块 ${selTile.value}`;
+  return true;
+}
+
+function duplicateTileToNext(): boolean {
+  const pixels = currentTilePixels();
+  if (!sheet.value || !pixels) {
+    store.status = "没有可复制的 CHR 图块";
+    return false;
+  }
+  const target = selTile.value + 1;
+  if (target >= tileCount.value) {
+    store.status = "当前已是最后一个 CHR 图块";
+    return false;
+  }
+  stopStroke();
+  const before = clonePixels();
+  const changed = writeTilePixels(target, pixels);
+  tileClipboard.value = pixels;
+  selTile.value = target;
+  if (changed) pushUndo(before);
+  drawZoom();
+  drawSheet();
+  nextTick(scrollSelectedTileIntoSheet);
+  refreshTileUsage();
+  store.status = changed
+    ? `已复制到下一个 CHR 图块 ${target}`
+    : `下一个 CHR 图块 ${target} 已是相同内容`;
+  return true;
 }
 
 let painting = false;
@@ -282,12 +429,62 @@ async function saveChr() {
   await store.saveChr();
 }
 
+async function openBoundMap() {
+  try {
+    if (tileUsageCount.value) await store.openMapUsingActiveChrTile(selTile.value);
+    else await store.openMapUsingActiveChrTileBrush(selTile.value);
+  } catch (err) {
+    store.status = "打开地图失败：" + err;
+  }
+}
+
+async function refreshTileUsage() {
+  const s = sheet.value;
+  if (!s) {
+    tileUsages.value = [];
+    return;
+  }
+  const seq = ++tileUsageSeq;
+  const usages = await store.findTileUsageForActiveChr(selTile.value);
+  if (seq === tileUsageSeq && sheet.value?.path === s.path) tileUsages.value = usages;
+}
+
+function toggleSheetPanel() {
+  sheetPanelOpen.value = !sheetPanelOpen.value;
+  nextTick(() => {
+    syncZoomSize();
+    syncSheetTileSize();
+    drawZoom();
+    drawSheet();
+    scrollSelectedTileIntoSheet();
+  });
+}
+
 function stepTile(delta: number) {
   if (!tileCount.value) return;
   stopStroke();
   selTile.value = Math.max(0, Math.min(tileCount.value - 1, selTile.value + delta));
   drawZoom();
   drawSheet();
+  nextTick(scrollSelectedTileIntoSheet);
+}
+
+function focusTile(tile: number) {
+  if (!tileCount.value) return;
+  stopStroke();
+  selTile.value = Math.max(0, Math.min(tileCount.value - 1, Math.floor(tile || 0)));
+  drawZoom();
+  drawSheet();
+  nextTick(() => {
+    root.value?.focus({ preventScroll: true });
+    scrollSelectedTileIntoSheet();
+  });
+}
+
+function applyChrTileFocus() {
+  const focus = store.chrTileFocus;
+  if (!sheet.value || focus.path !== sheet.value.path) return;
+  focusTile(focus.tile);
 }
 
 function setTool(next: Tool) {
@@ -314,6 +511,24 @@ function onKeydown(e: KeyboardEvent) {
     e.preventDefault();
     e.stopPropagation();
     saveChr();
+    return;
+  }
+  if (mod && e.key.toLowerCase() === "c") {
+    e.preventDefault();
+    e.stopPropagation();
+    copyTile();
+    return;
+  }
+  if (mod && e.key.toLowerCase() === "v") {
+    e.preventDefault();
+    e.stopPropagation();
+    pasteTile();
+    return;
+  }
+  if (mod && e.key.toLowerCase() === "d") {
+    e.preventDefault();
+    e.stopPropagation();
+    duplicateTileToNext();
     return;
   }
   if (mod || e.altKey) return;
@@ -346,12 +561,44 @@ function onKeydown(e: KeyboardEvent) {
     e.preventDefault();
     e.stopPropagation();
     stepTile(1);
+  } else if (e.key === "H") {
+    e.preventDefault();
+    e.stopPropagation();
+    flipH();
+  } else if (e.key === "V") {
+    e.preventDefault();
+    e.stopPropagation();
+    flipV();
+  } else if (key === "q") {
+    e.preventDefault();
+    e.stopPropagation();
+    rotateTile("ccw");
+  } else if (key === "w") {
+    e.preventDefault();
+    e.stopPropagation();
+    rotateTile("cw");
+  } else if (key === "j") {
+    e.preventDefault();
+    e.stopPropagation();
+    shiftTile(-1, 0, e.shiftKey);
+  } else if (key === "l") {
+    e.preventDefault();
+    e.stopPropagation();
+    shiftTile(1, 0, e.shiftKey);
+  } else if (key === "k") {
+    e.preventDefault();
+    e.stopPropagation();
+    shiftTile(0, -1, e.shiftKey);
+  } else if (key === "," || key === "<") {
+    e.preventDefault();
+    e.stopPropagation();
+    shiftTile(0, 1, e.shiftKey);
   }
 }
 
 // ---- tile-sheet overview canvas ----
-const COLS = 16;
 const overviewTile = ref(24); // px per tile (rendered 8px scaled up... draw 8x8 then scale)
+const overviewCols = ref(16);
 const sheetCanvas = ref<HTMLCanvasElement | null>(null);
 const sheetWrap = ref<HTMLElement | null>(null);
 let sheetObserver: ResizeObserver | null = null;
@@ -359,9 +606,17 @@ let sheetObserver: ResizeObserver | null = null;
 function syncSheetTileSize() {
   const el = sheetWrap.value;
   if (!el) return;
-  const width = el.getBoundingClientRect().width - 18;
-  if (width <= 0) return;
-  overviewTile.value = Math.max(18, Math.min(44, Math.floor(width / COLS)));
+  const box = el.getBoundingClientRect();
+  const width = box.width - 18;
+  const height = box.height - 18;
+  if (width <= 0 || height <= 0) return;
+  const maxCols = Math.max(4, Math.floor(width / 18));
+  const cols = Math.max(4, Math.min(32, Math.min(tileCount.value || 16, maxCols)));
+  const rows = Math.max(1, Math.ceil((tileCount.value || 1) / cols));
+  const byWidth = Math.floor(width / cols);
+  const byHeight = Math.floor(height / Math.min(rows, 12));
+  overviewCols.value = cols;
+  overviewTile.value = Math.max(18, Math.min(52, Math.min(byWidth, byHeight || byWidth)));
   nextTick(drawSheet);
 }
 
@@ -369,14 +624,15 @@ function drawSheet() {
   const cv = sheetCanvas.value;
   if (!cv || !sheet.value) return;
   const ctx = cv.getContext("2d")!;
-  const rows = Math.ceil(tileCount.value / COLS);
+  const cols = overviewCols.value;
+  const rows = Math.ceil(tileCount.value / cols);
   const tcell = overviewTile.value;
-  cv.width = COLS * tcell;
+  cv.width = cols * tcell;
   cv.height = rows * tcell;
   ctx.imageSmoothingEnabled = false;
   const sub = tcell / 8;
   for (let t = 0; t < tileCount.value; t++) {
-    const tx = (t % COLS) * tcell, ty = Math.floor(t / COLS) * tcell;
+    const tx = (t % cols) * tcell, ty = Math.floor(t / cols) * tcell;
     const base = t * 64;
     for (let y = 0; y < 8; y++)
       for (let x = 0; x < 8; x++) {
@@ -388,9 +644,27 @@ function drawSheet() {
   ctx.strokeStyle = "var(--accent)";
   ctx.lineWidth = 2;
   ctx.strokeStyle = "#7c5cff";
-  const sx = (selTile.value % COLS) * tcell, sy = Math.floor(selTile.value / COLS) * tcell;
+  const sx = (selTile.value % cols) * tcell, sy = Math.floor(selTile.value / cols) * tcell;
   ctx.strokeRect(sx + 1, sy + 1, tcell - 2, tcell - 2);
 }
+
+function scrollSelectedTileIntoSheet() {
+  const wrap = sheetWrap.value;
+  if (!wrap || !tileCount.value) return;
+  const cols = overviewCols.value;
+  const tcell = overviewTile.value;
+  const tile = Math.max(0, Math.min(tileCount.value - 1, selTile.value));
+  const left = (tile % cols) * tcell;
+  const top = Math.floor(tile / cols) * tcell;
+  const right = left + tcell;
+  const bottom = top + tcell;
+  const pad = 8;
+  if (left < wrap.scrollLeft) wrap.scrollLeft = Math.max(0, left - pad);
+  else if (right > wrap.scrollLeft + wrap.clientWidth) wrap.scrollLeft = Math.max(0, right - wrap.clientWidth + pad);
+  if (top < wrap.scrollTop) wrap.scrollTop = Math.max(0, top - pad);
+  else if (bottom > wrap.scrollTop + wrap.clientHeight) wrap.scrollTop = Math.max(0, bottom - wrap.clientHeight + pad);
+}
+
 function pickTile(ev: MouseEvent) {
   root.value?.focus({ preventScroll: true });
   const r = sheetCanvas.value!.getBoundingClientRect();
@@ -399,12 +673,13 @@ function pickTile(ev: MouseEvent) {
   const tcell = overviewTile.value;
   const ty = Math.floor(((ev.clientY - r.top) * sy) / tcell);
   const scaledTx = Math.floor(((ev.clientX - r.left) * sx) / tcell);
-  const t = ty * COLS + scaledTx;
+  const t = ty * overviewCols.value + scaledTx;
   if (t >= 0 && t < tileCount.value) {
     stopStroke();
     selTile.value = t;
     drawZoom();
     drawSheet();
+    scrollSelectedTileIntoSheet();
   }
 }
 
@@ -416,13 +691,48 @@ function pickPaletteColor(nesIdx: number) {
   }
 }
 
-watch([sheet, selTile], () => { nextTick(() => { syncZoomSize(); syncSheetTileSize(); drawZoom(); drawSheet(); }); });
+function publishChrContext() {
+  if (!sheet.value) {
+    store.setEditorContext("chr", null);
+    return;
+  }
+  store.setEditorContext("chr", {
+    kind: "chr",
+    path: sheet.value.path,
+    tile: selTile.value,
+    tile_count: tileCount.value,
+    tool: tool.value,
+    palette_slot: color.value,
+    hover_pixel: hoverPixel.value,
+    sheet_panel_open: sheetPanelOpen.value,
+    used_by_maps: boundMaps.value,
+    selected_tile_usage_count: tileUsageCount.value,
+    dirty: store.chrDirty,
+    active: store.activeResource.kind === "chr" && store.activeResource.path === sheet.value.path,
+  });
+}
+
+watch([sheet, selTile], () => {
+  nextTick(() => {
+    syncZoomSize();
+    syncSheetTileSize();
+    drawZoom();
+    drawSheet();
+    scrollSelectedTileIntoSheet();
+  });
+  refreshTileUsage();
+  publishChrContext();
+});
+watch([tool, color, hoverPixel, sheetPanelOpen, tileUsages, () => store.chrDirty, () => store.activeResource.seq], publishChrContext, { deep: true, flush: "post" });
+watch(() => store.chrTileFocus.seq, () => nextTick(applyChrTileFocus), { flush: "post" });
 watch(() => store.chr?.path, () => {
   stopStroke();
   undoStack.value = [];
   redoStack.value = [];
   hoverPixel.value = null;
   selTile.value = 0;
+  nextTick(applyChrTileFocus);
+  nextTick(publishChrContext);
 });
 watch(() => store.chr?.pixels, () => { drawZoom(); drawSheet(); }, { deep: true });
 watch(zoomSize, () => nextTick(drawZoom));
@@ -442,11 +752,24 @@ watch(sheetWrap, (el) => {
   if (el) {
     sheetObserver = new ResizeObserver(syncSheetTileSize);
     sheetObserver.observe(el);
-    nextTick(syncSheetTileSize);
+    nextTick(() => {
+      syncSheetTileSize();
+      scrollSelectedTileIntoSheet();
+    });
   }
 }, { flush: "post" });
-onMounted(() => { syncZoomSize(); syncSheetTileSize(); drawZoom(); drawSheet(); });
+onMounted(() => {
+  syncZoomSize();
+  syncSheetTileSize();
+  applyChrTileFocus();
+  refreshTileUsage();
+  drawZoom();
+  drawSheet();
+  nextTick(scrollSelectedTileIntoSheet);
+  nextTick(publishChrContext);
+});
 onBeforeUnmount(() => {
+  store.setEditorContext("chr", null);
   zoomObserver?.disconnect();
   sheetObserver?.disconnect();
 });
@@ -456,7 +779,7 @@ onBeforeUnmount(() => {
   <div ref="root" class="chr" tabindex="0" @keydown="onKeydown">
     <div v-if="!sheet" class="empty">
       <Icon name="library" :size="40" />
-      <p>从文件树打开一个 .chr,或新建 CHR 资源</p>
+      <p>未打开 CHR 资源</p>
     </div>
     <template v-else>
       <div class="toolbar">
@@ -464,18 +787,70 @@ onBeforeUnmount(() => {
         <button class="t" :class="{ on: tool === 'eraser' }" title="擦除 (E/X)" @click="setTool('eraser')">擦除</button>
         <button class="t" :class="{ on: tool === 'fill' }" title="填充 (F)" @click="setTool('fill')">填充</button>
         <button class="t" :class="{ on: tool === 'picker' }" title="取样 (I)" @click="setTool('picker')">取样</button>
-        <button class="t" @click="flipH">⇋ 水平翻转</button>
-        <button class="t" @click="flipV">⇅ 垂直翻转</button>
+        <div class="toolgroup" aria-label="图块剪贴板">
+          <button class="iconbtn" title="复制当前图块 (Ctrl/⌘+C)" @click="copyTile">
+            <Icon name="copy" :size="15" />
+          </button>
+          <button class="iconbtn" title="粘贴到当前图块 (Ctrl/⌘+V)" :disabled="!hasTileClipboard" @click="pasteTile">
+            <Icon name="clipboard" :size="15" />
+          </button>
+          <button class="iconbtn" title="复制到下一个图块 (Ctrl/⌘+D)" :disabled="!canDuplicateTile" @click="duplicateTileToNext">
+            <Icon name="copyPlus" :size="15" />
+          </button>
+        </div>
+        <div class="toolgroup" aria-label="图块变换">
+          <button class="iconbtn" title="逆时针旋转 (Q)" @click="rotateTile('ccw')">
+            <Icon name="rotateLeft" :size="15" />
+          </button>
+          <button class="iconbtn" title="顺时针旋转 (W)" @click="rotateTile('cw')">
+            <Icon name="rotateRight" :size="15" />
+          </button>
+          <button class="t compact" title="水平翻转 (Shift+H)" @click="flipH">⇋</button>
+          <button class="t compact" title="垂直翻转 (Shift+V)" @click="flipV">⇅</button>
+        </div>
+        <div class="toolgroup nudge" aria-label="图块平移">
+          <button class="iconbtn" title="上移一像素 (K, Shift+K 循环)" @click="shiftTile(0, -1)">
+            <Icon name="arrowUp" :size="15" />
+          </button>
+          <button class="iconbtn" title="下移一像素 (, , Shift+, 循环)" @click="shiftTile(0, 1)">
+            <Icon name="arrowDown" :size="15" />
+          </button>
+          <button class="iconbtn" title="左移一像素 (J, Shift+J 循环)" @click="shiftTile(-1, 0)">
+            <Icon name="arrowLeft" :size="15" />
+          </button>
+          <button class="iconbtn" title="右移一像素 (L, Shift+L 循环)" @click="shiftTile(1, 0)">
+            <Icon name="arrowRight" :size="15" />
+          </button>
+        </div>
         <button class="iconbtn" title="撤销" :disabled="!hasUndo" @click="undo">
           <Icon name="undo" :size="15" />
         </button>
         <button class="iconbtn" title="重做" :disabled="!hasRedo" @click="redo">
           <Icon name="redo" :size="15" />
         </button>
+        <button
+          class="iconbtn"
+          :class="{ on: sheetPanelOpen }"
+          title="图块表"
+          @click="toggleSheetPanel"
+        >
+          <Icon name="library" :size="15" />
+        </button>
         <div class="grow" />
         <span class="meta strong">{{ toolLabel }} · 槽 {{ color }}</span>
         <span class="dirty" v-if="store.chrDirty">●未保存</span>
         <button class="t save" @click="saveChr">保存</button>
+      </div>
+      <div class="contextbar">
+        <span class="crumb"><Icon name="library" :size="14" />{{ sheetLabel }}</span>
+        <span class="crumb"><Icon name="file" :size="14" />{{ tileCount }} 图块</span>
+        <span class="crumb bindstate"><Icon name="map" :size="14" />{{ boundMapsLabel }}</span>
+        <span class="crumb usage"><Icon name="search" :size="14" />{{ tileUsageLabel }}</span>
+        <button class="crumb action" :disabled="!boundMaps.length" :title="mapActionTitle" @click="openBoundMap">
+          <Icon name="chevron" :size="13" />{{ mapActionLabel }}
+        </button>
+        <span class="crumb">{{ currentTileLabel }}</span>
+        <span class="crumb pixel">{{ pixelStatus }}</span>
       </div>
       <div class="body">
         <div class="left">
@@ -502,7 +877,7 @@ onBeforeUnmount(() => {
           </div>
           <div class="hintline">
             <span>{{ pixelStatus }}</span>
-            <span>右键/Shift/Alt 擦除</span>
+            <span>{{ sheetDensityLabel }}</span>
           </div>
           <div v-if="pickingSlot != null" class="picker">
             <span class="ptitle">选 NES 颜色 → 槽 {{ pickingSlot }}</span>
@@ -514,11 +889,11 @@ onBeforeUnmount(() => {
             </div>
           </div>
         </div>
-        <div class="right">
+        <div v-if="sheetPanelOpen" class="right">
           <div ref="sheetWrap" class="sheetwrap">
             <canvas ref="sheetCanvas" class="sheetcv" @click="pickTile" />
           </div>
-          <div class="meta">图块 {{ selTile }} / {{ tileCount }} · {{ sheet.path }}</div>
+          <div class="meta">{{ currentTileLabel }} · {{ sheet.path }}</div>
         </div>
       </div>
     </template>
@@ -529,19 +904,30 @@ onBeforeUnmount(() => {
 .chr { height: 100%; display: flex; flex-direction: column; background: var(--panel); outline: none; }
 .chr:focus-within { box-shadow: inset 0 0 0 1px rgba(124, 92, 255, 0.18); }
 .empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: var(--text-mute); }
-.toolbar { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+.toolbar { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border-bottom: 1px solid var(--border); overflow: hidden; }
 .t { height: 28px; padding: 0 10px; border: 1px solid var(--border); background: var(--surface); color: var(--text-dim); border-radius: var(--radius-sm); cursor: pointer; font-size: 12.5px; }
 .t:hover { color: var(--text); border-color: var(--border-strong); }
 .t.on { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
 .t.save { color: var(--accent); }
+.t.compact { width: 28px; padding: 0; flex: 0 0 auto; font-size: 15px; line-height: 1; }
+.toolgroup { height: 30px; display: inline-flex; align-items: center; gap: 3px; padding: 0 4px; border: 1px solid rgba(255,255,255,0.06); border-radius: 6px; background: rgba(5, 7, 13, 0.22); flex: 0 0 auto; }
 .iconbtn { width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--border); background: var(--surface); color: var(--text-dim); border-radius: var(--radius-sm); cursor: pointer; flex: 0 0 auto; }
 .iconbtn:hover { color: var(--text); border-color: var(--border-strong); }
+.iconbtn.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
 .iconbtn:disabled { opacity: 0.4; cursor: default; }
 .grow { flex: 1; }
 .dirty { color: var(--accent); font-size: 12px; }
-.body { flex: 1; display: grid; grid-template-columns: minmax(300px, 42%) minmax(320px, 1fr); gap: 16px; padding: 14px; min-height: 0; overflow: hidden; }
-.left { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
-.zoomstage { flex: 1; min-height: 260px; min-width: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; border: 1px solid var(--border); border-radius: 6px; background: #05070d; }
+.contextbar { min-height: 32px; padding: 6px 12px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border); background: rgba(5, 7, 13, 0.28); overflow: hidden; }
+.crumb { min-width: 0; max-width: 38%; height: 20px; padding: 0 8px; display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--border); border-radius: 5px; color: var(--text-dim); font-size: 11.5px; font-family: var(--font-mono, monospace); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.crumb.action { max-width: none; background: var(--surface); cursor: pointer; font-family: inherit; }
+.crumb.action:hover:not(:disabled) { color: var(--text); border-color: var(--border-strong); }
+.crumb.action:disabled { opacity: 0.45; cursor: not-allowed; }
+.crumb.bindstate { color: var(--text); border-color: rgba(56, 189, 248, 0.36); background: rgba(56, 189, 248, 0.09); }
+.crumb.usage { max-width: 42%; color: var(--text); border-color: rgba(34, 197, 94, 0.34); background: rgba(34, 197, 94, 0.08); }
+.crumb.pixel { max-width: 34%; color: var(--text); border-color: rgba(124, 92, 255, 0.34); background: rgba(124, 92, 255, 0.1); }
+.body { flex: 1; position: relative; padding: 14px; min-height: 0; overflow: hidden; }
+.left { width: 100%; height: 100%; display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+.zoomstage { flex: 1; min-height: 0; min-width: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; border: 1px solid var(--border); border-radius: 6px; background: #05070d; }
 .zoomcv { image-rendering: pixelated; cursor: crosshair; max-width: 100%; max-height: 100%; }
 .pal { display: flex; gap: 8px; }
 .swatch { width: 38px; height: 38px; border-radius: 7px; border: 2px solid transparent; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #fff; mix-blend-mode: difference; font-size: 12px; }
@@ -552,9 +938,13 @@ onBeforeUnmount(() => {
 .grid { display: grid; grid-template-columns: repeat(16, 1fr); gap: 2px; margin-top: 6px; }
 .pc { width: 14px; height: 14px; border-radius: 2px; cursor: pointer; }
 .pc:hover { outline: 2px solid var(--accent); }
-.right { min-width: 0; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
-.sheetwrap { flex: 1; overflow: auto; border: 1px solid var(--border); border-radius: 6px; padding: 8px; background: #05070d; }
+.right { position: absolute; top: 20px; right: 20px; bottom: 20px; width: clamp(260px, 32%, 440px); display: flex; flex-direction: column; gap: 8px; min-height: 0; padding: 10px; border: 1px solid var(--border); border-radius: 7px; background: rgba(10, 15, 28, 0.94); box-shadow: 0 16px 44px rgba(0, 0, 0, 0.35); backdrop-filter: blur(10px); }
+.sheetwrap { flex: 1; min-height: 0; overflow: auto; border: 1px solid var(--border); border-radius: 6px; padding: 8px; background: #05070d; }
 .sheetcv { image-rendering: pixelated; cursor: pointer; transform-origin: top left; }
 .meta { font-size: 12px; color: var(--text-dim); font-family: var(--font-mono, monospace); }
 .meta.strong { color: var(--text); white-space: nowrap; }
+@media (max-width: 900px) {
+  .toolbar { flex-wrap: wrap; align-content: flex-start; }
+  .grow { display: none; }
+}
 </style>

@@ -32,6 +32,9 @@ export interface Bp { id: number; kind: string; addr: number; enabled: boolean; 
 export interface CheatItem {
   idx: number; code: string; addr: number; value: number; compare: number | null; enabled: boolean; desc: string;
 }
+export interface LiveMcpStatus {
+  ok?: boolean; socket?: string; error?: string;
+}
 
 export async function openRomDialog(): Promise<RomInfo | null> {
   const path = await open({ multiple: false, filters: [{ name: "NES ROMs", extensions: ["nes", "NES"] }] });
@@ -87,6 +90,7 @@ export interface PpuApuState {
 }
 export const ppuApuState = () => invoke<PpuApuState>("ppu_apu_state");
 export const runtimeStats = () => invoke<Record<string, unknown>>("runtime_stats");
+export const emuMcpStatus = () => invoke<LiveMcpStatus>("emu_mcp_status");
 
 // ---- Event Viewer / break-on-event / access heatmap (debugger L4.3/L4.4) ----
 export interface DebugEvent {

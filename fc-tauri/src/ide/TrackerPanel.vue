@@ -13,10 +13,12 @@ const NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 
 const selRow = ref(0);
 const selCh = ref(0);
+const focusRange = ref<{ row0: number; row1: number; ch0: number; ch1: number } | null>(null);
 const octave = ref(3);
 const curInst = ref(0);
 const patIdx = ref(0);
 const root = ref<HTMLElement | null>(null);
+const inspectorOpen = ref(true);
 const undoStack = ref<Song[]>([]);
 const redoStack = ref<Song[]>([]);
 const rollHover = ref<{ row: number; note: number } | null>(null);
@@ -28,7 +30,22 @@ const activeCellLabel = computed(() => {
   const cell = pattern.value?.rows[selRow.value]?.[selCh.value];
   return `行 ${selRow.value.toString(16).toUpperCase().padStart(2, "0")} · ${CH[selCh.value]} · ${cell ? noteName(cell.note) : "···"}`;
 });
-const rollHoverLabel = computed(() => rollHover.value ? `卷帘 ${rollHover.value.row} · ${noteName(rollHover.value.note)}` : "卷帘拖拽放置,右键/Shift/Alt 擦除");
+const rangeLabel = computed(() => {
+  const range = focusRange.value;
+  if (!range) return "";
+  const rows = range.row1 - range.row0 + 1;
+  const channels = range.ch1 - range.ch0 + 1;
+  return rows === 1 && channels === 1 ? "" : `选区 ${rows}×${channels}`;
+});
+const songLabel = computed(() => store.song?.path ?? "未打开乐曲");
+const viewLabel = computed(() => view.value === "roll" ? "钢琴卷帘" : "Pattern");
+const rollHoverLabel = computed(() =>
+  rollHover.value ? `卷帘 ${rollHover.value.row} · ${noteName(rollHover.value.note)}` : "卷帘 -- · ---"
+);
+const patternSizeLabel = computed(() =>
+  pattern.value ? `${pattern.value.rows.length} 行 · ${CH.length} 声道` : "无 Pattern"
+);
+const transportLabel = computed(() => store.trackerPlaying ? "试听中" : "停止");
 const HISTORY_LIMIT = 50;
 
 function noteName(n: number): string {
@@ -90,6 +107,14 @@ function redo() {
 async function saveTracker() {
   stopRollPaint();
   await store.saveTracker();
+}
+
+function toggleInspector() {
+  inspectorOpen.value = !inspectorOpen.value;
+  nextTick(() => {
+    syncRollMetrics();
+    drawRoll();
+  });
 }
 
 // tracker keyboard layout (one octave): Z..M lower row
@@ -162,6 +187,45 @@ function selectCell(r: number, c: number) {
   root.value?.focus({ preventScroll: true });
   selRow.value = r;
   selCh.value = c;
+  focusRange.value = null;
+}
+
+function clampInt(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) return min;
+  return Math.max(min, Math.min(max, Math.floor(value)));
+}
+
+function focusSelectedPatternCell() {
+  nextTick(() => {
+    root.value?.focus({ preventScroll: true });
+    const selected = root.value?.querySelector(".grid .cell.sel");
+    selected?.scrollIntoView({ block: "center", inline: "center" });
+  });
+}
+
+function applyPendingSongCellFocus() {
+  const focus = store.songCellFocus;
+  const current = store.song;
+  if (!current || !song.value || focus.path !== current.path || !focus.seq) return false;
+  if (!song.value.patterns.length) return false;
+  view.value = "pattern";
+  patIdx.value = clampInt(focus.pattern, 0, song.value.patterns.length - 1);
+  const p = song.value.patterns[patIdx.value];
+  selRow.value = clampInt(focus.row, 0, Math.max(0, p.rows.length - 1));
+  selCh.value = clampInt(focus.channel, 0, 4);
+  const range = focus.range;
+  const row0 = clampInt(range?.row0 ?? focus.row, 0, Math.max(0, p.rows.length - 1));
+  const row1 = clampInt(range?.row1 ?? focus.row, 0, Math.max(0, p.rows.length - 1));
+  const ch0 = clampInt(range?.channel0 ?? focus.channel, 0, 4);
+  const ch1 = clampInt(range?.channel1 ?? focus.channel, 0, 4);
+  focusRange.value = row0 === row1 && ch0 === ch1 ? null : { row0, row1, ch0, ch1 };
+  focusSelectedPatternCell();
+  return true;
+}
+
+function isRangeCell(row: number, channel: number): boolean {
+  const range = focusRange.value;
+  return !!range && row >= range.row0 && row <= range.row1 && channel >= range.ch0 && channel <= range.ch1;
 }
 
 function isEditableTarget(target: EventTarget | null): boolean {
@@ -326,6 +390,45 @@ function stopRollPaint() {
 function clearRollHover() {
   rollHover.value = null;
 }
+
+function publishTrackerContext() {
+  const current = store.song;
+  if (!current || !song.value) {
+    store.setEditorContext("music", null);
+    return;
+  }
+  const cell = selCell.value;
+  store.setEditorContext("music", {
+    kind: "music",
+    path: current.path,
+    view: view.value,
+    pattern: patIdx.value,
+    row: selRow.value,
+    channel: selCh.value,
+    channel_label: CH[selCh.value],
+    selection: focusRange.value ? {
+      row0: focusRange.value.row0,
+      row1: focusRange.value.row1,
+      channel0: focusRange.value.ch0,
+      channel1: focusRange.value.ch1,
+    } : null,
+    octave: octave.value,
+    instrument: curInst.value,
+    cell: cell ? {
+      note: cell.note,
+      instrument: cell.instrument,
+      volume: cell.volume,
+      fx: cell.fx ?? 0,
+      param: cell.param ?? 0,
+    } : null,
+    roll_hover: rollHover.value,
+    inspector_open: inspectorOpen.value,
+    playing: store.trackerPlaying,
+    dirty: store.songDirty,
+    active: store.activeResource.kind === "music" && store.activeResource.path === current.path,
+  });
+}
+
 watch([() => view.value, () => selCh.value, () => selRow.value, () => baseNote.value, pattern], () => {
   if (view.value === "roll") {
     nextTick(() => {
@@ -334,6 +437,29 @@ watch([() => view.value, () => selCh.value, () => selRow.value, () => baseNote.v
     });
   }
 }, { deep: true });
+watch([() => view.value, () => selRow.value, () => selCh.value], () => {
+  if (view.value === "pattern") focusSelectedPatternCell();
+});
+watch(
+  [
+    () => store.song?.path,
+    () => store.songDirty,
+    () => store.trackerPlaying,
+    () => store.activeResource.seq,
+    view,
+    patIdx,
+    selRow,
+    selCh,
+    focusRange,
+    octave,
+    curInst,
+    inspectorOpen,
+    rollHover,
+    selCell,
+  ],
+  publishTrackerContext,
+  { deep: true, flush: "post" },
+);
 watch([rollCellW, rollCellH], () => nextTick(drawRoll));
 watch(rollArea, (el) => {
   rollObserver?.disconnect();
@@ -345,7 +471,10 @@ watch(rollArea, (el) => {
   }
 }, { flush: "post" });
 onMounted(() => { if (view.value === "roll") { syncRollMetrics(); drawRoll(); } });
-onBeforeUnmount(() => rollObserver?.disconnect());
+onBeforeUnmount(() => {
+  store.setEditorContext("music", null);
+  rollObserver?.disconnect();
+});
 
 // instrument editing
 const inst = computed(() => song.value?.instruments[curInst.value] ?? null);
@@ -383,9 +512,20 @@ watch(() => store.song?.path, () => {
   undoStack.value = [];
   redoStack.value = [];
   rollHover.value = null;
+  focusRange.value = null;
   selRow.value = 0;
   selCh.value = 0;
   patIdx.value = 0;
+  nextTick(applyPendingSongCellFocus);
+  nextTick(publishTrackerContext);
+});
+watch(() => store.songCellFocus.seq, () => {
+  applyPendingSongCellFocus();
+  nextTick(publishTrackerContext);
+});
+onMounted(() => {
+  applyPendingSongCellFocus();
+  publishTrackerContext();
 });
 </script>
 
@@ -393,7 +533,7 @@ watch(() => store.song?.path, () => {
   <div ref="root" class="tracker" tabindex="0" @keydown="onKeydown">
     <div v-if="!song" class="empty">
       <Icon name="cheat" :size="40" />
-      <p>新建乐曲或从文件树打开 .song.json</p>
+      <p>未打开乐曲</p>
     </div>
     <template v-else>
       <div class="toolbar">
@@ -417,16 +557,32 @@ watch(() => store.song?.path, () => {
         <button class="iconbtn" title="重做" :disabled="!hasRedo" @click="redo">
           <Icon name="redo" :size="15" />
         </button>
+        <button
+          class="iconbtn"
+          :class="{ on: inspectorOpen }"
+          title="乐器与效果"
+          @click="toggleInspector"
+        >
+          <Icon name="settings" :size="15" />
+        </button>
         <div class="grow" />
-        <span class="hint">{{ activeCellLabel }} · {{ view === 'roll' ? rollHoverLabel : 'Z-M 输入音符' }}</span>
+        <span class="hint">{{ activeCellLabel }} · {{ view === 'roll' ? rollHoverLabel : patternSizeLabel }}</span>
         <span v-if="store.songDirty" class="dirty">●未保存</span>
         <button class="t" @click="store.exportTracker()" title="导出 ca65 + 引擎">导出</button>
         <button class="t save" @click="saveTracker">保存</button>
       </div>
+      <div class="contextbar">
+        <span class="crumb"><Icon name="music" :size="14" />{{ songLabel }}</span>
+        <span class="crumb">{{ viewLabel }}</span>
+        <span class="crumb">{{ activeCellLabel }}</span>
+        <span v-if="rangeLabel" class="crumb accent">{{ rangeLabel }}</span>
+        <span class="crumb accent">{{ transportLabel }} · {{ patternSizeLabel }}</span>
+        <span v-if="view === 'roll'" class="crumb">{{ rollHoverLabel }}</span>
+      </div>
 
       <div class="body">
         <div v-if="view === 'roll'" class="rollwrap">
-          <div class="rollbar">通道 {{ CH[selCh] }} · 点击放置/清除音符 ·
+          <div class="rollbar">通道 {{ CH[selCh] }} · {{ rollHoverLabel }}
             <button class="mini" @click="baseNote = Math.max(1, baseNote - 12)">▲八度</button>
             <button class="mini" @click="baseNote = Math.min(60, baseNote + 12)">▼八度</button>
           </div>
@@ -452,7 +608,7 @@ watch(() => store.song?.path, () => {
               <div class="rownum">{{ r.toString(16).toUpperCase().padStart(2, '0') }}</div>
               <div
                 v-for="c in 5" :key="c"
-                class="cell" :class="{ sel: selRow === r && selCh === c - 1 }"
+                class="cell" :class="{ sel: selRow === r && selCh === c - 1, range: isRangeCell(r, c - 1) }"
                 @click="selectCell(r, c - 1)"
               >
                 <span class="note" :class="{ on: row[c-1].note }">{{ noteName(row[c - 1].note) }}</span>
@@ -463,7 +619,7 @@ watch(() => store.song?.path, () => {
           </div>
         </div>
 
-        <div class="inspector" v-if="inst">
+        <div class="inspector" v-if="inspectorOpen && inst">
           <div class="ititle">乐器 {{ curInst }}</div>
           <label class="f">名称<input :value="inst.name" @change="setInstName(($event.target as HTMLInputElement).value)" /></label>
           <label class="f">占空比
@@ -497,15 +653,19 @@ watch(() => store.song?.path, () => {
 .t.save { color: var(--accent); }
 .iconbtn { width:28px; height:28px; display:inline-flex; align-items:center; justify-content:center; border:1px solid var(--border); background:var(--surface); color:var(--text-dim); border-radius:var(--radius-sm); cursor:pointer; flex:0 0 auto; }
 .iconbtn:hover { color:var(--text); border-color:var(--border-strong); }
+.iconbtn.on { border-color:var(--accent); color:var(--accent); background:var(--accent-soft); }
 .iconbtn:disabled { opacity:0.4; cursor:default; }
 .lab { font-size:12px; color:var(--text-dim); display:flex; align-items:center; gap:4px; }
 .lab input, .lab select, .f input, .f select { background:var(--surface); border:1px solid var(--border); color:var(--text); border-radius:5px; padding:3px 6px; font-size:12px; width:64px; }
 .grow { flex:1; }
 .hint { font-size:11px; color:var(--text-mute); font-family:var(--font-mono,monospace); white-space:nowrap; }
 .dirty { color:var(--accent); font-size:12px; }
-.body { flex:1; display:flex; overflow:hidden; }
-.grid { flex:1; overflow:auto; font-family:var(--font-mono,monospace); font-size:12px; }
-.rollwrap { flex:1; display:flex; flex-direction:column; overflow:hidden; min-width:0; min-height:0; }
+.contextbar { min-height:32px; padding:6px 12px; display:flex; align-items:center; gap:8px; border-bottom:1px solid var(--border); background:rgba(5,7,13,0.28); overflow:hidden; }
+.crumb { min-width:0; max-width:34%; height:20px; padding:0 8px; display:inline-flex; align-items:center; gap:5px; border:1px solid var(--border); border-radius:5px; color:var(--text-dim); font-size:11.5px; font-family:var(--font-mono,monospace); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.crumb.accent { color:var(--text); border-color:rgba(124,92,255,0.34); background:rgba(124,92,255,0.1); }
+.body { flex:1; position:relative; overflow:hidden; padding:12px; min-height:0; }
+.grid { width:100%; height:100%; overflow:auto; border:1px solid var(--border); border-radius:6px; background:#05070d; font-family:var(--font-mono,monospace); font-size:12px; }
+.rollwrap { width:100%; height:100%; display:flex; flex-direction:column; overflow:hidden; min-width:0; min-height:0; border:1px solid var(--border); border-radius:6px; background:#05070d; }
 .rollbar { padding:6px 10px; font-size:12px; color:var(--text-dim); border-bottom:1px solid var(--border); display:flex; align-items:center; gap:8px; }
 .mini { font-size:11px; padding:2px 8px; border:1px solid var(--border); background:var(--surface); color:var(--text-dim); border-radius:5px; cursor:pointer; }
 .rollarea { flex:1; min-height:0; overflow:auto; background:#05070d; }
@@ -516,13 +676,14 @@ watch(() => store.song?.path, () => {
 .rownum { padding:3px 6px; color:var(--text-mute); text-align:right; }
 .row.beat { background:rgba(124,92,255,0.05); }
 .cell { display:flex; justify-content:space-between; padding:3px 8px; border-left:1px solid var(--border); cursor:pointer; }
+.cell.range { background:rgba(124,92,255,0.13); box-shadow:inset 0 0 0 1px rgba(124,92,255,0.2); }
 .cell.sel { background:var(--accent-soft); outline:1px solid var(--accent); }
 .note { color:var(--text-mute); }
 .note.on { color:var(--text); }
 .inst { color:var(--cyan); }
 .fx { color:var(--warning,#fbbf24); }
 .celltitle { font-size:12px; color:var(--text); font-weight:600; margin-top:8px; border-top:1px solid var(--border); padding-top:8px; }
-.inspector { width:220px; border-left:1px solid var(--border); padding:12px; display:flex; flex-direction:column; gap:10px; }
+.inspector { position:absolute; top:18px; right:18px; bottom:18px; width:clamp(236px,28%,340px); border:1px solid var(--border); border-radius:7px; padding:12px; display:flex; flex-direction:column; gap:10px; background:rgba(10,15,28,0.94); box-shadow:0 16px 44px rgba(0,0,0,0.35); backdrop-filter:blur(10px); overflow:auto; }
 .ititle { font-size:13px; font-weight:600; color:var(--text); }
 .f { font-size:12px; color:var(--text-dim); display:flex; flex-direction:column; gap:4px; }
 .f input { width:auto; }

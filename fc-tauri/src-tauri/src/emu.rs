@@ -6,7 +6,7 @@
 
 use crate::audio::Audio;
 use crate::storage::{self, Library, RomEntry, SlotMeta};
-use fc_core::{BpKind, Cartridge, ControlDeck, EventKind, Region};
+use fc_core::{BpKind, Button, Cartridge, ControlDeck, EventKind, Region};
 use serde::Serialize;
 use serde_json::json;
 use std::path::PathBuf;
@@ -34,54 +34,54 @@ const LOW_LATENCY_AUDIO_TARGET_SECS: f64 = 0.020;
 const AUDIO_CATCHUP_CAP_FRAMES: u32 = 3;
 const IDLE_WORKER_SLEEP: Duration = Duration::from_millis(5);
 
-struct Ctrl {
-    running: bool,
-    paused: bool,
-    speed: u32,
-    step: bool,
-    sample_rate: f64,
-    volume: f32,
+pub(crate) struct Ctrl {
+    pub(crate) running: bool,
+    pub(crate) paused: bool,
+    pub(crate) speed: u32,
+    pub(crate) step: bool,
+    pub(crate) sample_rate: f64,
+    pub(crate) volume: f32,
 }
 
 /// Controller state. Keyboard comes from the frontend over async IPC (no
 /// ordering guarantee), so we keep only the newest (highest seq) — a late
 /// older event can't overwrite a newer one. Gamepad is read natively in a
 /// backend thread (gilrs, no IPC). The two are OR-merged per port.
-struct Inp {
-    kb: [u8; 2],
-    kb_seq: u64,
-    pad: [u8; 2],
+pub(crate) struct Inp {
+    pub(crate) kb: [u8; 2],
+    pub(crate) kb_seq: u64,
+    pub(crate) pad: [u8; 2],
 }
 
-struct FrameSlot {
-    id: u64,
-    rgba: Vec<u8>,
+pub(crate) struct FrameSlot {
+    pub(crate) id: u64,
+    pub(crate) rgba: Vec<u8>,
 }
 
 #[derive(Default, Clone, Serialize)]
 pub struct RuntimeStats {
-    audio_open: bool,
-    audio_buffered: usize,
-    worker_frames: u64,
-    worker_audio_samples: u64,
-    last_loop_frames: u32,
-    last_frame_samples: usize,
+    pub(crate) audio_open: bool,
+    pub(crate) audio_buffered: usize,
+    pub(crate) worker_frames: u64,
+    pub(crate) worker_audio_samples: u64,
+    pub(crate) last_loop_frames: u32,
+    pub(crate) last_frame_samples: usize,
 }
 
-struct Shared {
-    deck: Mutex<ControlDeck>,
-    input: Mutex<Inp>,
-    frame: Mutex<FrameSlot>,
-    ctrl: Mutex<Ctrl>,
-    stats: Mutex<RuntimeStats>,
-    started_at: Instant,
-    rom_id: Mutex<String>,
+pub(crate) struct Shared {
+    pub(crate) deck: Mutex<ControlDeck>,
+    pub(crate) input: Mutex<Inp>,
+    pub(crate) frame: Mutex<FrameSlot>,
+    pub(crate) ctrl: Mutex<Ctrl>,
+    pub(crate) stats: Mutex<RuntimeStats>,
+    pub(crate) started_at: Instant,
+    pub(crate) rom_id: Mutex<String>,
     wake: Condvar,
     wake_flag: Mutex<bool>,
 }
 
 pub struct EmuState {
-    shared: Arc<Shared>,
+    pub(crate) shared: Arc<Shared>,
     started: AtomicBool,
 }
 
@@ -129,9 +129,54 @@ impl EmuState {
         let pad_shared = self.shared.clone();
         thread::spawn(move || gamepad_thread(pad_shared));
     }
+
+    /// Load a ROM into the live emulator worker from an IDE integration. This is
+    /// the same backend path as the Tauri command, so the preview window updates
+    /// instead of an off-screen core doing invisible work.
+    pub fn open_path_for_ide(&self, path: &str) -> Result<RomInfo, String> {
+        let data = std::fs::read(path).map_err(|e| e.to_string())?;
+        apply_rom(&self.shared, path, &data)
+    }
+
+    pub fn read_memory_for_ide(&self, addr: u16, len: u16) -> Vec<u8> {
+        self.shared.deck.lock().unwrap().read_memory_range(addr, len)
+    }
+
+    pub fn set_controller_for_ide(&self, port: usize, bits: u8) {
+        let mut input = self.shared.input.lock().unwrap();
+        if port < input.kb.len() {
+            input.kb[port] = bits;
+            input.kb_seq = input.kb_seq.saturating_add(1);
+        }
+        drop(input);
+        wake_worker(&self.shared);
+    }
+
+    pub(crate) fn set_button_for_mcp(
+        &self,
+        port: usize,
+        button: Button,
+        pressed: bool,
+    ) -> Result<u8, String> {
+        let mut input = self.shared.input.lock().unwrap();
+        if port >= input.kb.len() {
+            return Err(format!("invalid controller port {port}"));
+        }
+        let mask = 1u8 << button.bit();
+        if pressed {
+            input.kb[port] |= mask;
+        } else {
+            input.kb[port] &= !mask;
+        }
+        input.kb_seq = input.kb_seq.saturating_add(1);
+        let bits = input.kb[port];
+        drop(input);
+        wake_worker(&self.shared);
+        Ok(bits)
+    }
 }
 
-fn wake_worker(shared: &Shared) {
+pub(crate) fn wake_worker(shared: &Shared) {
     *shared.wake_flag.lock().unwrap() = true;
     shared.wake.notify_one();
 }
@@ -146,12 +191,12 @@ fn wait_worker(shared: &Shared, timeout: Duration) {
     *guard = false;
 }
 
-fn merged_input(shared: &Shared) -> [u8; 2] {
+pub(crate) fn merged_input(shared: &Shared) -> [u8; 2] {
     let i = shared.input.lock().unwrap();
     [i.kb[0] | i.pad[0], i.kb[1] | i.pad[1]]
 }
 
-fn publish_frame(shared: &Shared, rgba: Vec<u8>) {
+pub(crate) fn publish_frame(shared: &Shared, rgba: Vec<u8>) {
     let mut frame = shared.frame.lock().unwrap();
     frame.rgba = rgba;
     frame.id = frame.id.wrapping_add(1);
