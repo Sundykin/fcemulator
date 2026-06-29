@@ -5,15 +5,20 @@
 //! use. The CLI command is only a stdio-to-socket bridge; it does not create a
 //! hidden emulator core.
 
+// On non-Unix targets the embedded Unix-socket MCP dev server is compiled out
+// (see `start` below), leaving its request handlers unused; silence that there.
+#![cfg_attr(not(unix), allow(dead_code, unused_imports))]
+
 use crate::emu::{self, EmuState};
 use fc_core::{BpKind, Button, EventKind};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
-use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+#[cfg(unix)]
+use std::os::unix::net::{UnixListener, UnixStream};
 use tauri::{AppHandle, Emitter, Manager};
 
 pub const SOCKET_PATH: &str = "/tmp/fc-tauri-emu-mcp.sock";
@@ -134,6 +139,11 @@ struct SaveSlots {
     slots: HashMap<String, Vec<u8>>,
 }
 
+/// No-op on non-Unix targets — the embedded MCP socket server is Unix-only.
+#[cfg(not(unix))]
+pub fn start(_app: AppHandle) {}
+
+#[cfg(unix)]
 pub fn start(app: AppHandle) {
     let socket = PathBuf::from(SOCKET_PATH);
     let _ = std::fs::remove_file(&socket);
@@ -176,6 +186,7 @@ pub fn emu_mcp_status() -> Value {
     }
 }
 
+#[cfg(unix)]
 fn handle_client(app: AppHandle, slots: Arc<Mutex<SaveSlots>>, stream: UnixStream) {
     let reader_stream = match stream.try_clone() {
         Ok(s) => s,

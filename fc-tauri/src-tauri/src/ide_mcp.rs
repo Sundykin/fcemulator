@@ -4,6 +4,10 @@
 //! headless CLI. Tools mutate the same project/build/emulator state as the UI
 //! and emit frontend events so Pinia can refresh after agent-driven changes.
 
+// On non-Unix targets the embedded Unix-socket MCP dev server is compiled out
+// (see `start` below), leaving its request handlers unused; silence that there.
+#![cfg_attr(not(unix), allow(dead_code, unused_imports))]
+
 use crate::build_pipeline::{run_build, BuildResult, BuildState};
 use crate::chr::{decode_sheet, encode_sheet};
 use crate::emu::EmuState;
@@ -14,6 +18,7 @@ use fc_core::Button;
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::{BufRead, BufReader, Write};
+#[cfg(unix)]
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -245,6 +250,11 @@ const TOOLS: &[Tool] = &[
     },
 ];
 
+/// No-op on non-Unix targets — the embedded MCP socket server is Unix-only.
+#[cfg(not(unix))]
+pub fn start(_app: AppHandle) {}
+
+#[cfg(unix)]
 pub fn start(app: AppHandle) {
     let socket = PathBuf::from(SOCKET_PATH);
     let _ = std::fs::remove_file(&socket);
@@ -274,6 +284,7 @@ pub fn start(app: AppHandle) {
     });
 }
 
+#[cfg(unix)]
 fn handle_client(app: AppHandle, stream: UnixStream) {
     let reader_stream = match stream.try_clone() {
         Ok(s) => s,
