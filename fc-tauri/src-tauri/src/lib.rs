@@ -16,6 +16,7 @@ mod watch;
 use build_pipeline::BuildState;
 use emu::EmuState;
 use project::ProjectState;
+use tauri::Manager;
 use watch::WatchState;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -45,6 +46,11 @@ pub fn run() {
         .manage(BuildState::new())
         .manage(WatchState::new())
         .setup(|app| {
+            // Point the build pipeline at the bundled cc65 (ca65/ld65) so the
+            // IDE "Build" works in installed apps, not just the dev tree.
+            if let Ok(dir) = app.path().resource_dir() {
+                build_pipeline::set_resource_dir(dir);
+            }
             ide_mcp::start(app.handle().clone());
             emu_mcp::start(app.handle().clone());
             Ok(())

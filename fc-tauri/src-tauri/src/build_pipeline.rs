@@ -11,7 +11,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use tauri::State;
 
@@ -43,22 +43,70 @@ fn exe(name: &str) -> String {
     }
 }
 
-/// 解析工具路径,顺序:`FC_CC65_DIR` 覆盖 → 捆绑 vendor 目录 → PATH 兜底。
-/// 找不到可执行体不在此报错(交由 spawn 时的 NotFound 转成"工具链不可用")。
+/// 安装版的 cc65 捆绑根:启动时由 `lib.rs` 用 `app.path().resource_dir()` 写入,
+/// 让打包后的应用能找到随包发布的 `ca65`/`ld65`。开发态(cargo run / tauri dev)
+/// 不设置,回退到源码树。
+static RESOURCE_DIR: OnceLock<PathBuf> = OnceLock::new();
+
+/// 由 `lib.rs` setup 用 Tauri 资源目录调用一次。
+pub fn set_resource_dir(dir: PathBuf) {
+    let _ = RESOURCE_DIR.set(dir);
+}
+
+/// 候选 `vendor/cc65` 根目录,按"最可能命中"排序。覆盖:安装版资源目录(含
+/// glob 打平后的布局)、可执行体同级目录(macOS `.app/Contents/Resources`、
+/// Windows 安装目录),最后是开发源码树。
+fn cc65_search_dirs() -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    if let Some(res) = RESOURCE_DIR.get() {
+        dirs.push(res.join("vendor/cc65"));
+        dirs.push(res.clone());
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            dirs.push(dir.join("vendor/cc65"));
+            dirs.push(dir.join("../Resources/vendor/cc65"));
+            dirs.push(dir.to_path_buf());
+            dirs.push(dir.join("../Resources"));
+        }
+    }
+    dirs.push(Path::new(env!("CARGO_MANIFEST_DIR")).join("vendor/cc65"));
+    dirs
+}
+
+/// 打包过程中 Unix 可执行位可能丢失;尽力补回,避免 `Command::spawn` 触发 EACCES。
+fn ensure_runnable(path: PathBuf) -> PathBuf {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Ok(meta) = std::fs::metadata(&path) {
+            let mode = meta.permissions().mode();
+            if mode & 0o111 == 0 {
+                let mut perms = meta.permissions();
+                perms.set_mode(mode | 0o755);
+                let _ = std::fs::set_permissions(&path, perms);
+            }
+        }
+    }
+    path
+}
+
+/// 解析工具路径,顺序:`FC_CC65_DIR` 覆盖 → 捆绑/资源目录(安装版)→ 源码树
+/// (开发)→ PATH 兜底。找不到不在此报错(交由 spawn 的 NotFound 转成提示)。
 fn resolve_tool(name: &str) -> PathBuf {
     let file = exe(name);
     if let Ok(dir) = std::env::var("FC_CC65_DIR") {
         let p = Path::new(&dir).join(&file);
         if p.exists() {
-            return p;
+            return ensure_runnable(p);
         }
     }
-    let vendored = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("vendor/cc65")
-        .join(host_triple())
-        .join(&file);
-    if vendored.exists() {
-        return vendored;
+    let triple = host_triple();
+    for base in cc65_search_dirs() {
+        let p = base.join(triple).join(&file);
+        if p.exists() {
+            return ensure_runnable(p);
+        }
     }
     PathBuf::from(file) // 交给 OS 在 PATH 上找
 }
@@ -69,16 +117,19 @@ pub fn tool_available(name: &str) -> bool {
     resolve_tool(name).exists()
 }
 
-/// 捆绑链接脚本目录(按 Mapper 选用的默认 cfg)。
+/// 捆绑链接脚本(按 Mapper 选用的默认 cfg),与工具二进制同样从资源/源码目录解析。
 fn bundled_cfg_for_mapper(mapper: u16) -> Option<PathBuf> {
     let name = match mapper {
         0 => "nrom.cfg",
         _ => return None,
     };
-    let p = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("vendor/cc65/cfg")
-        .join(name);
-    p.exists().then_some(p)
+    for base in cc65_search_dirs() {
+        let p = base.join("cfg").join(name);
+        if p.exists() {
+            return Some(p);
+        }
+    }
+    None
 }
 
 // --------------------------------------------------------------- data types

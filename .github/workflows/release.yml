@@ -65,6 +65,36 @@ jobs:
         with:
           workspaces: "./fc-tauri/src-tauri -> target"
 
+      # The macOS cc65 (ca65/ld65) binaries are vendored in-repo. The Windows
+      # ones aren't (they're platform-specific), so build them here from the same
+      # pinned cc65 source and drop them into the vendor dir before tauri bundles
+      # vendor/cc65 as a resource. Statically linked so no MinGW DLLs are needed.
+      - name: Setup MSYS2 (Windows cc65 toolchain)
+        if: matrix.platform == 'windows-latest'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          install: git make mingw-w64-x86_64-gcc
+
+      - name: Build cc65 for Windows
+        if: matrix.platform == 'windows-latest'
+        shell: msys2 {0}
+        run: |
+          set -euxo pipefail
+          REF=cc3c40c54e51b2d9a22b63c85c418a2b11763377   # V2.19, matches vendored macOS build
+          git clone https://github.com/cc65/cc65.git /tmp/cc65
+          cd /tmp/cc65
+          git checkout "$REF"
+          make -j2 bin LDFLAGS=-static
+          dest="$(cygpath -u "$GITHUB_WORKSPACE")/fc-tauri/src-tauri/vendor/cc65/x86_64-pc-windows-msvc"
+          mkdir -p "$dest"
+          for t in ca65 ld65; do
+            if   [ -f "bin/$t.exe" ]; then cp "bin/$t.exe" "$dest/$t.exe";
+            elif [ -f "bin/$t" ];     then cp "bin/$t"     "$dest/$t.exe";
+            else echo "::error::cc65 build did not produce $t"; exit 1; fi
+          done
+          file "$dest/ca65.exe" "$dest/ld65.exe"
+
       - name: Install frontend dependencies
         working-directory: ./fc-tauri
         run: npm ci
@@ -82,6 +112,10 @@ jobs:
 
             - macOS: download the `.dmg` (universal — Apple Silicon + Intel)
             - Windows: download the `.msi` or `.exe` installer
+
+            The IDE "Build" toolchain (cc65) ships inside the app on Windows and
+            Apple Silicon macOS. (Intel macOS runs the emulator/player; bundled
+            cc65 for Intel is a follow-up.)
 
             Builds are unsigned; you may need to bypass Gatekeeper / SmartScreen
             on first launch.
