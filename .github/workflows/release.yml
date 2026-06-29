@@ -1,0 +1,90 @@
+name: Release
+
+# Builds the fc-tauri desktop app installers for macOS and Windows and
+# publishes them to a GitHub Release.
+#
+# Trigger:
+#   * push a tag like `v0.2.0`            -> builds & creates the release
+#   * run manually (workflow_dispatch)    -> provide the tag to publish under
+#
+# Artifacts:
+#   macOS   -> universal .dmg + .app
+#   Windows -> .msi (WiX) and .exe (NSIS)
+#
+# NOTE: builds are UNSIGNED (no Apple Developer / Windows code-signing certs
+# are configured). Users will see a Gatekeeper / SmartScreen warning on first
+# launch. To sign, add the relevant secrets and signing inputs to tauri-action.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish under (e.g. v0.2.0)"
+        required: true
+        default: "v0.0.0-dev"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            args: "--target universal-apple-darwin"
+            rust-targets: "aarch64-apple-darwin,x86_64-apple-darwin"
+          - platform: windows-latest
+            args: ""
+            rust-targets: ""
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: fc-tauri/package-lock.json
+
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-targets }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./fc-tauri/src-tauri -> target"
+
+      - name: Install frontend dependencies
+        working-directory: ./fc-tauri
+        run: npm ci
+
+      - name: Build & release (tauri-action)
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: ./fc-tauri
+          tagName: ${{ github.event.inputs.tag || github.ref_name }}
+          releaseName: "FC Emulator ${{ github.event.inputs.tag || github.ref_name }}"
+          releaseBody: |
+            Desktop installers for the FC / Famicom-NES emulator.
+
+            - macOS: download the `.dmg` (universal — Apple Silicon + Intel)
+            - Windows: download the `.msi` or `.exe` installer
+
+            Builds are unsigned; you may need to bypass Gatekeeper / SmartScreen
+            on first launch.
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}

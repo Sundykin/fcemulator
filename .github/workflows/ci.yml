@@ -1,0 +1,31 @@
+name: CI
+
+# Lightweight build/test gate for the pure emulator core. fc-core has no IO,
+# audio, or render dependencies, so it builds cleanly on a bare runner with no
+# system packages. (fc-gui / fc-tauri need platform GUI/audio libs and are
+# covered by the Release workflow instead.)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  core:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+
+      - name: Build core
+        run: cargo build -p fc-core -p fc-cli -p fc-mcp --verbose
+
+      - name: Test core
+        run: cargo test -p fc-core --verbose

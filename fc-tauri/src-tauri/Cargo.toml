@@ -3,6 +3,8 @@ name = "fc-tauri"
 version = "0.1.0"
 description = "FC/NES emulator — Tauri + Vue frontend"
 edition = "2021"
+license = "GPL-3.0-only"
+repository = "https://github.com/Sundykin/fcemulator"
 
 [lib]
 name = "fc_tauri_lib"

@@ -79,4 +79,21 @@ target/release/fc test nes-test-roms/other/nestest.nes --entry C000   # -> $0002
 target/release/fc run  nes-test-roms/instr_test-v5/official_only.nes --frames 1600 --shot t.png
 ```
 
-License: MIT OR Apache-2.0. `nes-test-roms/` retains its own upstream license.
+## License
+
+This project is **dual-licensed**:
+
+- **Open source:** [GNU GPL v3.0](LICENSE). Free to use, modify, and
+  redistribute, provided derivative works are also released under the GPLv3
+  with full source.
+- **Commercial:** proprietary / closed-source commercial use that cannot
+  comply with the GPLv3 requires a **separate commercial license** — see
+  [`COMMERCIAL.md`](COMMERCIAL.md).
+
+`nes-test-roms/` (when present) retains its own upstream license. ROMs and the
+reference emulators used during development are **not** distributed with this
+repository.
+
+> Downloadable macOS (`.dmg`) and Windows (`.msi` / `.exe`) installers of the
+> desktop app are published on the [GitHub Releases](https://github.com/Sundykin/fcemulator/releases)
+> page, built automatically by CI.
